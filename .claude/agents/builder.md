@@ -53,8 +53,9 @@ other jobs.
   defaults or extras the spec doesn't ask for.
 - Use the toolchain versions and commands AGENTS.md gives.
 - Never modify or delete an existing file that matches `protected_paths` in
-  `<repo>/factory/config.json`, and never edit anything under `factory/`. The
-  gate fails the branch if you do. New files, including new tests, are fine.
+  `<repo>/factory/config.json`, and never add or edit anything under `factory/`
+  or `.claude/`. The gate fails the branch if you do. Other new files,
+  including new tests, are fine.
   If the spec can't be met without such an edit, write BLOCKED.
 
 ## Test against the acceptance criteria

@@ -46,6 +46,8 @@ ESCALATE if any of them fails, or if the change:
 - touches money, access or identity: payments, auth, sessions, permissions,
   household membership, invites or list sharing, or database and storage
   security rules;
+- adds or changes anything under `factory/` or `.claude/`: the factory and
+  Claude Code's own config, which a human always reviews;
 - changes deploy, CI or hosting config, or the build scripts it runs;
 - migrates a database schema, sends email, writes production data, or adds a
   dependency;
