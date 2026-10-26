@@ -397,8 +397,11 @@ def advance(job, stage):
         remote = res.stdout.strip() if res.returncode == 0 else ""
         require(head == remote, f"{job['branch']} isn't pushed: local {head[:7]}, origin {remote[:7] or 'missing'}")
         if not job["pr"]:
-            prs = gh_json("pr", "list", "--head", job["branch"], "--state", "open", "--json", "number,url")
-            require(len(prs) == 1, f"expected one open PR from {job['branch']}, found {len(prs)}")
+            prs = gh_json("pr", "list", "--head", job["branch"], "--state", "open",
+                          "--json", "number,url,isCrossRepository,headRefOid")
+            # A fork can open a PR from a same-named branch; only ours, at the pushed commit, counts.
+            prs = [p for p in prs if not p["isCrossRepository"] and p["headRefOid"] == head]
+            require(len(prs) == 1, f"expected one open PR from {job['branch']} at {head[:7]}, found {len(prs)}")
             job["pr"], job["pr_url"] = prs[0]["number"], prs[0]["url"]
 
     elif old == "build":  # → needs-human
@@ -567,6 +570,11 @@ def cmd_merge(job):
         save(advance(sync(job), "needs-human"))
         print(f"{job['id']}: needs-human: {why.splitlines()[0]}")
 
+    # Merge only the commit the gate passed and the reviewers and approver saw.
+    # shortcut: a merge resumed after a crash mid-sync escalates here; fine while crashes are rare.
+    gated = header(round_dir(job) / "checks.md").get("COMMIT", "")
+    if git(job, "rev-parse", "HEAD").stdout.strip() != gated:
+        return fail(f"HEAD isn't {gated[:7] or 'the commit'} that round {job['round']} gated and reviewed.")
     git(job, "fetch", "origin", BASE)
     merged = git(job, "merge", "--no-edit", f"origin/{BASE}", check=False)
     if merged.returncode != 0:
@@ -576,11 +584,13 @@ def cmd_merge(job):
     if gate.returncode != 0:
         return fail(f"The gate failed after syncing with {BASE}. "
                     f"See round-{job['round']}/merge-checks.md.\n\n{gate.stdout.strip()}")
+    synced = git(job, "rev-parse", "HEAD").stdout.strip()
     try:
         git(job, "push", "origin", job["branch"])
         if gh_json("pr", "view", str(job["pr"]), "--json", "isDraft")["isDraft"]:
             gh("pr", "ready", str(job["pr"]))
-        gh("pr", "merge", str(job["pr"]), f"--{CONFIG['merge_method']}")
+        # GitHub refuses if anyone pushed to the branch after the merge gate.
+        gh("pr", "merge", str(job["pr"]), f"--{CONFIG['merge_method']}", "--match-head-commit", synced)
     except Refused as e:
         return fail(f"The merge failed:\n\n```\n{e}\n```")
     # GitHub may already have deleted the branch on merge.
