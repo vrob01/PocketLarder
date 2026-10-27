@@ -527,6 +527,10 @@ Environment:
 - `POCKETLARDER_LISTEN`: defaults to `:8080`.
 - `POCKETLARDER_PUBLIC_URL`: required by `serve` and `invite`. It must be `https://host[:port]`, or `http://localhost[:port]` / `http://127.0.0.1[:port]`, with no path, query or fragment. A trailing `/` is stripped.
 
+Data directory (carried forward from Task 1's security review):
+- `Run` rejects a `POCKETLARDER_DATA_DIR` containing `?`, `#` or `%`: exit 1, with stderr naming the variable. `openDB` builds its DSN as `"file:"+path+"?..."`, so a `?` in the path silently drops all four pragmas, including `foreign_keys(1)`, and `#` and `%` are read as URI syntax.
+- `Run` creates the data directory as 0700 when it doesn't exist, and the database files end up 0600. Under umask 022, SQLite creates the database, `-wal` and `-shm` files as 0644. SQLite gives `-wal` and `-shm` the mode of the database file, so `Run` creates `pocketlarder.db` as 0600 before `openDB`. A scratch test with `modernc.org/sqlite` v1.61.0 confirmed this on 2026-10-27, and `TestCLIFileModes` keeps checking it.
+
 Commands:
 - `serve`: runs an `http.Server` with `ReadHeaderTimeout 10s`, `ReadTimeout 30s`, `WriteTimeout 30s` and `IdleTimeout 120s`, and logs JSON to stdout with `slog`. On `ctx.Done()` it calls `Shutdown` with a 10-second limit and returns 0.
 - `invite --new-admin <name>` creates an admin. `invite <member name>` makes a device invite for an existing member. Both print `Invite for <name>, valid until <RFC 3339>:` followed by the URL on its own line.
@@ -545,6 +549,13 @@ func TestCLIPublicURL(t *testing.T)
 // http://lists.example.test -> 1; https://lists.example.test/app -> 1; http://localhost:5100 -> 0
 
 func TestCLIBackup(t *testing.T) // after an invite, backup to tmp/b.db -> 0; openDB(b.db) has Alex
+
+func TestCLIDataDirRejectsURIChars(t *testing.T)
+// DATA_DIR=t.TempDir()+"/a?b", "/a#b" and "/a%b", invite --new-admin Alex -> 1 each, stderr mentions "POCKETLARDER_DATA_DIR"
+
+func TestCLIFileModes(t *testing.T)
+// DATA_DIR=t.TempDir()+"/data" (doesn't exist yet), invite --new-admin Alex -> 0
+// the data dir is 0700; pocketlarder.db and any -wal/-shm files next to it are 0600
 
 func TestServe(t *testing.T)
 // grab a free port via net.Listen("127.0.0.1:0") then close it; Run serve in a goroutine
@@ -580,7 +591,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/pocketlarder . && 
 
 FROM scratch
 COPY --from=build /out/pocketlarder /usr/local/bin/pocketlarder
-COPY --from=build --chown=65532:65532 /out/data /data
+COPY --from=build --chown=65532:65532 --chmod=700 /out/data /data
 ENV PATH=/usr/local/bin POCKETLARDER_DATA_DIR=/data POCKETLARDER_LISTEN=:8080
 USER 65532:65532
 VOLUME /data
@@ -588,6 +599,8 @@ EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/pocketlarder"]
 CMD ["serve"]
 ```
+
+`--chmod=700` makes `/data` 0700, so a new named volume starts out private to uid 65532. `mkdir -m 700 /out/data` in the build stage is not enough: `COPY` copies the directory's contents, not its mode, and creates `/data` as 0755 (checked with Docker 29.9.2 on 2026-10-27).
 
 - [ ] **Step 2: `server/deploy/compose.yaml`**: the `pocketlarder` service with `build: ..`, `container_name: pocketlarder`, `restart: unless-stopped`, `read_only: true`, `cap_drop: [ALL]`, `security_opt: ["no-new-privileges:true"]`, `POCKETLARDER_PUBLIC_URL: https://lists.example.com`, the named volume `pocketlarder-data:/data`, and `ports: ["127.0.0.1:8080:8080"]`.
 - [ ] **Step 3: `server/deploy/Caddyfile`**
@@ -608,6 +621,7 @@ docker exec pocketlarder pocketlarder invite --new-admin Test        # prints an
 curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8080/v1/sync   # 401
 docker exec pocketlarder pocketlarder backup /data/check.db          # exit 0
 docker inspect -f '{{.HostConfig.ReadonlyRootfs}} {{.Config.User}}' pocketlarder   # true 65532:65532
+docker run --rm --volumes-from pocketlarder busybox sh -c 'stat -c "%a %u:%g %n" /data /data/pocketlarder.db*'   # 700 for /data, 600 for each db file, all 65532:65532
 docker compose -f server/deploy/compose.yaml down -v                 # clean up
 ```
 
