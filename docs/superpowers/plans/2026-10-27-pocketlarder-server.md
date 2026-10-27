@@ -16,7 +16,7 @@ This is plan 1 of 3. Plan 2 covers the iOS app, its Mac setup guide (kept out of
 
 ## Global Constraints
 
-- Single static binary: `CGO_ENABLED=0`. Two dependencies: `modernc.org/sqlite` for SQLite, and `golang.org/x/text` for name normalisation and lookalike detection (Task 2). Any other dependency needs a one-line justification in the commit message.
+- Single static binary: `CGO_ENABLED=0`. Two dependencies: `modernc.org/sqlite` for SQLite, and `golang.org/x/text` for name normalisation (Task 2). Any other dependency needs a one-line justification in the commit message.
 - The factory machine has Go 1.24.4. `go.mod` says `go 1.27.3`, the latest release on 2026-10-27, and the local `go` downloads that toolchain on its own (GOTOOLCHAIN=auto). The reason: the driver requires 1.26, and 1.24 no longer gets security fixes.
 - Plain HTTP behind a TLS-terminating reverse proxy. Versioned JSON API under `/v1` only: no HTML, no static files, no CORS headers.
 - The API must not assume iOS (Android may come later).
@@ -40,7 +40,7 @@ The spec left these to the builder. They fix the API that plan 2 builds against.
 - **"Unfiled" is a display rule.** An entry shows under "Not filed yet" when it has no item, no store, or its item has no placement in its store. Deleting a store, category or item therefore never rewrites or loses entries. Foreign keys set the references to NULL, and the entry falls back to "Not filed yet".
 - **Entries always keep `text`** (the item name at the time they were added), so deleting an item never loses the name.
 - **An invite is always bound to a member.** Inviting a new member creates the member and their personal list right away. Unredeemed new members show up in the admin area, where they can be removed.
-- **Names are compared after trimming and collapsing whitespace, ignoring case and lookalike characters** (`nameKey`, Task 2). Item and member names are unique on that key.
+- **Names are compared after Unicode normalisation, trimming and collapsing whitespace, ignoring case** (`nameKey`, Task 2). Item and member names are unique on that key.
 - **List colors** are tokens the app maps to real colors: `red orange yellow green teal blue purple pink gray`.
 - **Recently bought:** the newest 50 bought entries per list are synced. Old bought rows stay in the database. `shortcut: bought entries are never pruned, add pruning if the database grows noticeably`.
 - **Timestamps** are stored as unix seconds and sent as RFC 3339 UTC without fractions (`2026-10-27T10:00:00Z`).
@@ -204,7 +204,6 @@ License v3.0, the same as the server.
 
 **Files:**
 - Create: `server/internal/larder/ids.go`, `server/internal/larder/members.go`
-- Create: `server/internal/larder/gen_confusables.go` and the `server/internal/larder/confusables.go` it generates
 - Modify: `server/go.mod`, `server/go.sum` (add `golang.org/x/text` v0.43.0)
 - Test: `server/internal/larder/ids_test.go`, `server/internal/larder/members_test.go`
 
@@ -217,18 +216,18 @@ License v3.0, the same as the server.
   - `func secretMatches(secret string, hash []byte) bool`: compares in constant time.
   - `func splitCode(code string) (id, secret string, ok bool)`: invite codes and device tokens are both `<uuid>.<secret>`.
   - `func cleanText(s string, max int) (string, bool)`: normalises to NFC (`golang.org/x/text/unicode/norm`), then collapses all whitespace runs to single spaces (`strings.Fields`) and trims. It rejects invalid UTF-8, control runes, an empty result, and more than `max` runes. It keeps invisible characters: emoji sequences need U+200D, and Persian needs U+200C.
-  - `func cleanName(s string, max int) (string, bool)`: for member and device names. It collapses whitespace, enforces the PRECIS Nickname profile (RFC 8266, `precis.Nickname`), then runs `cleanText` with the same `max`, so the length limit applies after normalisation. Nickname applies NFKC (full-width `Ａｌｅｘ` becomes `Alex`) and rejects zero-width characters (U+200B), bidi overrides (U+202E) and stray joiners (U+200D).
-  - `func nameKey(clean string) string`: folds case (`cases.Fold`), then maps each character to its prototype from `confusables` (the UTS #39 skeleton: NFD, prototypes, NFD). A lowercase letter takes its capital's prototype, so `AI`, `Al` and `ai` share a key. Lookalikes collide: `Alex`, `alex`, `Аlex` (Cyrillic А) and `Ａｌｅｘ`. It skips the skeleton's removal of default-ignorable characters, which member names can't contain. Items share this key (Tasks 4-5), so lookalike item names also end on one item.
-  - `var confusables map[rune]string` in the generated `confusables.go`. `//go:generate go run gen_confusables.go` in `ids.go` builds it from `https://www.unicode.org/Public/17.0.0/security/confusables.txt`, the Unicode version of `golang.org/x/text`'s tables under Go 1.27. Nothing downloads at run time. Regenerating the table, or upgrading `golang.org/x/text`, changes keys: it needs a migration that recomputes `members.name_key` and `items.name_key` and handles names that newly collide.
+  - `func cleanName(s string, max int) (string, bool)`: for member names. It collapses whitespace, enforces the PRECIS Nickname profile (RFC 8266, `precis.Nickname`), then runs `cleanText` with the same `max`, so the length limit applies after normalisation. Nickname applies NFKC (full-width `Ａｌｅｘ` becomes `Alex`) and rejects zero-width characters (U+200B), bidi overrides (U+202E) and stray joiners (U+200D).
+  - `func cleanDeviceName(s string) string`: never fails, so a device name never blocks pairing. It doesn't use PRECIS. It drops invalid UTF-8, control characters, bidi controls (U+202A–U+202E, U+2066–U+2069), zero-width space (U+200B), word joiner (U+2060) and U+FEFF, but keeps ZWJ, ZWNJ and variation selectors, which emoji and some scripts need (`❤️ Phone` stays as it is). Then it applies NFC, collapses whitespace and truncates to `maxDeviceName` runes. An empty result becomes `"Unnamed device"`.
+  - `func nameKey(clean string) string` returns `strings.ToLower(clean)`. Member and item names share it, so only case and normalisation variants collide (`Alex`, `ALEX`, and for member names `Ａｌｅｘ`). `Alex` and `Аlex` (Cyrillic А) stay distinct, an accepted residual, so that real names like `Ilse` and `Lise` never collide.
   - `const maxName = 100; maxQuantity = 32; maxNote = 200; maxDeviceName = 64`.
 - Produces, in `members.go`:
   - `type device struct { ID, MemberID string; IsAdmin bool }`.
   - `var errInvalid, errForbidden, errNotFound, errConflict, errLastAdmin, errBadInvite, errUnauthorized = errors.New(...)`, each with its message equal to its API code: `invalid`, `forbidden`, `not_found`, `conflict`, `last_admin`, `invalid_invite`, `unauthorized`.
-  - `func createMember(tx *sql.Tx, name string, admin bool, now time.Time) (string, error)`: creates the member and their personal list. The name goes through `cleanName(name, maxName)`. Returns `errInvalid` for a bad name and `errConflict` for a taken one, including a lookalike of one.
-  - `func memberByName(tx *sql.Tx, name string) (string, error)`: cleans with `cleanName` and looks up by `nameKey`, so any lookalike spelling finds the member. Returns `errNotFound` if there is none.
+  - `func createMember(tx *sql.Tx, name string, admin bool, now time.Time) (string, error)`: creates the member and their personal list. The name goes through `cleanName(name, maxName)`. Returns `errInvalid` for a bad name and `errConflict` for a taken one.
+  - `func memberByName(tx *sql.Tx, name string) (string, error)`: cleans with `cleanName` and looks up by `nameKey`, so it matches only case and normalisation variants of the name. Returns `errNotFound` if there is none.
   - `func createInvite(tx *sql.Tx, memberID string, now time.Time) (code string, expires time.Time, err error)`, with `expires = now + 24h`.
   - `func revokeInvites(tx *sql.Tx, memberID string) (int, error)`: deletes the member's unredeemed invites (`used_at IS NULL`) and returns how many it deleted. Used invites stay. Returns `errNotFound` for an unknown member.
-  - `func redeemInvite(tx *sql.Tx, code, deviceName string, now time.Time) (token string, d device, err error)`: `deviceName` is cleaned with `cleanName(deviceName, maxDeviceName)`, and an empty name becomes `"Unnamed device"`. A non-empty name that fails returns `errInvalid` and leaves the invite untouched. Unknown, wrong-secret, used and expired invites all return `errBadInvite`. An invite is expired from its `expires_at` second onwards (`now.Unix() >= expires_at`). Marks the invite with `UPDATE … SET used_at = ? WHERE id = ? AND used_at IS NULL` and proceeds only when exactly 1 row changed.
+  - `func redeemInvite(tx *sql.Tx, code, deviceName string, now time.Time) (token string, d device, err error)`: `deviceName` is cleaned with `cleanDeviceName`, so it never returns `errInvalid`. Unknown, wrong-secret, used and expired invites all return `errBadInvite`. An invite is expired from its `expires_at` second onwards (`now.Unix() >= expires_at`). Marks the invite with `UPDATE … SET used_at = ? WHERE id = ? AND used_at IS NULL` and proceeds only when exactly 1 row changed.
   - `func authenticate(tx *sql.Tx, token string, now time.Time) (device, error)`: returns `errUnauthorized` on any failed check and sets `last_seen_at = now` on success. Database errors pass through unchanged, so an outage never looks like a revoked token.
   - `func deleteDevice(tx *sql.Tx, deviceID string) error` returns `errNotFound` if the device doesn't exist.
   - `func setAdmin(tx *sql.Tx, memberID string, admin bool) error` and `func removeMember(tx *sql.Tx, memberID string) error`: both return `errLastAdmin` when the change would leave no admin, and `errNotFound` for an unknown member.
@@ -246,9 +245,8 @@ func TestCleanName(t *testing.T) // table:
 // "Ａｌｅｘ" -> "Alex"; tabs collapse; U+200B, U+202E or a stray U+200D -> false;  51 × "ﬁ" with max 100 -> false
 
 func TestNameKey(t *testing.T)
-// equal keys: Alex/alex, Alex/Аlex (Cyrillic А), Alex/Ａｌｅｘ, AI/Al, Aléx precomposed/decomposed,
-//             Ian/ian, Tom/TOM, Helen/Нelen (Cyrillic Н)
-// different keys: Alex/Alexa, Sam/Pam, Jo/Joe; a to z all differ except i and l
+// equal keys: Alex/alex/ALEX, Aléx precomposed/decomposed, Ａｌｅｘ/Alex (members), Milk/milk (items)
+// different keys: Ilse/Lise, Ella/Eila, Kim/Kirn, Lia/Ila, Alex/Аlex (Cyrillic А, an accepted residual)
 
 func TestIDs(t *testing.T) // validID(newID()); !validID("x"); !validID(strings.ToUpper(newID())); two newID() differ
 
@@ -256,6 +254,8 @@ func TestInviteRedeemsOnceAndStoresOnlyHash(t *testing.T)
 // createMember "Alex" admin; createInvite; stored invites.secret_hash == sha256(secret part of code)
 // redeemInvite ok: d.MemberID == alex, d.IsAdmin; devices.secret_hash == sha256(secret part of token)
 // second redeemInvite with the same code -> errBadInvite
+// device names stored as: "❤️ Phone" and "👨‍👩‍👧 iPad" unchanged; "A\u202eB" -> "AB"; "\x00" -> "Unnamed device";
+// a 70-rune name -> its first 64 runes
 
 func TestInviteExpiry(t *testing.T)
 // redeem at now+23h59m -> ok;  a second invite redeemed at now+24h+1s -> errBadInvite
@@ -279,7 +279,7 @@ func TestLastAdminGuard(t *testing.T)
 // after setAdmin(sam, true): setAdmin(alex, false) -> nil
 
 func TestMemberNamesUniqueIgnoringCase(t *testing.T)
-// "Alex" then " alex " -> errConflict; "Аlex" (Cyrillic А) -> errConflict; memberByName("Ａｌｅｘ") -> Alex
+// "Alex" then " alex " -> errConflict; memberByName("Ａｌｅｘ") -> Alex; memberByName("Аlex") (Cyrillic А) -> errNotFound
 ```
 
 - [ ] **Step 2: Run** `go test ./...`. Expected: FAIL, undefined symbols.
@@ -336,7 +336,7 @@ Endpoints (non-sync bodies are capped at 64 KiB):
 | `DELETE /v1/admin/members/{id}` | admin | none | 204 |
 | `DELETE /v1/admin/devices/{id}` | admin | none | 204 |
 
-The redemption rate limit is checked before anything else, so a 429 says nothing about the code. Path IDs that fail `validID` return 404. `POST /v1/invites/revoke` calls `revokeInvites`, which is how an invite sent to the wrong person is invalidated before it is redeemed. It doesn't sign out devices that already paired; `API.md` says so and points to `DELETE /v1/admin/devices/{id}`. `pending_invites` counts the member's unredeemed, unexpired invites (`used_at IS NULL AND expires_at > now`).
+The redemption rate limit is checked before anything else, so a 429 says nothing about the code. Path IDs that fail `validID` return 404. A `device_name` never fails redemption: the server cleans it with `cleanDeviceName` (Task 2), and `API.md` states that rule, including the 64-character cut and `"Unnamed device"` for a name with nothing left. `POST /v1/invites/revoke` calls `revokeInvites`, which is how an invite sent to the wrong person is invalidated before it is redeemed. It doesn't sign out devices that already paired; `API.md` says so and points to `DELETE /v1/admin/devices/{id}`. `pending_invites` counts the member's unredeemed, unexpired invites (`used_at IS NULL AND expires_at > now`).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -560,7 +560,7 @@ Commands:
 - `serve`: runs an `http.Server` with `ReadHeaderTimeout 10s`, `ReadTimeout 30s`, `WriteTimeout 30s` and `IdleTimeout 120s`, and logs JSON to stdout with `slog`. On `ctx.Done()` it calls `Shutdown` with a 10-second limit and returns 0.
 - `invite --new-admin <name>` creates an admin. `invite <member name>` makes a device invite for an existing member. Both print `Invite for <name>, valid until <RFC 3339>:` followed by the URL on its own line.
 - `invite --revoke <member name>` deletes the member's unredeemed invites with `revokeInvites`, prints `Revoked <n> invite(s) for <name>.` and exits 0. An unknown member exits 1. The CLI needs this because the first admin's invite comes from the CLI.
-- `<name>` in this output is the stored name of the member, read by id, not the typed argument. `memberByName` matches any lookalike spelling, so `invite Eila` can resolve to Ella, and the output must show whose account the invite really opens.
+- `<name>` in this output is the stored name of the member, read by id, not the typed argument: `invite alex` prints `Alex`.
 - `backup <path>` runs `VACUUM INTO ?`. It is safe while `serve` is running.
 
 - [ ] **Step 1: Write the failing tests**
