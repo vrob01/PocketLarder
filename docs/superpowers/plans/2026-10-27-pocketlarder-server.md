@@ -610,7 +610,7 @@ CGO_ENABLED=0 go build -o /dev/null .
 
 Run `bash factory/checks.sh`. Expected: exit 0.
 
-- [ ] **Step 7: Owner verifies the image on a Docker host** (Docker isn't installed on the factory machine):
+- [ ] **Step 7: Verify the image** (Docker is installed on the factory machine and the user is in the `docker` group):
 
 ```bash
 docker compose -f server/deploy/compose.yaml up -d --build
