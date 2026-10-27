@@ -10,7 +10,6 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"golang.org/x/text/cases"
 	"golang.org/x/text/secure/precis"
 	"golang.org/x/text/unicode/norm"
 )
@@ -101,22 +100,9 @@ func cleanName(s string, max int) (string, bool) {
 	return cleanText(s, max)
 }
 
-//go:generate go run gen_confusables.go
-
-// nameKey is the uniqueness key for names: it folds case, then maps each
-// character to its prototype (the UTS #39 skeleton). Lookalikes such as "Alex"
-// and "Аlex" (Cyrillic А) share a key, and so do "AI" and "Al", because a
-// lowercase letter takes its capital's prototype. shortcut: it skips the
-// skeleton's removal of default-ignorable characters, which member names
-// can't contain; add it if lookalike item names matter.
+// nameKey is the uniqueness key for member and item names: the cleaned name
+// with case ignored. Lookalikes such as "Alex" and "Аlex" (Cyrillic А) stay
+// distinct, because a lookalike key makes real names like Ilse and Lise collide.
 func nameKey(clean string) string {
-	var b strings.Builder
-	for _, r := range norm.NFD.String(cases.Fold().String(clean)) {
-		if p, ok := confusables[r]; ok {
-			b.WriteString(p)
-		} else {
-			b.WriteRune(r)
-		}
-	}
-	return norm.NFD.String(b.String())
+	return strings.ToLower(clean)
 }

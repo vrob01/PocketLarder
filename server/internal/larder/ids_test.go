@@ -62,39 +62,33 @@ func TestCleanName(t *testing.T) {
 }
 
 func TestNameKey(t *testing.T) {
-	key := func(name string) string {
-		clean, ok := cleanName(name, maxName)
+	key := func(clean func(string, int) (string, bool), name string) string {
+		s, ok := clean(name, maxName)
 		if !ok {
-			t.Fatalf("cleanName(%q) failed", name)
+			t.Fatalf("cleaning %q failed", name)
 		}
-		return nameKey(clean)
+		return nameKey(s)
 	}
-	for _, p := range [][2]string{
-		{"Alex", "alex"},
-		{"Alex", "\u0410lex"}, // Cyrillic А
-		{"Alex", "Ａｌｅｘ"},
-		{"AI", "Al"}, // capital I, lowercase l
-		{"Al\u00e9x", "Ale\u0301x"},
-		{"Ian", "ian"},          // so i, I and l share a key
-		{"Tom", "TOM"},          // m has its own prototype, rn
-		{"Helen", "\u041delen"}, // Cyrillic Н
+	for _, c := range []struct {
+		clean   func(string, int) (string, bool)
+		a, b    string
+		collide bool
+	}{
+		{cleanName, "Alex", "alex", true},
+		{cleanName, "Alex", "ALEX", true},
+		{cleanName, "Al\u00e9x", "Ale\u0301x", true},
+		{cleanName, "Ａｌｅｘ", "Alex", true}, // member names get NFKC
+		{cleanText, "Milk", "milk", true},
+		{cleanText, "Al\u00e9x", "Ale\u0301x", true},
+		{cleanName, "Ilse", "Lise", false},
+		{cleanName, "Ella", "Eila", false},
+		{cleanName, "Kim", "Kirn", false},
+		{cleanName, "Lia", "Ila", false},
+		{cleanName, "Alex", "\u0410lex", false}, // Cyrillic А, an accepted residual
 	} {
-		if key(p[0]) != key(p[1]) {
-			t.Errorf("nameKey(%q) = %q, nameKey(%q) = %q; want equal", p[0], key(p[0]), p[1], key(p[1]))
+		if ka, kb := key(c.clean, c.a), key(c.clean, c.b); (ka == kb) != c.collide {
+			t.Errorf("nameKey(%q) = %q, nameKey(%q) = %q; want collide = %v", c.a, ka, c.b, kb, c.collide)
 		}
-	}
-	for _, p := range [][2]string{{"Alex", "Alexa"}, {"Sam", "Pam"}, {"Jo", "Joe"}} {
-		if key(p[0]) == key(p[1]) {
-			t.Errorf("nameKey(%q) = nameKey(%q) = %q", p[0], p[1], key(p[0]))
-		}
-	}
-	seen := map[string]rune{}
-	for c := 'a'; c <= 'z'; c++ {
-		k := nameKey(string(c))
-		if prev, ok := seen[k]; ok && !(prev == 'i' && c == 'l') {
-			t.Errorf("%c and %c share the key %q", prev, c, k)
-		}
-		seen[k] = c
 	}
 }
 
