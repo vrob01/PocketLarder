@@ -118,6 +118,25 @@ func (s *server) authed(adminOnly bool, h func(http.ResponseWriter, *http.Reques
 	}
 }
 
+// recheck re-reads the caller in the handler's transaction. A handler that
+// reads a body waits on the client after authed has committed, and the device
+// may be revoked or the member demoted meanwhile. Task 4's POST /v1/sync reads
+// a body too and needs this.
+func recheck(tx *sql.Tx, deviceID string, asAdmin bool) error {
+	var isAdmin bool
+	err := tx.QueryRow("SELECT m.is_admin FROM devices d JOIN members m ON m.id = d.member_id WHERE d.id = ?", deviceID).Scan(&isAdmin)
+	if errors.Is(err, sql.ErrNoRows) {
+		return errUnauthorized
+	}
+	if err != nil {
+		return err
+	}
+	if asAdmin && !isAdmin {
+		return errForbidden
+	}
+	return nil
+}
+
 func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/invites/redeem", s.redeem)
@@ -197,6 +216,9 @@ func (s *server) invite(w http.ResponseWriter, r *http.Request, d device) {
 	var code string
 	var expires time.Time
 	err := withTx(s.db, func(tx *sql.Tx) (err error) {
+		if err = recheck(tx, d.ID, req.MemberID != nil || req.NewMemberName != nil); err != nil {
+			return err
+		}
 		now := s.now()
 		if req.NewMemberName != nil {
 			if memberID, err = createMember(tx, *req.NewMemberName, false, now); err != nil {
@@ -234,6 +256,9 @@ func (s *server) revoke(w http.ResponseWriter, r *http.Request, d device) {
 	}
 	var n int
 	err := withTx(s.db, func(tx *sql.Tx) (err error) {
+		if err = recheck(tx, d.ID, req.MemberID != nil); err != nil {
+			return err
+		}
 		n, err = revokeInvites(tx, memberID)
 		return err
 	})
@@ -322,7 +347,13 @@ func (s *server) patchMember(w http.ResponseWriter, r *http.Request, d device) {
 		s.fail(w, errInvalid)
 		return
 	}
-	if err := withTx(s.db, func(tx *sql.Tx) error { return setAdmin(tx, id, *req.IsAdmin) }); err != nil {
+	err := withTx(s.db, func(tx *sql.Tx) error {
+		if err := recheck(tx, d.ID, true); err != nil {
+			return err
+		}
+		return setAdmin(tx, id, *req.IsAdmin)
+	})
+	if err != nil {
 		s.fail(w, err)
 		return
 	}

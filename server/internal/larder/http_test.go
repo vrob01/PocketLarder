@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -112,6 +113,35 @@ func (e *testEnv) invite(token string, body any) (inviteResponse, string) {
 	e.decode(e.call("POST", "/v1/invites", token, body), http.StatusCreated, &resp)
 	_, code, _ := strings.Cut(resp.URL, "&code=")
 	return resp, code
+}
+
+// hookReader runs hook on its first Read. Handlers read the body only after
+// authentication has committed, so hook can change the database in between.
+type hookReader struct {
+	hook func()
+	io.Reader
+}
+
+func (h *hookReader) Read(p []byte) (int, error) {
+	if h.hook != nil {
+		h.hook()
+		h.hook = nil
+	}
+	return h.Reader.Read(p)
+}
+
+// callHooked is call with hook run when the handler starts reading the body.
+func (e *testEnv) callHooked(hook func(), method, path, token string, body any) *httptest.ResponseRecorder {
+	e.t.Helper()
+	b, err := json.Marshal(body)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	r := httptest.NewRequest(method, path, &hookReader{hook, bytes.NewReader(b)})
+	r.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	e.h.ServeHTTP(w, r)
+	return w
 }
 
 func redeemBody(code string) map[string]string {
@@ -239,6 +269,18 @@ func TestInvitePermissions(t *testing.T) {
 	}
 	e.wantError(e.call("POST", "/v1/invites", admin, map[string]string{"member_id": kim, "new_member_name": "Robin"}), http.StatusBadRequest, "invalid")
 	e.wantError(e.call("POST", "/v1/invites", admin, map[string]string{"member_id": newID()}), http.StatusNotFound, "not_found")
+
+	// Alex's request is authenticated, then he loses admin rights before its body arrives.
+	w := e.callHooked(func() {
+		if _, err := e.db.Exec("UPDATE members SET is_admin = 0 WHERE id = ?", alex); err != nil {
+			t.Error(err)
+		}
+	}, "POST", "/v1/invites", admin, map[string]string{"new_member_name": "Robin"})
+	e.wantError(w, http.StatusForbidden, "forbidden")
+	var robins int
+	if err := e.db.QueryRow("SELECT count(*) FROM members WHERE name = 'Robin'").Scan(&robins); err != nil || robins != 0 {
+		t.Errorf("%d members named Robin, %v; want 0", robins, err)
+	}
 }
 
 type listedDevice struct {
@@ -334,6 +376,16 @@ func TestHTTPRevokeInvites(t *testing.T) {
 
 	// Revoking invites leaves paired devices signed in.
 	e.wantStatus(e.call("POST", "/v1/invites/revoke", user, map[string]any{}), http.StatusOK)
+
+	// Alex's revoke is authenticated, then he loses admin rights before its body arrives.
+	_, code = e.invite(user, map[string]any{})
+	w := e.callHooked(func() {
+		if _, err := e.db.Exec("UPDATE members SET is_admin = 0 WHERE id = ?", alex); err != nil {
+			t.Error(err)
+		}
+	}, "POST", "/v1/invites/revoke", admin, map[string]string{"member_id": sam})
+	e.wantError(w, http.StatusForbidden, "forbidden")
+	e.wantStatus(e.call("POST", "/v1/invites/redeem", "", redeemBody(code)), http.StatusOK)
 }
 
 func TestHTTPLastAdminGuard(t *testing.T) {
@@ -346,10 +398,14 @@ func TestHTTPLastAdminGuard(t *testing.T) {
 	e.wantError(e.call("PATCH", "/v1/admin/members/"+alex, admin, map[string]any{}), http.StatusBadRequest, "invalid")
 	e.wantError(e.call("PATCH", "/v1/admin/members/"+newID(), admin, map[string]bool{"is_admin": true}), http.StatusNotFound, "not_found")
 
-	// With a second admin, Alex can step down, and Sam can remove him.
+	// With a second admin, Sam can demote Alex and then remove him.
 	sam, samToken := e.member("Sam", false)
 	e.wantStatus(e.call("PATCH", "/v1/admin/members/"+sam, admin, map[string]bool{"is_admin": true}), http.StatusNoContent)
-	e.wantStatus(e.call("PATCH", "/v1/admin/members/"+alex, admin, map[string]bool{"is_admin": false}), http.StatusNoContent)
+	// Alex's PATCH is authenticated, then Sam demotes him before its body arrives.
+	w := e.callHooked(func() {
+		e.wantStatus(e.call("PATCH", "/v1/admin/members/"+alex, samToken, map[string]bool{"is_admin": false}), http.StatusNoContent)
+	}, "PATCH", "/v1/admin/members/"+alex, admin, map[string]bool{"is_admin": true})
+	e.wantError(w, http.StatusForbidden, "forbidden")
 	e.wantError(e.call("GET", "/v1/admin/members", admin, nil), http.StatusForbidden, "forbidden")
 	e.wantStatus(e.call("DELETE", "/v1/admin/members/"+alex, samToken, nil), http.StatusNoContent)
 	e.wantError(e.call("POST", "/v1/invites/revoke", admin, map[string]any{}), http.StatusUnauthorized, "unauthorized")
@@ -359,11 +415,19 @@ func TestHTTPLastAdminGuard(t *testing.T) {
 func TestRevokeDevice(t *testing.T) {
 	e := newTestEnv(t)
 	_, admin := e.member("Alex", true)
-	_, user := e.member("Sam", false)
+	sam, user := e.member("Sam", false)
 	device, _, _ := strings.Cut(user, ".")
 
 	e.wantError(e.call("DELETE", "/v1/admin/devices/"+device, user, nil), http.StatusForbidden, "forbidden")
-	e.wantStatus(e.call("DELETE", "/v1/admin/devices/"+device, admin, nil), http.StatusNoContent)
+	// Sam's invite request is authenticated, then his device is revoked before its body arrives.
+	w := e.callHooked(func() {
+		e.wantStatus(e.call("DELETE", "/v1/admin/devices/"+device, admin, nil), http.StatusNoContent)
+	}, "POST", "/v1/invites", user, map[string]any{})
+	e.wantError(w, http.StatusUnauthorized, "unauthorized")
+	var pending int
+	if err := e.db.QueryRow("SELECT count(*) FROM invites WHERE member_id = ? AND used_at IS NULL", sam).Scan(&pending); err != nil || pending != 0 {
+		t.Errorf("Sam has %d pending invites, %v; want 0", pending, err)
+	}
 	e.wantError(e.call("POST", "/v1/invites/revoke", user, map[string]any{}), http.StatusUnauthorized, "unauthorized")
 	e.wantError(e.call("DELETE", "/v1/admin/devices/"+device, admin, nil), http.StatusNotFound, "not_found")
 	e.wantError(e.call("DELETE", "/v1/admin/devices/not-a-uuid", admin, nil), http.StatusNotFound, "not_found")
