@@ -6,7 +6,7 @@
 
 **Architecture:** One static Go binary (`server/`) with all logic in package `server/internal/larder` and a three-line `main.go`. SQLite through a pure-Go driver, schema upgrades by `PRAGMA user_version`. Clients sync by POSTing their queued operations to `/v1/sync`. The server applies them in one transaction and returns a full snapshot of everything that member may see.
 
-**Tech Stack:** Go 1.26+ (`go 1.26.0`, `toolchain go1.27.3`), `net/http` routing patterns, `log/slog`, `modernc.org/sqlite` v1.61.0, Docker (`FROM scratch`), Caddy (example only).
+**Tech Stack:** Go 1.27.3+ (`go 1.27.3`), `net/http` routing patterns, `log/slog`, `modernc.org/sqlite` v1.61.0, Docker (`FROM scratch`), Caddy (example only).
 
 **Spec:** `docs/superpowers/specs/2026-10-27-pocketlarder-design.md`
 
@@ -17,7 +17,7 @@ This is plan 1 of 3. Plan 2 covers the iOS app, its Mac setup guide (kept out of
 ## Global Constraints
 
 - Single static binary: `CGO_ENABLED=0`. SQLite only via `modernc.org/sqlite`, the one dependency. Any other dependency needs a one-line justification in the commit message.
-- The factory machine has Go 1.24.4. `go.mod` says `go 1.26.0` / `toolchain go1.27.3`, and the local `go` downloads that toolchain on its own (GOTOOLCHAIN=auto). The reason: the driver requires 1.26, and 1.24 no longer gets security fixes.
+- The factory machine has Go 1.24.4. `go.mod` says `go 1.27.3`, the latest release on 2026-10-27, and the local `go` downloads that toolchain on its own (GOTOOLCHAIN=auto). The reason: the driver requires 1.26, and 1.24 no longer gets security fixes.
 - Plain HTTP behind a TLS-terminating reverse proxy. Versioned JSON API under `/v1` only: no HTML, no static files, no CORS headers.
 - The API must not assume iOS (Android may come later).
 - Invites: single-use, high-entropy, expire after 24 hours. Device tokens: random, at least 256 bits, no time expiry.
@@ -65,7 +65,7 @@ The spec left these to the builder. They fix the API that plan 2 builds against.
 - Replace: `LICENSE`
 
 **Interfaces:**
-- Produces: `func openDB(path string) (*sql.DB, error)`. It opens `file:<path>` with the DSN pragmas `foreign_keys(1)`, `busy_timeout(5000)`, `journal_mode(WAL)` and `temp_store(MEMORY)` (the pragmas are in the DSN so every pooled connection gets them, and `temp_store` matters because the root filesystem is read-only). It then calls `SetMaxOpenConns(1)` and runs pending `migrations`. `shortcut: one connection serialises all access, fine for a household, revisit if requests queue`.
+- Produces: `func openDB(path string) (*sql.DB, error)`. It opens `file:<path>` with the DSN pragmas `foreign_keys(1)`, `busy_timeout(5000)`, `journal_mode(WAL)` and `temp_store(MEMORY)` (the pragmas are in the DSN so every pooled connection gets them, and `temp_store` matters because the root filesystem is read-only). It then calls `SetMaxOpenConns(1)` and runs pending `migrations`. A database whose `user_version` is greater than `len(migrations)` was written by a newer binary: `openDB` checks this before any migration, leaves the database unchanged, closes the handle and returns an error naming both versions. `shortcut: one connection serialises all access, fine for a household, revisit if requests queue`.
 - Produces: `var migrations []string`. Element *i* upgrades the schema to version *i+1*. Each element runs in a transaction that sets `PRAGMA user_version`.
 - Produces: `func withTx(db *sql.DB, fn func(*sql.Tx) error) error`, which commits on nil and rolls back otherwise.
 - Produces (tests): `func testDB(t *testing.T) *sql.DB` (opens a database in `t.TempDir()`) and `func ptr[T any](v T) *T`.
@@ -75,7 +75,7 @@ The spec left these to the builder. They fix the API that plan 2 builds against.
 ```bash
 mkdir -p server/internal/larder && cd server
 go mod init github.com/vrob01/pocketlarder/server
-go mod edit -go=1.26.0 -toolchain=go1.27.3
+go mod edit -go=1.27.3
 go get modernc.org/sqlite@v1.61.0
 ```
 
@@ -527,6 +527,10 @@ Environment:
 - `POCKETLARDER_LISTEN`: defaults to `:8080`.
 - `POCKETLARDER_PUBLIC_URL`: required by `serve` and `invite`. It must be `https://host[:port]`, or `http://localhost[:port]` / `http://127.0.0.1[:port]`, with no path, query or fragment. A trailing `/` is stripped.
 
+Data directory (carried forward from Task 1's security review):
+- `Run` rejects a `POCKETLARDER_DATA_DIR` containing `?`, `#` or `%`: exit 1, with stderr naming the variable. `openDB` builds its DSN as `"file:"+path+"?..."`, so a `?` in the path silently drops all four pragmas, including `foreign_keys(1)`, and `#` and `%` are read as URI syntax.
+- `Run` creates the data directory as 0700 when it doesn't exist, and the database files end up 0600. Under umask 022, SQLite creates the database, `-wal` and `-shm` files as 0644. SQLite gives `-wal` and `-shm` the mode of the database file, so `Run` creates `pocketlarder.db` as 0600 before `openDB`. A scratch test with `modernc.org/sqlite` v1.61.0 confirmed this on 2026-10-27, and `TestCLIFileModes` keeps checking it.
+
 Commands:
 - `serve`: runs an `http.Server` with `ReadHeaderTimeout 10s`, `ReadTimeout 30s`, `WriteTimeout 30s` and `IdleTimeout 120s`, and logs JSON to stdout with `slog`. On `ctx.Done()` it calls `Shutdown` with a 10-second limit and returns 0.
 - `invite --new-admin <name>` creates an admin. `invite <member name>` makes a device invite for an existing member. Both print `Invite for <name>, valid until <RFC 3339>:` followed by the URL on its own line.
@@ -545,6 +549,13 @@ func TestCLIPublicURL(t *testing.T)
 // http://lists.example.test -> 1; https://lists.example.test/app -> 1; http://localhost:5100 -> 0
 
 func TestCLIBackup(t *testing.T) // after an invite, backup to tmp/b.db -> 0; openDB(b.db) has Alex
+
+func TestCLIDataDirRejectsURIChars(t *testing.T)
+// DATA_DIR=t.TempDir()+"/a?b", "/a#b" and "/a%b", invite --new-admin Alex -> 1 each, stderr mentions "POCKETLARDER_DATA_DIR"
+
+func TestCLIFileModes(t *testing.T)
+// DATA_DIR=t.TempDir()+"/data" (doesn't exist yet), invite --new-admin Alex -> 0
+// the data dir is 0700; pocketlarder.db and any -wal/-shm files next to it are 0600
 
 func TestServe(t *testing.T)
 // grab a free port via net.Listen("127.0.0.1:0") then close it; Run serve in a goroutine
@@ -580,7 +591,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/pocketlarder . && 
 
 FROM scratch
 COPY --from=build /out/pocketlarder /usr/local/bin/pocketlarder
-COPY --from=build --chown=65532:65532 /out/data /data
+COPY --from=build --chown=65532:65532 --chmod=700 /out/data /data
 ENV PATH=/usr/local/bin POCKETLARDER_DATA_DIR=/data POCKETLARDER_LISTEN=:8080
 USER 65532:65532
 VOLUME /data
@@ -588,6 +599,8 @@ EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/pocketlarder"]
 CMD ["serve"]
 ```
+
+`--chmod=700` makes `/data` 0700, so a new named volume starts out private to uid 65532. `mkdir -m 700 /out/data` in the build stage is not enough: `COPY` copies the directory's contents, not its mode, and creates `/data` as 0755 (checked with Docker 29.9.2 on 2026-10-27).
 
 - [ ] **Step 2: `server/deploy/compose.yaml`**: the `pocketlarder` service with `build: ..`, `container_name: pocketlarder`, `restart: unless-stopped`, `read_only: true`, `cap_drop: [ALL]`, `security_opt: ["no-new-privileges:true"]`, `POCKETLARDER_PUBLIC_URL: https://lists.example.com`, the named volume `pocketlarder-data:/data`, and `ports: ["127.0.0.1:8080:8080"]`.
 - [ ] **Step 3: `server/deploy/Caddyfile`**
@@ -608,6 +621,7 @@ docker exec pocketlarder pocketlarder invite --new-admin Test        # prints an
 curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8080/v1/sync   # 401
 docker exec pocketlarder pocketlarder backup /data/check.db          # exit 0
 docker inspect -f '{{.HostConfig.ReadonlyRootfs}} {{.Config.User}}' pocketlarder   # true 65532:65532
+docker run --rm --volumes-from pocketlarder busybox sh -c 'stat -c "%a %u:%g %n" /data /data/pocketlarder.db*'   # 700 for /data, 600 for each db file, all 65532:65532
 docker compose -f server/deploy/compose.yaml down -v                 # clean up
 ```
 
