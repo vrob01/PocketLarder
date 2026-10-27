@@ -6,7 +6,7 @@
 
 **Architecture:** One static Go binary (`server/`) with all logic in package `server/internal/larder` and a three-line `main.go`. SQLite through a pure-Go driver, schema upgrades by `PRAGMA user_version`. Clients sync by POSTing their queued operations to `/v1/sync`. The server applies them in one transaction and returns a full snapshot of everything that member may see.
 
-**Tech Stack:** Go 1.26+ (`go 1.26.0`, `toolchain go1.27.3`), `net/http` routing patterns, `log/slog`, `modernc.org/sqlite` v1.61.0, Docker (`FROM scratch`), Caddy (example only).
+**Tech Stack:** Go 1.27.3+ (`go 1.27.3`), `net/http` routing patterns, `log/slog`, `modernc.org/sqlite` v1.61.0, Docker (`FROM scratch`), Caddy (example only).
 
 **Spec:** `docs/superpowers/specs/2026-10-27-pocketlarder-design.md`
 
@@ -17,7 +17,7 @@ This is plan 1 of 3. Plan 2 covers the iOS app, its Mac setup guide (kept out of
 ## Global Constraints
 
 - Single static binary: `CGO_ENABLED=0`. SQLite only via `modernc.org/sqlite`, the one dependency. Any other dependency needs a one-line justification in the commit message.
-- The factory machine has Go 1.24.4. `go.mod` says `go 1.26.0` / `toolchain go1.27.3`, and the local `go` downloads that toolchain on its own (GOTOOLCHAIN=auto). The reason: the driver requires 1.26, and 1.24 no longer gets security fixes.
+- The factory machine has Go 1.24.4. `go.mod` says `go 1.27.3`, the latest release on 2026-10-27, and the local `go` downloads that toolchain on its own (GOTOOLCHAIN=auto). The reason: the driver requires 1.26, and 1.24 no longer gets security fixes.
 - Plain HTTP behind a TLS-terminating reverse proxy. Versioned JSON API under `/v1` only: no HTML, no static files, no CORS headers.
 - The API must not assume iOS (Android may come later).
 - Invites: single-use, high-entropy, expire after 24 hours. Device tokens: random, at least 256 bits, no time expiry.
@@ -75,7 +75,7 @@ The spec left these to the builder. They fix the API that plan 2 builds against.
 ```bash
 mkdir -p server/internal/larder && cd server
 go mod init github.com/vrob01/pocketlarder/server
-go mod edit -go=1.26.0 -toolchain=go1.27.3
+go mod edit -go=1.27.3
 go get modernc.org/sqlite@v1.61.0
 ```
 
