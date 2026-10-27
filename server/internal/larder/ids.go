@@ -9,6 +9,9 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/text/secure/precis"
+	"golang.org/x/text/unicode/norm"
 )
 
 const (
@@ -73,16 +76,28 @@ func splitCode(code string) (id, secret string, ok bool) {
 	return id, secret, true
 }
 
-// cleanText collapses whitespace first, so tabs and newlines pass but other control runes don't.
+// cleanText normalises to NFC and collapses whitespace first, so tabs and
+// newlines pass but other control runes don't.
 func cleanText(s string, max int) (string, bool) {
 	if !utf8.ValidString(s) {
 		return "", false
 	}
-	s = strings.Join(strings.Fields(s), " ")
+	s = strings.Join(strings.Fields(norm.NFC.String(s)), " ")
 	if s == "" || strings.IndexFunc(s, unicode.IsControl) >= 0 || utf8.RuneCountInString(s) > max {
 		return "", false
 	}
 	return s, true
+}
+
+// cleanName cleans member and device names with the PRECIS Nickname profile
+// (RFC 8266), which applies NFKC and rejects invisible characters such as
+// U+200B and U+202E. Whitespace collapses first, so tabs pass as in cleanText.
+func cleanName(s string, max int) (string, bool) {
+	s, err := precis.Nickname.String(strings.Join(strings.Fields(s), " "))
+	if err != nil {
+		return "", false
+	}
+	return cleanText(s, max)
 }
 
 func nameKey(clean string) string {

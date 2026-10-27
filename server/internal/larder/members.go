@@ -34,7 +34,7 @@ func rowsChanged(res sql.Result, err error) (int64, error) {
 
 // createMember creates a member and their personal list.
 func createMember(tx *sql.Tx, name string, admin bool, now time.Time) (string, error) {
-	clean, ok := cleanText(name, maxName)
+	clean, ok := cleanName(name, maxName)
 	if !ok {
 		return "", errInvalid
 	}
@@ -54,7 +54,7 @@ func createMember(tx *sql.Tx, name string, admin bool, now time.Time) (string, e
 }
 
 func memberByName(tx *sql.Tx, name string) (string, error) {
-	clean, ok := cleanText(name, maxName)
+	clean, ok := cleanName(name, maxName)
 	if !ok {
 		return "", errNotFound
 	}
@@ -87,7 +87,7 @@ func redeemInvite(tx *sql.Tx, code, deviceName string, now time.Time) (token str
 	name := "Unnamed device"
 	if len(strings.Fields(deviceName)) > 0 {
 		var ok bool
-		if name, ok = cleanText(deviceName, maxDeviceName); !ok {
+		if name, ok = cleanName(deviceName, maxDeviceName); !ok {
 			return "", device{}, errInvalid
 		}
 	}

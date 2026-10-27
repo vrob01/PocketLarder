@@ -79,8 +79,10 @@ func TestInviteRedeemsOnceAndStoresOnlyHash(t *testing.T) {
 		t.Error("invites.secret_hash is not the SHA-256 of the code's secret")
 	}
 
-	if _, _, err := redeemInvite(tx, code, strings.Repeat("x", 65), testNow); err != errInvalid {
-		t.Fatalf("redeem with a 65-rune device name: %v, want errInvalid", err)
+	for _, name := range []string{strings.Repeat("x", 65), "Phone\u202e"} {
+		if _, _, err := redeemInvite(tx, code, name, testNow); err != errInvalid {
+			t.Fatalf("redeem with device name %q: %v, want errInvalid", name, err)
+		}
 	}
 	token, d := mustRedeemInvite(t, tx, code, testNow)
 	if d.MemberID != alex || !d.IsAdmin {

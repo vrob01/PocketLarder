@@ -14,6 +14,9 @@ func TestCleanText(t *testing.T) {
 	}{
 		{"  Burrito \t spice ", maxName, "Burrito spice", true},
 		{"Äpfel", maxName, "Äpfel", true},
+		{"A\u0308pfel", maxName, "Äpfel", true},               // decomposed Ä becomes NFC
+		{"👩\u200d👩\u200d👧", maxName, "👩\u200d👩\u200d👧", true}, // emoji sequences need U+200D
+		{"می\u200cخواهم", maxName, "می\u200cخواهم", true},     // Persian needs U+200C
 		{"line\nbreak", maxName, "line break", true},
 		{"", maxName, "", false},
 		{"   ", maxName, "", false},
@@ -28,6 +31,32 @@ func TestCleanText(t *testing.T) {
 		got, ok := cleanText(c.in, c.max)
 		if got != c.want || ok != c.ok {
 			t.Errorf("cleanText(%q, %d) = %q, %v; want %q, %v", c.in, c.max, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+func TestCleanName(t *testing.T) {
+	for _, c := range []struct {
+		in   string
+		want string
+		ok   bool
+	}{
+		{"  Alex \t Smith ", "Alex Smith", true},
+		{"Ａｌｅｘ", "Alex", true},
+		{"Ale\u0301x", "Al\u00e9x", true},
+		{"Alex\u200b", "", false}, // zero-width space
+		{"\u202eAlex", "", false}, // bidi override
+		{"Al\u200dex", "", false}, // stray joiner
+		{"a\x00b", "", false},
+		{"\xff", "", false},
+		{"   ", "", false},
+		{strings.Repeat("x", 100), strings.Repeat("x", 100), true},
+		{strings.Repeat("x", 101), "", false},
+		{strings.Repeat("ﬁ", 51), "", false}, // the limit applies after NFKC turns each ﬁ into fi
+	} {
+		got, ok := cleanName(c.in, maxName)
+		if got != c.want || ok != c.ok {
+			t.Errorf("cleanName(%q) = %q, %v; want %q, %v", c.in, got, ok, c.want, c.ok)
 		}
 	}
 }
