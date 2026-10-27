@@ -1,6 +1,8 @@
 package larder
 
 import (
+	"database/sql"
+	"fmt"
 	"path/filepath"
 	"testing"
 )
@@ -20,6 +22,38 @@ func TestOpenDBMigratesOnce(t *testing.T) {
 	db.QueryRow("PRAGMA user_version").Scan(&v)
 	if v != len(migrations) {
 		t.Fatalf("user_version = %d, want %d", v, len(migrations))
+	}
+}
+
+func TestOpenDBRefusesNewerSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "p.db")
+	db, err := openDB(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newer := len(migrations) + 1
+	if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d", newer)); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	if db, err := openDB(path); err == nil {
+		db.Close()
+		t.Fatal("openDB opened a database written by a newer binary")
+	}
+
+	// openDB refuses the file, so read user_version through the bare driver.
+	raw, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	var v int
+	if err := raw.QueryRow("PRAGMA user_version").Scan(&v); err != nil {
+		t.Fatal(err)
+	}
+	if v != newer {
+		t.Fatalf("user_version = %d after the refused open, want %d", v, newer)
 	}
 }
 

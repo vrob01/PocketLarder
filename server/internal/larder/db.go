@@ -94,6 +94,9 @@ func migrate(db *sql.DB) error {
 	if err := db.QueryRow("PRAGMA user_version").Scan(&v); err != nil {
 		return err
 	}
+	if v > len(migrations) {
+		return fmt.Errorf("database schema version %d is newer than this binary's %d", v, len(migrations))
+	}
 	for i := v; i < len(migrations); i++ {
 		err := withTx(db, func(tx *sql.Tx) error {
 			if _, err := tx.Exec(migrations[i]); err != nil {

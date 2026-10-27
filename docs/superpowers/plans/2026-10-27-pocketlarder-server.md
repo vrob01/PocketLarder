@@ -65,7 +65,7 @@ The spec left these to the builder. They fix the API that plan 2 builds against.
 - Replace: `LICENSE`
 
 **Interfaces:**
-- Produces: `func openDB(path string) (*sql.DB, error)`. It opens `file:<path>` with the DSN pragmas `foreign_keys(1)`, `busy_timeout(5000)`, `journal_mode(WAL)` and `temp_store(MEMORY)` (the pragmas are in the DSN so every pooled connection gets them, and `temp_store` matters because the root filesystem is read-only). It then calls `SetMaxOpenConns(1)` and runs pending `migrations`. `shortcut: one connection serialises all access, fine for a household, revisit if requests queue`.
+- Produces: `func openDB(path string) (*sql.DB, error)`. It opens `file:<path>` with the DSN pragmas `foreign_keys(1)`, `busy_timeout(5000)`, `journal_mode(WAL)` and `temp_store(MEMORY)` (the pragmas are in the DSN so every pooled connection gets them, and `temp_store` matters because the root filesystem is read-only). It then calls `SetMaxOpenConns(1)` and runs pending `migrations`. A database whose `user_version` is greater than `len(migrations)` was written by a newer binary: `openDB` checks this before any migration, leaves the database unchanged, closes the handle and returns an error naming both versions. `shortcut: one connection serialises all access, fine for a household, revisit if requests queue`.
 - Produces: `var migrations []string`. Element *i* upgrades the schema to version *i+1*. Each element runs in a transaction that sets `PRAGMA user_version`.
 - Produces: `func withTx(db *sql.DB, fn func(*sql.Tx) error) error`, which commits on nil and rolls back otherwise.
 - Produces (tests): `func testDB(t *testing.T) *sql.DB` (opens a database in `t.TempDir()`) and `func ptr[T any](v T) *T`.
