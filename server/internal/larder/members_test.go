@@ -251,8 +251,13 @@ func TestMemberNamesUniqueIgnoringCase(t *testing.T) {
 	if _, err := createMember(tx, "   ", false, testNow); !errors.Is(err, errInvalid) {
 		t.Errorf(`createMember("   "): %v, want errInvalid`, err)
 	}
-	if id, err := memberByName(tx, " ALEX "); err != nil || id != alex {
-		t.Errorf(`memberByName(" ALEX ") = %q, %v; want %q`, id, err, alex)
+	if _, err := createMember(tx, "\u0410lex", false, testNow); !errors.Is(err, errConflict) {
+		t.Errorf("createMember with a Cyrillic А: %v, want errConflict", err)
+	}
+	for _, name := range []string{" ALEX ", "Ａｌｅｘ"} {
+		if id, err := memberByName(tx, name); err != nil || id != alex {
+			t.Errorf("memberByName(%q) = %q, %v; want %q", name, id, err, alex)
+		}
 	}
 	if _, err := memberByName(tx, "Zed"); !errors.Is(err, errNotFound) {
 		t.Errorf(`memberByName("Zed"): %v, want errNotFound`, err)

@@ -61,6 +61,43 @@ func TestCleanName(t *testing.T) {
 	}
 }
 
+func TestNameKey(t *testing.T) {
+	key := func(name string) string {
+		clean, ok := cleanName(name, maxName)
+		if !ok {
+			t.Fatalf("cleanName(%q) failed", name)
+		}
+		return nameKey(clean)
+	}
+	for _, p := range [][2]string{
+		{"Alex", "alex"},
+		{"Alex", "\u0410lex"}, // Cyrillic А
+		{"Alex", "Ａｌｅｘ"},
+		{"AI", "Al"}, // capital I, lowercase l
+		{"Al\u00e9x", "Ale\u0301x"},
+		{"Ian", "ian"},          // so i, I and l share a key
+		{"Tom", "TOM"},          // m has its own prototype, rn
+		{"Helen", "\u041delen"}, // Cyrillic Н
+	} {
+		if key(p[0]) != key(p[1]) {
+			t.Errorf("nameKey(%q) = %q, nameKey(%q) = %q; want equal", p[0], key(p[0]), p[1], key(p[1]))
+		}
+	}
+	for _, p := range [][2]string{{"Alex", "Alexa"}, {"Sam", "Pam"}, {"Jo", "Joe"}} {
+		if key(p[0]) == key(p[1]) {
+			t.Errorf("nameKey(%q) = nameKey(%q) = %q", p[0], p[1], key(p[0]))
+		}
+	}
+	seen := map[string]rune{}
+	for c := 'a'; c <= 'z'; c++ {
+		k := nameKey(string(c))
+		if prev, ok := seen[k]; ok && !(prev == 'i' && c == 'l') {
+			t.Errorf("%c and %c share the key %q", prev, c, k)
+		}
+		seen[k] = c
+	}
+}
+
 func TestIDs(t *testing.T) {
 	id := newID()
 	if !validID(id) {
