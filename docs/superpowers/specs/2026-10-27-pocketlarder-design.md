@@ -1,6 +1,6 @@
 # PocketLarder design
 
-Date: 2026-10-27. Status: approved by the owner on 2026-10-27.
+Date: 2026-10-27. Status: approved by the owner on 2026-10-27, together with the mockups.
 
 This document comes out of an interview with the project owner. Statements without
 a marker are the owner's decisions. **[Claude's call]** marks a choice made during
@@ -331,7 +331,8 @@ These apply to every part and every change. They're the hard constraint from
 - Built on the owner's MacBook Air (Apple silicon). That Mac has no developer tools
   yet, so the plan must include a step-by-step setup guide written for someone who
   has never built an Apple app: Xcode, signing with a free Apple ID, and installing
-  on both phones.
+  on both phones. The guide is for the owner only and is never committed to the
+  repo.
 - To start, distribution uses a free Apple ID: Xcode installs the app on both
   phones, and it has to be reinstalled from the Mac every 7 days. The paid developer
   program ($99/year, required for TestFlight and the App Store) comes later. Nothing

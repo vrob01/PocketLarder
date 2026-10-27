@@ -10,7 +10,9 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-27-pocketlarder-design.md`
 
-This is plan 1 of 3. Plan 2 covers the iOS app, its Mac setup guide and the GitHub Actions iOS checks. Plan 3 covers OIDC on both the server and the app. Plan 2 is written against `server/API.md`, which this plan produces.
+**Status:** approved by the owner on 2026-10-27, together with the spec and its mockups. Execution: subagent-driven.
+
+This is plan 1 of 3. Plan 2 covers the iOS app, its Mac setup guide (kept out of the repo) and the GitHub Actions iOS checks. Plan 3 covers OIDC on both the server and the app. Plan 2 is written against `server/API.md`, which this plan produces.
 
 ## Global Constraints
 
