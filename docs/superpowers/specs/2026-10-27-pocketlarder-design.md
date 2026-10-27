@@ -346,8 +346,9 @@ These apply to every part and every change. They're the hard constraint from
   a closed-source product. The current root `LICENSE` is GPL-3.0 and must be replaced
   by per-directory licenses plus a root note.
 - **Server checks:** formatting, `go vet` and `go test ./...`, all runnable on Linux.
-  The factory machine has Go 1.24.4. Docker isn't installed there and isn't needed
-  for the checks.
+  The factory machine has Go 1.24.4 and Docker, and its user is in the `docker`
+  group, so factory jobs can build and smoke-test the container image. The checks
+  themselves don't need Docker.
   The first code change must fill in Setup, Dev server and Validation in
   `AGENTS.md`. `factory/checks.sh` is protected from factory jobs, so the owner
   updates it by hand to run these.
