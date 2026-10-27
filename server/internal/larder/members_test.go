@@ -79,11 +79,6 @@ func TestInviteRedeemsOnceAndStoresOnlyHash(t *testing.T) {
 		t.Error("invites.secret_hash is not the SHA-256 of the code's secret")
 	}
 
-	for _, name := range []string{strings.Repeat("x", 65), "Phone\u202e"} {
-		if _, _, err := redeemInvite(tx, code, name, testNow); err != errInvalid {
-			t.Fatalf("redeem with device name %q: %v, want errInvalid", name, err)
-		}
-	}
 	token, d := mustRedeemInvite(t, tx, code, testNow)
 	if d.MemberID != alex || !d.IsAdmin {
 		t.Errorf("device = %+v, want member %s and admin", d, alex)
@@ -95,16 +90,30 @@ func TestInviteRedeemsOnceAndStoresOnlyHash(t *testing.T) {
 		t.Errorf("second redemption: %v, want errBadInvite", err)
 	}
 
-	_, d, err := redeemInvite(tx, mustCreateInvite(t, tx, alex), " \t ", testNow)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var name string
-	if err := tx.QueryRow("SELECT name FROM devices WHERE id = ?", d.ID).Scan(&name); err != nil {
-		t.Fatal(err)
-	}
-	if name != "Unnamed device" {
-		t.Errorf("whitespace-only device name stored as %q, want %q", name, "Unnamed device")
+	// A device name never blocks pairing: it is cleaned, not refused.
+	x64 := strings.Repeat("x", 64)
+	for _, c := range []struct{ in, want string }{
+		{"\u2764\ufe0f Phone", "\u2764\ufe0f Phone"}, // variation selector kept
+		{"\U0001f468\u200d\U0001f469\u200d\U0001f467 iPad", "\U0001f468\u200d\U0001f469\u200d\U0001f467 iPad"},
+		{"A\u202eB", "AB"},
+		{"\x00", "Unnamed device"},
+		{" \t ", "Unnamed device"},
+		{x64 + "yyyyyy", x64},
+		{strings.Repeat("y", 63) + " yy", strings.Repeat("y", 63)},
+		{"\u2066\u200bPh\u2060o\ufeffne\xff\u2069", "Phone"},
+		{"Ale\u0301x's\tPhone", "Al\u00e9x's Phone"},
+	} {
+		_, d, err := redeemInvite(tx, mustCreateInvite(t, tx, alex), c.in, testNow)
+		if err != nil {
+			t.Fatalf("redeem with device name %q: %v", c.in, err)
+		}
+		var name string
+		if err := tx.QueryRow("SELECT name FROM devices WHERE id = ?", d.ID).Scan(&name); err != nil {
+			t.Fatal(err)
+		}
+		if name != c.want {
+			t.Errorf("device name %q stored as %q, want %q", c.in, name, c.want)
+		}
 	}
 
 	if _, _, err := createInvite(tx, newID(), testNow); err != errNotFound {

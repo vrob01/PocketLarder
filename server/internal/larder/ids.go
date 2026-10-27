@@ -89,15 +89,40 @@ func cleanText(s string, max int) (string, bool) {
 	return s, true
 }
 
-// cleanName cleans member and device names with the PRECIS Nickname profile
-// (RFC 8266), which applies NFKC and rejects invisible characters such as
-// U+200B and U+202E. Whitespace collapses first, so tabs pass as in cleanText.
+// cleanName cleans member names with the PRECIS Nickname profile (RFC 8266),
+// which applies NFKC and rejects invisible characters such as U+200B and
+// U+202E. Whitespace collapses first, so tabs pass as in cleanText.
 func cleanName(s string, max int) (string, bool) {
 	s, err := precis.Nickname.String(strings.Join(strings.Fields(s), " "))
 	if err != nil {
 		return "", false
 	}
 	return cleanText(s, max)
+}
+
+// cleanDeviceName never fails, so a device name never blocks pairing. It drops
+// characters that hide or reorder text but keeps ZWJ, ZWNJ and variation
+// selectors, which emoji and some scripts need.
+func cleanDeviceName(s string) string {
+	s = strings.Map(func(r rune) rune {
+		switch {
+		case unicode.IsSpace(r):
+			return r
+		case unicode.IsControl(r),
+			'\u202a' <= r && r <= '\u202e', '\u2066' <= r && r <= '\u2069', // bidi controls
+			r == '\u200b', r == '\u2060', r == '\ufeff': // zero-width space, word joiner, BOM
+			return -1
+		}
+		return r
+	}, strings.ToValidUTF8(s, ""))
+	s = strings.Join(strings.Fields(norm.NFC.String(s)), " ")
+	if r := []rune(s); len(r) > maxDeviceName {
+		s = strings.TrimSpace(string(r[:maxDeviceName]))
+	}
+	if s == "" {
+		return "Unnamed device"
+	}
+	return s
 }
 
 // nameKey is the uniqueness key for member and item names: the cleaned name

@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"net/url"
-	"strings"
 	"time"
 )
 
@@ -95,15 +94,7 @@ func revokeInvites(tx *sql.Tx, memberID string) (int, error) {
 	return int(n), err
 }
 
-// redeemInvite checks the device name first, so a bad name never uses up the invite.
 func redeemInvite(tx *sql.Tx, code, deviceName string, now time.Time) (token string, d device, err error) {
-	name := "Unnamed device"
-	if len(strings.Fields(deviceName)) > 0 {
-		var ok bool
-		if name, ok = cleanName(deviceName, maxDeviceName); !ok {
-			return "", device{}, errInvalid
-		}
-	}
 	inviteID, secret, ok := splitCode(code)
 	if !ok {
 		return "", device{}, errBadInvite
@@ -132,7 +123,7 @@ func redeemInvite(tx *sql.Tx, code, deviceName string, now time.Time) (token str
 	d.ID = newID()
 	deviceSecret, deviceHash := newSecret()
 	if _, err := tx.Exec("INSERT INTO devices (id, member_id, name, secret_hash, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?)",
-		d.ID, d.MemberID, name, deviceHash, now.Unix(), now.Unix()); err != nil {
+		d.ID, d.MemberID, cleanDeviceName(deviceName), deviceHash, now.Unix(), now.Unix()); err != nil {
 		return "", device{}, err
 	}
 	return d.ID + "." + deviceSecret, d, nil
