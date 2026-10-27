@@ -336,7 +336,7 @@ Endpoints (non-sync bodies are capped at 64 KiB):
 | `DELETE /v1/admin/members/{id}` | admin | none | 204 |
 | `DELETE /v1/admin/devices/{id}` | admin | none | 204 |
 
-The redemption rate limit is checked before anything else, so a 429 says nothing about the code. Path IDs that fail `validID` return 404. `POST /v1/invites/revoke` calls `revokeInvites`, which is how an invite sent to the wrong person is invalidated before it is redeemed. `pending_invites` counts the member's unredeemed, unexpired invites (`used_at IS NULL AND expires_at > now`).
+The redemption rate limit is checked before anything else, so a 429 says nothing about the code. Path IDs that fail `validID` return 404. `POST /v1/invites/revoke` calls `revokeInvites`, which is how an invite sent to the wrong person is invalidated before it is redeemed. It doesn't sign out devices that already paired; `API.md` says so and points to `DELETE /v1/admin/devices/{id}`. `pending_invites` counts the member's unredeemed, unexpired invites (`used_at IS NULL AND expires_at > now`).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -560,6 +560,7 @@ Commands:
 - `serve`: runs an `http.Server` with `ReadHeaderTimeout 10s`, `ReadTimeout 30s`, `WriteTimeout 30s` and `IdleTimeout 120s`, and logs JSON to stdout with `slog`. On `ctx.Done()` it calls `Shutdown` with a 10-second limit and returns 0.
 - `invite --new-admin <name>` creates an admin. `invite <member name>` makes a device invite for an existing member. Both print `Invite for <name>, valid until <RFC 3339>:` followed by the URL on its own line.
 - `invite --revoke <member name>` deletes the member's unredeemed invites with `revokeInvites`, prints `Revoked <n> invite(s) for <name>.` and exits 0. An unknown member exits 1. The CLI needs this because the first admin's invite comes from the CLI.
+- `<name>` in this output is the stored name of the member, read by id, not the typed argument. `memberByName` matches any lookalike spelling, so `invite Eila` can resolve to Ella, and the output must show whose account the invite really opens.
 - `backup <path>` runs `VACUUM INTO ?`. It is safe while `serve` is running.
 
 - [ ] **Step 1: Write the failing tests**
@@ -569,10 +570,10 @@ func TestCLIInviteNewAdmin(t *testing.T)
 // Run(["invite","--new-admin","Alex"]) with DATA_DIR=t.TempDir(), PUBLIC_URL=https://lists.example.test -> 0
 // stdout contains "pocketlarder://invite?server=https%3A%2F%2Flists.example.test&code="; Alex is an admin
 
-func TestCLIInviteExisting(t *testing.T) // "alex" -> 0; "Zed" -> 1, stderr mentions "Zed"
+func TestCLIInviteExisting(t *testing.T) // "alex" -> 0, stdout "Invite for Alex, valid until"; "Zed" -> 1, stderr mentions "Zed"
 
 func TestCLIInviteRevoke(t *testing.T)
-// after invite --new-admin Alex: invite --revoke alex -> 0, stdout "Revoked 1 invite(s) for alex."
+// after invite --new-admin Alex: invite --revoke alex -> 0, stdout "Revoked 1 invite(s) for Alex."
 // openDB shows Alex with no unredeemed invites; invite --revoke Zed -> 1
 
 func TestCLIPublicURL(t *testing.T)
