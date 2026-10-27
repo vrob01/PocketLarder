@@ -16,7 +16,7 @@ This is plan 1 of 3. Plan 2 covers the iOS app, its Mac setup guide (kept out of
 
 ## Global Constraints
 
-- Single static binary: `CGO_ENABLED=0`. SQLite only via `modernc.org/sqlite`, the one dependency. Any other dependency needs a one-line justification in the commit message.
+- Single static binary: `CGO_ENABLED=0`. Two dependencies: `modernc.org/sqlite` for SQLite, and `golang.org/x/text` for name normalisation and lookalike detection (Task 2). Any other dependency needs a one-line justification in the commit message.
 - The factory machine has Go 1.24.4. `go.mod` says `go 1.27.3`, the latest release on 2026-10-27, and the local `go` downloads that toolchain on its own (GOTOOLCHAIN=auto). The reason: the driver requires 1.26, and 1.24 no longer gets security fixes.
 - Plain HTTP behind a TLS-terminating reverse proxy. Versioned JSON API under `/v1` only: no HTML, no static files, no CORS headers.
 - The API must not assume iOS (Android may come later).
@@ -40,7 +40,7 @@ The spec left these to the builder. They fix the API that plan 2 builds against.
 - **"Unfiled" is a display rule.** An entry shows under "Not filed yet" when it has no item, no store, or its item has no placement in its store. Deleting a store, category or item therefore never rewrites or loses entries. Foreign keys set the references to NULL, and the entry falls back to "Not filed yet".
 - **Entries always keep `text`** (the item name at the time they were added), so deleting an item never loses the name.
 - **An invite is always bound to a member.** Inviting a new member creates the member and their personal list right away. Unredeemed new members show up in the admin area, where they can be removed.
-- **Names are compared after trimming and collapsing whitespace, ignoring case** (`strings.ToLower`). Item and member names are unique on that key.
+- **Names are compared after trimming and collapsing whitespace, ignoring case and lookalike characters** (`nameKey`, Task 2). Item and member names are unique on that key.
 - **List colors** are tokens the app maps to real colors: `red orange yellow green teal blue purple pink gray`.
 - **Recently bought:** the newest 50 bought entries per list are synced. Old bought rows stay in the database. `shortcut: bought entries are never pruned, add pruning if the database grows noticeably`.
 - **Timestamps** are stored as unix seconds and sent as RFC 3339 UTC without fractions (`2026-10-27T10:00:00Z`).
@@ -51,7 +51,7 @@ The spec left these to the builder. They fix the API that plan 2 builds against.
 2. **The same name spelled differently by two members** ("Milk" vs " milk ") must end on one catalog item, and renaming onto a taken name must be refused. Tests: Task 4, `TestFilingLinksToExistingItemIgnoringCase`, and Task 5, `TestItemRenameConflict`.
 3. **A list that becomes read-only or hidden while another member has queued offline edits to it:** the edits are refused, and the list disappears from that member's next snapshot. Test: Task 4, `TestPrivacyEnforced`.
 4. **Deleting a store or category that still has open entries:** every entry survives and falls back to "Not filed yet". Tests: Task 5, `TestDeletingStoreKeepsEntries` and `TestDeletingCategoryKeepsEntries`.
-5. **The last admin demoting or removing themselves** must be refused, or nobody could invite again without shell access. Test: Task 3, `TestLastAdminGuard`.
+5. **The last admin demoting or removing themselves** must be refused, or nobody could invite again without shell access. Tests: Task 2, `TestLastAdminGuard`, and Task 3, `TestHTTPLastAdminGuard`.
 
 ---
 
@@ -204,6 +204,8 @@ License v3.0, the same as the server.
 
 **Files:**
 - Create: `server/internal/larder/ids.go`, `server/internal/larder/members.go`
+- Create: `server/internal/larder/gen_confusables.go` and the `server/internal/larder/confusables.go` it generates
+- Modify: `server/go.mod`, `server/go.sum` (add `golang.org/x/text` v0.43.0)
 - Test: `server/internal/larder/ids_test.go`, `server/internal/larder/members_test.go`
 
 **Interfaces:**
@@ -214,17 +216,20 @@ License v3.0, the same as the server.
   - `func newSecret() (secret string, hash []byte)`: 32 bytes from `crypto/rand` as `base64.RawURLEncoding` (43 characters), with `hash = sha256(secret)`.
   - `func secretMatches(secret string, hash []byte) bool`: compares in constant time.
   - `func splitCode(code string) (id, secret string, ok bool)`: invite codes and device tokens are both `<uuid>.<secret>`.
-  - `func cleanText(s string, max int) (string, bool)`: collapses all whitespace runs to single spaces (`strings.Fields`) and trims. It rejects invalid UTF-8, control runes, an empty result, and more than `max` runes.
-  - `func nameKey(clean string) string` returns `strings.ToLower(clean)`.
+  - `func cleanText(s string, max int) (string, bool)`: normalises to NFC (`golang.org/x/text/unicode/norm`), then collapses all whitespace runs to single spaces (`strings.Fields`) and trims. It rejects invalid UTF-8, control runes, an empty result, and more than `max` runes. It keeps invisible characters: emoji sequences need U+200D, and Persian needs U+200C.
+  - `func cleanName(s string, max int) (string, bool)`: for member and device names. It collapses whitespace, enforces the PRECIS Nickname profile (RFC 8266, `precis.Nickname`), then runs `cleanText` with the same `max`, so the length limit applies after normalisation. Nickname applies NFKC (full-width `Ａｌｅｘ` becomes `Alex`) and rejects zero-width characters (U+200B), bidi overrides (U+202E) and stray joiners (U+200D).
+  - `func nameKey(clean string) string`: folds case (`cases.Fold`), then maps each character to its prototype from `confusables` (the UTS #39 skeleton: NFD, prototypes, NFD). A lowercase letter takes its capital's prototype, so `AI`, `Al` and `ai` share a key. Lookalikes collide: `Alex`, `alex`, `Аlex` (Cyrillic А) and `Ａｌｅｘ`. It skips the skeleton's removal of default-ignorable characters, which member names can't contain. Items share this key (Tasks 4-5), so lookalike item names also end on one item.
+  - `var confusables map[rune]string` in the generated `confusables.go`. `//go:generate go run gen_confusables.go` in `ids.go` builds it from `https://www.unicode.org/Public/17.0.0/security/confusables.txt`, the Unicode version of `golang.org/x/text`'s tables under Go 1.27. Nothing downloads at run time. Regenerating the table, or upgrading `golang.org/x/text`, changes keys: it needs a migration that recomputes `members.name_key` and `items.name_key` and handles names that newly collide.
   - `const maxName = 100; maxQuantity = 32; maxNote = 200; maxDeviceName = 64`.
 - Produces, in `members.go`:
   - `type device struct { ID, MemberID string; IsAdmin bool }`.
   - `var errInvalid, errForbidden, errNotFound, errConflict, errLastAdmin, errBadInvite, errUnauthorized = errors.New(...)`, each with its message equal to its API code: `invalid`, `forbidden`, `not_found`, `conflict`, `last_admin`, `invalid_invite`, `unauthorized`.
-  - `func createMember(tx *sql.Tx, name string, admin bool, now time.Time) (string, error)`: creates the member and their personal list. Returns `errInvalid` for a bad name and `errConflict` for a taken one.
-  - `func memberByName(tx *sql.Tx, name string) (string, error)`: looks up by `nameKey`. Returns `errNotFound` if there is none.
+  - `func createMember(tx *sql.Tx, name string, admin bool, now time.Time) (string, error)`: creates the member and their personal list. The name goes through `cleanName(name, maxName)`. Returns `errInvalid` for a bad name and `errConflict` for a taken one, including a lookalike of one.
+  - `func memberByName(tx *sql.Tx, name string) (string, error)`: cleans with `cleanName` and looks up by `nameKey`, so any lookalike spelling finds the member. Returns `errNotFound` if there is none.
   - `func createInvite(tx *sql.Tx, memberID string, now time.Time) (code string, expires time.Time, err error)`, with `expires = now + 24h`.
-  - `func redeemInvite(tx *sql.Tx, code, deviceName string, now time.Time) (token string, d device, err error)`: `deviceName` is cleaned with `maxDeviceName`, and an empty name becomes `"Unnamed device"`. Unknown, wrong-secret, used and expired invites all return `errBadInvite`. Marks the invite with `UPDATE … SET used_at = ? WHERE id = ? AND used_at IS NULL` and proceeds only when exactly 1 row changed.
-  - `func authenticate(tx *sql.Tx, token string, now time.Time) (device, error)`: returns `errUnauthorized` on any failure and sets `last_seen_at = now` on success.
+  - `func revokeInvites(tx *sql.Tx, memberID string) (int, error)`: deletes the member's unredeemed invites (`used_at IS NULL`) and returns how many it deleted. Used invites stay. Returns `errNotFound` for an unknown member.
+  - `func redeemInvite(tx *sql.Tx, code, deviceName string, now time.Time) (token string, d device, err error)`: `deviceName` is cleaned with `cleanName(deviceName, maxDeviceName)`, and an empty name becomes `"Unnamed device"`. A non-empty name that fails returns `errInvalid` and leaves the invite untouched. Unknown, wrong-secret, used and expired invites all return `errBadInvite`. An invite is expired from its `expires_at` second onwards (`now.Unix() >= expires_at`). Marks the invite with `UPDATE … SET used_at = ? WHERE id = ? AND used_at IS NULL` and proceeds only when exactly 1 row changed.
+  - `func authenticate(tx *sql.Tx, token string, now time.Time) (device, error)`: returns `errUnauthorized` on any failed check and sets `last_seen_at = now` on success. Database errors pass through unchanged, so an outage never looks like a revoked token.
   - `func deleteDevice(tx *sql.Tx, deviceID string) error` returns `errNotFound` if the device doesn't exist.
   - `func setAdmin(tx *sql.Tx, memberID string, admin bool) error` and `func removeMember(tx *sql.Tx, memberID string) error`: both return `errLastAdmin` when the change would leave no admin, and `errNotFound` for an unknown member.
   - `func inviteURL(publicURL, code string) string` returns `pocketlarder://invite?server=<QueryEscape(publicURL)>&code=<code>`. This one string is both the QR payload and the copyable text code.
@@ -235,6 +240,15 @@ License v3.0, the same as the server.
 func TestCleanText(t *testing.T) // table:
 // "  Burrito \t spice " -> "Burrito spice", true;  "Äpfel" -> "Äpfel", true
 // "" / "   " -> false;  "a\x00b" -> false;  strings.Repeat("x", 101) with max 100 -> false;  "\xff" -> false
+// "Äpfel" -> "Äpfel" (NFC); an emoji sequence with U+200D and a Persian word with U+200C pass unchanged
+
+func TestCleanName(t *testing.T) // table:
+// "Ａｌｅｘ" -> "Alex"; tabs collapse; U+200B, U+202E or a stray U+200D -> false;  51 × "ﬁ" with max 100 -> false
+
+func TestNameKey(t *testing.T)
+// equal keys: Alex/alex, Alex/Аlex (Cyrillic А), Alex/Ａｌｅｘ, AI/Al, Aléx precomposed/decomposed,
+//             Ian/ian, Tom/TOM, Helen/Нelen (Cyrillic Н)
+// different keys: Alex/Alexa, Sam/Pam, Jo/Joe; a to z all differ except i and l
 
 func TestIDs(t *testing.T) // validID(newID()); !validID("x"); !validID(strings.ToUpper(newID())); two newID() differ
 
@@ -248,6 +262,10 @@ func TestInviteExpiry(t *testing.T)
 
 func TestInviteWrongSecret(t *testing.T) // same id, different 43-char secret -> errBadInvite
 
+func TestRevokeInvites(t *testing.T)
+// Alex has a used and two pending invites, Sam one pending: revokeInvites(alex) -> 2; a revoked code -> errBadInvite
+// the used invite stays; Sam's code still redeems; a second revokeInvites(alex) -> 0; unknown member -> errNotFound
+
 func TestAuthenticate(t *testing.T)
 // valid token -> device, last_seen_at == now;  token with altered secret -> errUnauthorized
 // "garbage" -> errUnauthorized;  after deleteDevice -> errUnauthorized
@@ -260,7 +278,8 @@ func TestLastAdminGuard(t *testing.T)
 // sole admin: setAdmin(false) and removeMember -> errLastAdmin;
 // after setAdmin(sam, true): setAdmin(alex, false) -> nil
 
-func TestMemberNamesUniqueIgnoringCase(t *testing.T) // "Alex" then " alex " -> errConflict
+func TestMemberNamesUniqueIgnoringCase(t *testing.T)
+// "Alex" then " alex " -> errConflict; "Аlex" (Cyrillic А) -> errConflict; memberByName("Ａｌｅｘ") -> Alex
 ```
 
 - [ ] **Step 2: Run** `go test ./...`. Expected: FAIL, undefined symbols.
@@ -310,13 +329,14 @@ Endpoints (non-sync bodies are capped at 64 KiB):
 |---|---|---|---|
 | `POST /v1/invites/redeem` | none, rate-limited | `{"code","device_name"}` | 200 `{"token","member_id","device_id"}` |
 | `POST /v1/invites` | member | `{}` invites a device for yourself; `{"member_id"}` or `{"new_member_name"}` need an admin | 201 `{"url","expires_at","member_id"}` |
+| `POST /v1/invites/revoke` | member | `{}` revokes your own unredeemed invites; `{"member_id"}` needs an admin | 200 `{"revoked":n}` |
 | `POST /v1/signout` | member | none | 204, current device deleted |
-| `GET /v1/admin/members` | admin | none | 200 `{"members":[{"id","name","is_admin","privacy","devices":[{"id","name","created_at","last_seen_at"}]}]}` |
+| `GET /v1/admin/members` | admin | none | 200 `{"members":[{"id","name","is_admin","privacy","pending_invites","devices":[{"id","name","created_at","last_seen_at"}]}]}` |
 | `PATCH /v1/admin/members/{id}` | admin | `{"is_admin":bool}` | 204 |
 | `DELETE /v1/admin/members/{id}` | admin | none | 204 |
 | `DELETE /v1/admin/devices/{id}` | admin | none | 204 |
 
-The redemption rate limit is checked before anything else, so a 429 says nothing about the code. Path IDs that fail `validID` return 404.
+The redemption rate limit is checked before anything else, so a 429 says nothing about the code. Path IDs that fail `validID` return 404. `POST /v1/invites/revoke` calls `revokeInvites`, which is how an invite sent to the wrong person is invalidated before it is redeemed. `pending_invites` counts the member's unredeemed, unexpired invites (`used_at IS NULL AND expires_at > now`).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -338,8 +358,13 @@ func TestInvitePermissions(t *testing.T)
 
 func TestAdminMembers(t *testing.T)
 // admin GET -> both members, each with its device name and last_seen_at; non-admin -> 403
+// Sam with one pending, one redeemed and one expired invite -> "pending_invites":1
 
-func TestLastAdminGuard(t *testing.T) // Review Focus 5
+func TestHTTPRevokeInvites(t *testing.T)
+// non-admin POST /v1/invites {} then POST /v1/invites/revoke {} -> 200 {"revoked":1}; that code's redeem -> 401 invalid_invite
+// non-admin {"member_id":<admin>} -> 403; admin {"member_id":<sam>} -> 200; admin {"member_id":newID()} -> 404
+
+func TestHTTPLastAdminGuard(t *testing.T) // Review Focus 5; Task 2 already has TestLastAdminGuard
 // sole admin PATCH self {"is_admin":false} -> 409 last_admin; DELETE self -> 409 last_admin
 
 func TestRevokeDevice(t *testing.T) // admin DELETE /v1/admin/devices/{id} -> 204; that token -> 401
@@ -519,7 +544,7 @@ func TestSharedLists(t *testing.T)
 - Modify: `AGENTS.md` (Dev server section)
 
 **Interfaces:**
-- Consumes: `openDB`, `withTx`, `createMember`, `memberByName`, `createInvite`, `inviteURL`, `newServer` and `routes`.
+- Consumes: `openDB`, `withTx`, `createMember`, `memberByName`, `createInvite`, `revokeInvites`, `inviteURL`, `newServer` and `routes`.
 - Produces: `func Run(ctx context.Context, args []string, getenv func(string) string, stdout, stderr io.Writer) int`. Exit codes: 0 for success, 1 for failure, 2 for usage. `main.go` contains only the line `os.Exit(larder.Run(ctx, os.Args[1:], os.Getenv, os.Stdout, os.Stderr))`, with `ctx` from `signal.NotifyContext(…, os.Interrupt, syscall.SIGTERM)`.
 
 Environment:
@@ -534,6 +559,7 @@ Data directory (carried forward from Task 1's security review):
 Commands:
 - `serve`: runs an `http.Server` with `ReadHeaderTimeout 10s`, `ReadTimeout 30s`, `WriteTimeout 30s` and `IdleTimeout 120s`, and logs JSON to stdout with `slog`. On `ctx.Done()` it calls `Shutdown` with a 10-second limit and returns 0.
 - `invite --new-admin <name>` creates an admin. `invite <member name>` makes a device invite for an existing member. Both print `Invite for <name>, valid until <RFC 3339>:` followed by the URL on its own line.
+- `invite --revoke <member name>` deletes the member's unredeemed invites with `revokeInvites`, prints `Revoked <n> invite(s) for <name>.` and exits 0. An unknown member exits 1. The CLI needs this because the first admin's invite comes from the CLI.
 - `backup <path>` runs `VACUUM INTO ?`. It is safe while `serve` is running.
 
 - [ ] **Step 1: Write the failing tests**
@@ -544,6 +570,10 @@ func TestCLIInviteNewAdmin(t *testing.T)
 // stdout contains "pocketlarder://invite?server=https%3A%2F%2Flists.example.test&code="; Alex is an admin
 
 func TestCLIInviteExisting(t *testing.T) // "alex" -> 0; "Zed" -> 1, stderr mentions "Zed"
+
+func TestCLIInviteRevoke(t *testing.T)
+// after invite --new-admin Alex: invite --revoke alex -> 0, stdout "Revoked 1 invite(s) for alex."
+// openDB shows Alex with no unredeemed invites; invite --revoke Zed -> 1
 
 func TestCLIPublicURL(t *testing.T)
 // http://lists.example.test -> 1; https://lists.example.test/app -> 1; http://localhost:5100 -> 0
