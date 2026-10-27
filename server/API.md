@@ -89,6 +89,24 @@ member: redeeming it adds a device for that member.
   deletes invites that haven't been redeemed. Devices that already paired stay
   signed in. To sign one out, an admin uses `DELETE /v1/admin/devices/{id}`.
 
+## Known limits
+
+Version 1 accepts these. Each has an issue for a later fix.
+
+- **Anyone can hold up pairing.** The redemption limit is one budget for the
+  whole server. A client sending 10 bogus codes a minute makes every real
+  redemption get 429 `rate_limited`
+  ([#13](https://github.com/vrob01/PocketLarder/issues/13)).
+- **Signed-in requests aren't rate-limited.** Only `POST /v1/invites/redeem`
+  is. A paired device, or anyone holding its token, can call every other
+  endpoint as fast as the server answers
+  ([#14](https://github.com/vrob01/PocketLarder/issues/14)).
+- **Signing a device out doesn't revoke invites.** Unredeemed invites stay
+  valid until they expire, including any the device created before it was
+  signed out. When signing out a lost or stolen device, an admin also calls
+  `POST /v1/invites/revoke` with that device's `member_id`
+  ([#15](https://github.com/vrob01/PocketLarder/issues/15)).
+
 ## Endpoints
 
 | Method and path | Auth |
