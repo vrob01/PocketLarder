@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-27-pocketlarder-design.md`
 
-**Status:** approved by the owner on 2026-10-27, together with the spec and its mockups. Execution: subagent-driven.
+**Status:** approved by the owner on 2026-10-27, together with the spec and its mockups. Execution: through the software factory, one GitHub issue per task, run one at a time in order, because each task builds on the merged PR of the one before.
 
 This is plan 1 of 3. Plan 2 covers the iOS app, its Mac setup guide (kept out of the repo) and the GitHub Actions iOS checks. Plan 3 covers OIDC on both the server and the app. Plan 2 is written against `server/API.md`, which this plan produces.
 
@@ -29,7 +29,7 @@ This is plan 1 of 3. Plan 2 covers the iOS app, its Mac setup guide (kept out of
 - Container: non-root, read-only root filesystem, the data volume as the only writable path.
 - Hard requirement: a sync never undoes a local change. Server side, this means operations are idempotent by `op_id`, and the snapshot is built after the batch in the same transaction.
 - No passwords, no web UI, no push, one household per server.
-- Every task touches auth, sync or the API, so the final whole-branch review includes a security review.
+- Every task touches auth, sync or the API, so every task's review includes a security review.
 
 ## Decisions this plan makes
 
@@ -516,6 +516,7 @@ func TestSharedLists(t *testing.T)
 **Files:**
 - Create: `server/main.go`, `server/internal/larder/cli.go`
 - Test: `server/internal/larder/cli_test.go`
+- Modify: `AGENTS.md` (Dev server section)
 
 **Interfaces:**
 - Consumes: `openDB`, `withTx`, `createMember`, `memberByName`, `createInvite`, `inviteURL`, `newServer` and `routes`.
@@ -555,7 +556,8 @@ func TestUsage(t *testing.T) // no args and "frobnicate" -> 2
 - [ ] **Step 2: Run** `go test ./...`. Expected: FAIL.
 - [ ] **Step 3: Implement `cli.go` and `main.go`.**
 - [ ] **Step 4: Run** `go test ./... && go vet ./... && CGO_ENABLED=0 go build -o /dev/null .`. Expected: PASS, and the static build succeeds.
-- [ ] **Step 5: Commit:** `git commit -m "Add the pocketlarder command: serve, invite, backup"`
+- [ ] **Step 5: `AGENTS.md` Dev server**: replace the section's body with: `cd server && POCKETLARDER_DATA_DIR=$(mktemp -d) POCKETLARDER_LISTEN=127.0.0.1:<port> POCKETLARDER_PUBLIC_URL=http://localhost:<port> go run . serve`, plus the same environment with `go run . invite --new-admin Dev` to get an invite. Keep the sentence that factory agents start their own server on the port their prompt gives.
+- [ ] **Step 6: Commit:** `git commit -m "Add the pocketlarder command: serve, invite, backup"`
 
 ---
 
@@ -563,8 +565,8 @@ func TestUsage(t *testing.T) // no args and "frobnicate" -> 2
 
 **Files:**
 - Create: `server/Dockerfile`, `server/deploy/compose.yaml`, `server/deploy/Caddyfile`, `README.md`
-- Modify: `AGENTS.md`
-- Owner modifies: `factory/checks.sh` (protected from factory jobs)
+
+`AGENTS.md` (Setup, Validation) and `factory/checks.sh` were set up before Task 1, and Task 6 documents the dev server.
 
 - [ ] **Step 1: `server/Dockerfile`**
 
@@ -598,21 +600,7 @@ lists.example.com {
 ```
 
 - [ ] **Step 4: `README.md`**: what PocketLarder is (two sentences from the spec's Intent), self-hosting (`docker compose -f server/deploy/compose.yaml up -d --build`, the Caddy block, `docker exec pocketlarder pocketlarder invite --new-admin <name>`, `docker exec pocketlarder pocketlarder backup /data/backup-$(date +%F).db`, and the note that scheduling backups is the host's job), the license summary, and a link to `server/API.md`.
-- [ ] **Step 5: `AGENTS.md`**: replace Status with the chosen stack and layout (`server/` Go, `ios/` to come). Setup: Go 1.24 or newer on PATH, after which `go` fetches the 1.27.3 toolchain itself; then `cd server && go mod download`. Dev server: `cd server && POCKETLARDER_DATA_DIR=$(mktemp -d) POCKETLARDER_LISTEN=127.0.0.1:<port> POCKETLARDER_PUBLIC_URL=http://localhost:<port> go run . serve`, and the same env with `go run . invite --new-admin Dev` for an invite. Validation: `bash factory/checks.sh`, which runs gofmt, vet, test and a static build in `server/`.
-- [ ] **Step 6: Owner replaces the body of `factory/checks.sh`** after `set -euo pipefail` with:
-
-```bash
-cd server
-unformatted=$(gofmt -l .)
-if [ -n "$unformatted" ]; then echo "gofmt needed:"; echo "$unformatted"; exit 1; fi
-go vet ./...
-go test ./...
-CGO_ENABLED=0 go build -o /dev/null .
-```
-
-Run `bash factory/checks.sh`. Expected: exit 0.
-
-- [ ] **Step 7: Verify the image** (Docker is installed on the factory machine and the user is in the `docker` group):
+- [ ] **Step 5: Verify the image** (Docker is installed on the factory machine and the user is in the `docker` group):
 
 ```bash
 docker compose -f server/deploy/compose.yaml up -d --build
@@ -620,6 +608,7 @@ docker exec pocketlarder pocketlarder invite --new-admin Test        # prints an
 curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8080/v1/sync   # 401
 docker exec pocketlarder pocketlarder backup /data/check.db          # exit 0
 docker inspect -f '{{.HostConfig.ReadonlyRootfs}} {{.Config.User}}' pocketlarder   # true 65532:65532
+docker compose -f server/deploy/compose.yaml down -v                 # clean up
 ```
 
-- [ ] **Step 8: Commit:** `git commit -m "Add the container image, hosting examples and repo docs"`
+- [ ] **Step 6: Commit:** `git commit -m "Add the container image, hosting examples and repo docs"`

@@ -6,6 +6,9 @@
 # watch modes, no prompts, nothing that rewrites files.
 set -euo pipefail
 
-# shortcut: PocketLarder has no application code yet, so there is nothing to check.
-# Once a stack lands, replace this with its install, lint, typecheck, test and build commands.
-echo "factory/checks.sh: no checks yet (no application code)."
+cd server
+unformatted=$(gofmt -l .)
+if [ -n "$unformatted" ]; then echo "gofmt needed:"; echo "$unformatted"; exit 1; fi
+go vet ./...
+go test ./...
+CGO_ENABLED=0 go build ./...
