@@ -136,6 +136,35 @@ func TestInviteWrongSecret(t *testing.T) {
 	}
 }
 
+func TestRevokeInvites(t *testing.T) {
+	tx := testTx(t)
+	alex := mustCreateMember(t, tx, "Alex", true)
+	sam := mustCreateMember(t, tx, "Sam", false)
+	used := mustCreateInvite(t, tx, alex)
+	mustRedeemInvite(t, tx, used, testNow)
+	pending := mustCreateInvite(t, tx, alex)
+	mustCreateInvite(t, tx, alex)
+	samCode := mustCreateInvite(t, tx, sam)
+
+	if n, err := revokeInvites(tx, alex); n != 2 || err != nil {
+		t.Fatalf("revokeInvites = %d, %v; want 2, nil", n, err)
+	}
+	if _, _, err := redeemInvite(tx, pending, "Phone", testNow); err != errBadInvite {
+		t.Errorf("redeem a revoked invite: %v, want errBadInvite", err)
+	}
+	var usedAt int64
+	if err := tx.QueryRow("SELECT used_at FROM invites WHERE member_id = ?", alex).Scan(&usedAt); err != nil || usedAt != testNow.Unix() {
+		t.Errorf("used invite: used_at %d, %v; want it kept with %d", usedAt, err, testNow.Unix())
+	}
+	mustRedeemInvite(t, tx, samCode, testNow)
+	if n, err := revokeInvites(tx, alex); n != 0 || err != nil {
+		t.Errorf("second revokeInvites = %d, %v; want 0, nil", n, err)
+	}
+	if _, err := revokeInvites(tx, newID()); err != errNotFound {
+		t.Errorf("revokeInvites of an unknown member: %v, want errNotFound", err)
+	}
+}
+
 func TestAuthenticate(t *testing.T) {
 	tx := testTx(t)
 	alex := mustCreateMember(t, tx, "Alex", true)

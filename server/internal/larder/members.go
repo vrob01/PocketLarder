@@ -82,6 +82,19 @@ func createInvite(tx *sql.Tx, memberID string, now time.Time) (code string, expi
 	return id + "." + secret, expires, nil
 }
 
+// revokeInvites deletes the member's unredeemed invites and returns how many it deleted.
+func revokeInvites(tx *sql.Tx, memberID string) (int, error) {
+	err := tx.QueryRow("SELECT id FROM members WHERE id = ?", memberID).Scan(&memberID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, errNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	n, err := rowsChanged(tx.Exec("DELETE FROM invites WHERE member_id = ? AND used_at IS NULL", memberID))
+	return int(n), err
+}
+
 // redeemInvite checks the device name first, so a bad name never uses up the invite.
 func redeemInvite(tx *sql.Tx, code, deviceName string, now time.Time) (token string, d device, err error) {
 	name := "Unnamed device"
