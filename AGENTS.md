@@ -5,23 +5,36 @@ shared shopping lists.
 
 ## Status
 
-There is no application code yet, and the stack (language, framework, storage)
-hasn't been chosen. The change that adds the first code must fill in Setup, Dev
-server and Validation below. `factory/checks.sh` is protected from factory
-jobs, so a human updates it to run the new validation commands.
+The design is settled and the server is being built. Read these before touching
+`server/`:
+
+- Spec: `docs/superpowers/specs/2026-10-27-pocketlarder-design.md`
+- Server plan: `docs/superpowers/plans/2026-10-27-pocketlarder-server.md`
+
+The plan is built one task at a time, one factory issue per task, in order.
+Each task builds on the merged PRs of the tasks before it. An issue that names a
+plan task means exactly that task as the plan writes it: its files, interfaces,
+tests and values. Where the plan and the spec disagree, the plan wins, because
+it records decisions the spec left to the builder.
+
+Layout: `server/` is the Go server (AGPL-3.0). `ios/` will hold the SwiftUI app
+(MPL-2.0); its plan isn't written yet.
 
 ## Setup
 
-A fresh checkout needs no setup yet.
+Go 1.24 or newer on PATH. `server/go.mod` pins a newer toolchain, which `go`
+downloads on first use. Then `cd server && go mod download`.
 
 ## Dev server
 
-None yet. Once there is one, document how to start it on a given port: factory
-agents each start their own on the port their prompt gives.
+None yet. Task 6 of the server plan adds `pocketlarder serve` and documents here
+how to start it on a given port: factory agents each start their own on the port
+their prompt gives.
 
 ## Validation
 
-`bash factory/checks.sh`. It runs no checks yet.
+`bash factory/checks.sh`. In `server/` it runs `gofmt -l`, `go vet ./...`,
+`go test ./...` and a static build (`CGO_ENABLED=0 go build ./...`).
 
 ## Software factory
 
