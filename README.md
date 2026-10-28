@@ -8,8 +8,15 @@ The server API is described in [server/API.md](server/API.md).
 
 Run all commands from the repo root.
 
-1. Set `POCKETLARDER_PUBLIC_URL` in `server/deploy/compose.yaml` to your own `https://` address, the same host as the Caddy site below.
-2. Start the server:
+1. Create your settings file and the data directory. In `server/deploy/.env`, set `POCKETLARDER_PUBLIC_URL` to your own `https://` address, the same host as the Caddy site below, and `POCKETLARDER_HOST_DATA_DIR` to the host directory that holds the database (the example uses `/srv/pocketlarder`; keep it outside the repo). Settings that depend on your deployment live in `.env`, which git ignores, so `git pull` upgrades never conflict with `compose.yaml`. That directory is bind-mounted at `/data` and must belong to the container user (65532:65532):
+
+   ```bash
+   cp server/deploy/.env.example server/deploy/.env   # then edit it
+   sudo mkdir -m 700 /srv/pocketlarder
+   sudo chown 65532:65532 /srv/pocketlarder
+   ```
+
+2. Build the image from this clone and start the server:
 
    ```bash
    docker compose -f server/deploy/compose.yaml up -d --build
@@ -44,6 +51,7 @@ Run all commands from the repo root.
 - `POCKETLARDER_LISTEN` defaults to `:8080`, which serves plain HTTP on every interface. On a bare host behind a reverse proxy, set `POCKETLARDER_LISTEN=127.0.0.1:<port>`. The compose file already publishes the port on 127.0.0.1 only.
 - `backup <path>` writes a 0600 file but refuses any path that already exists. Back up into a private directory such as `/data`, and use a fresh name for each run, for example one with the date in it. A second backup on the same day needs a different name.
 - Run `invite` with `docker compose exec` (as above) or `docker compose run --rm`, so invite URLs don't stay in container logs.
+- Invite URLs are secrets, and `invite` prints them to stdout. With `exec` the output goes only to your terminal. With `docker compose run` without `--rm` it is captured by the container's logging driver and the stopped container stays around, so the URL remains in `docker logs` until you run `docker rm` on it. With the default `json-file` driver it is also on disk under `/var/lib/docker/containers/`. With `journald` or `syslog` it is also in the host journal or syslog files, and with a remote driver (for example `fluentd`, `gelf` or `awslogs`) on the remote log server. `docker rm` does not remove those copies, so clean them up there too, and treat an invite that was logged as exposed: revoke it with `POST /v1/invites/revoke` (see [server/API.md](server/API.md)) or let it expire after 24 hours.
 
 ## License
 

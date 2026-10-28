@@ -1,2 +1,3 @@
 /factory/jobs/
 .superpowers/
+server/deploy/.env
