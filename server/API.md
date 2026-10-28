@@ -472,17 +472,20 @@ no `item_id`, no `store_id`, or no placement for its (`item_id`, `store_id`).
 Every op has an `op_id`, a lowercase UUID the client makes for it, and a
 `type`. An op whose `op_id` isn't a lowercase UUID, or whose `type` isn't one
 below, is rejected `invalid`. The ids a client creates, the `id` of
-`entry.add` and the `new_item_id` of `entry.place`, are lowercase UUIDs too.
+`entry.add`, `list.create`, `store.create` and `category.create` and the
+`new_item_id` of `entry.place`, are lowercase UUIDs too.
 
 Text is cleaned before it is stored: Unicode normalisation (NFC), leading and
 trailing whitespace removed and runs of whitespace collapsed to one space.
 What's left must not be empty, must have no control characters, and must fit
-its limit in characters (Unicode code points): `text` 100, `quantity` 32 and
-`note` 200. A value that fails is `invalid`.
+its limit in characters (Unicode code points): `text` and `name` 100,
+`quantity` 32 and `note` 200. A value that fails is `invalid`.
 
 Fields marked `?` are optional. Every entry op except `entry.add` gives
 `not_found` when the entry doesn't exist and `forbidden` when its list isn't
-writable.
+writable. Any member may run the list, store, category and item ops. In
+them, an id that names something that doesn't exist, malformed ones
+included, is `not_found`.
 
 #### entry.add
 
@@ -576,6 +579,144 @@ its entries, not the catalog: an item created by filing an entry from a hidden
 list is in every member's snapshot, like the rest of the catalog.
 
 Rejected: `invalid` (anything but `open`, `readonly` or `hidden`).
+
+#### list.create
+
+Fields: `id`, `name`, `color`.
+
+Creates a shared list, not archived. `color` is one of `red`, `orange`,
+`yellow`, `green`, `teal`, `blue`, `purple`, `pink` or `gray`.
+
+Rejected: `invalid` (a bad `id`, a missing `name` or one that fails cleaning,
+or a missing `color` or one not in the list above), `conflict` (`id` is
+already a list's id).
+
+#### list.update
+
+Fields: `id`, `name?`, `color?`, `archived?`.
+
+Sets each field that is present on a shared list. `archived` is a boolean. An
+archived list stays in every member's snapshot, with `archived` true.
+
+Rejected: `not_found` (the list doesn't exist), `forbidden` (a personal list,
+the caller's own included), `invalid` (no field, a `name` that fails
+cleaning, or a `color` not in the list under `list.create`).
+
+#### store.create
+
+Fields: `id`, `name`.
+
+Creates a store after all the others: its `position` is one more than the
+highest, or 0 for the first store.
+
+Rejected: `invalid` (a bad `id`, or a missing `name` or one that fails
+cleaning), `conflict` (`id` is already a store's id).
+
+#### store.rename
+
+Fields: `id`, `name`.
+
+Sets the store's name.
+
+Rejected: `not_found`, `invalid` (a missing `name` or one that fails
+cleaning).
+
+#### store.delete
+
+Fields: `id`.
+
+Deletes the store, its categories and every placement in it. Items that had
+it as their default store have none, and entries filed in it lose their
+`store_id`. The entries themselves stay, keep their item and text, and show
+under "Not filed yet".
+
+Rejected: `not_found`.
+
+#### store.reorder
+
+Fields: `ids`.
+
+Reorders the stores. The stores listed in `ids` take positions from 0 up in
+the order given, and every other store follows them in its previous order, so
+the positions run from 0 to one less than the number of stores. Ids that
+aren't a store's are ignored, and an id listed twice counts where it first
+appears. An empty or absent `ids` keeps the order and only renumbers.
+Unlisted stores follow instead of being dropped, so that a stale client can't
+knock out a store it has never heard of.
+
+Never rejected.
+
+#### category.create
+
+Fields: `id`, `store_id`, `name`.
+
+Creates a category after the store's others: its `position` is one more than
+the highest in that store, or 0 for the store's first category.
+
+Rejected: `not_found` (the store doesn't exist), `invalid` (a bad `id`, or a
+missing `name` or one that fails cleaning), `conflict` (`id` is already a
+category's id).
+
+#### category.rename
+
+Fields: `id`, `name`.
+
+Sets the category's name.
+
+Rejected: `not_found`, `invalid` (a missing `name` or one that fails
+cleaning).
+
+#### category.delete
+
+Fields: `id`.
+
+Deletes the category and the placements that use it. Entries keep their
+`item_id` and `store_id`, and an entry whose item lost its placement in that
+store shows under "Not filed yet".
+
+Rejected: `not_found`.
+
+#### category.reorder
+
+Fields: `store_id`, `ids`.
+
+Reorders the store's categories by the same rule as `store.reorder`, within
+that store only. A category of another store is an unknown id here, and the
+other store's order doesn't change.
+
+Rejected: `not_found` (the store doesn't exist).
+
+#### item.update
+
+Fields: `id`, `name?`, `default_store_id?`.
+
+Sets each field that is present. `default_store_id` `""` clears the default
+store. A new `name` must not be another item's name, ignoring case; changing
+only the case of the item's own name is fine. Renaming an item doesn't change
+the `text` of its entries.
+
+Rejected: `not_found` (the item or a non-empty `default_store_id` doesn't
+exist), `invalid` (neither field, or a `name` that fails cleaning),
+`conflict` (another item has that name, ignoring case).
+
+#### item.place
+
+Fields: `id`, `store_id`, `category_id`.
+
+Makes `category_id` the item's placement in `store_id`, replacing the one it
+had there. The item's default store and its entries don't change.
+
+Rejected: `not_found` (the item or the store doesn't exist), `invalid` (a
+missing `category_id`, or one that doesn't exist or is in another store).
+
+#### item.delete
+
+Fields: `id`.
+
+Deletes the item and its placements. Its entries lose their `item_id` but keep
+their `text` and `store_id`, and show under "Not filed yet".
+
+Rejected: `not_found`.
 
 ### Rules
 
