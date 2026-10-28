@@ -27,9 +27,18 @@ downloads on first use. Then `cd server && go mod download`.
 
 ## Dev server
 
-None yet. Task 6 of the server plan adds `pocketlarder serve` and documents here
-how to start it on a given port: factory agents each start their own on the port
-their prompt gives.
+Factory agents each start their own server on the port their prompt gives. From
+the repo root, with `<port>` filled in, in one shell:
+
+```bash
+cd server
+export POCKETLARDER_DATA_DIR=$(mktemp -d) POCKETLARDER_LISTEN=127.0.0.1:<port> POCKETLARDER_PUBLIC_URL=http://localhost:<port>
+go run . invite --new-admin Dev   # prints an invite for the admin Dev
+go run . serve                    # runs until Ctrl-C or SIGTERM
+```
+
+`serve` and `invite` must share the data directory, so run `mktemp -d` only
+once and keep the export for every later `go run . invite <name>`.
 
 ## Validation
 
