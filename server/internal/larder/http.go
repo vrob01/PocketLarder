@@ -11,8 +11,11 @@ import (
 	"time"
 )
 
-// maxBody caps every request body except sync's.
-const maxBody = 64 << 10
+// maxBody caps every request body except sync's, which maxSyncBody caps.
+const (
+	maxBody     = 64 << 10
+	maxSyncBody = 1 << 20
+)
 
 type server struct {
 	db          *sql.DB
@@ -143,6 +146,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /v1/invites", s.authed(false, s.invite))
 	mux.HandleFunc("POST /v1/invites/revoke", s.authed(false, s.revoke))
 	mux.HandleFunc("POST /v1/signout", s.authed(false, s.signOut))
+	mux.HandleFunc("POST /v1/sync", s.authed(false, s.sync))
 	mux.HandleFunc("GET /v1/admin/members", s.authed(true, s.members))
 	mux.HandleFunc("PATCH /v1/admin/members/{id}", s.authed(true, s.patchMember))
 	mux.HandleFunc("DELETE /v1/admin/members/{id}", s.authed(true, s.deleteMember))
@@ -275,6 +279,39 @@ func (s *server) signOut(w http.ResponseWriter, r *http.Request, d device) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *server) sync(w http.ResponseWriter, r *http.Request, d device) {
+	var req struct {
+		Ops []op `json:"ops"`
+	}
+	if !readJSON(w, r, maxSyncBody, &req) {
+		return
+	}
+	if len(req.Ops) > maxOps {
+		s.fail(w, errInvalid)
+		return
+	}
+	now := s.now()
+	var resp struct {
+		Rejected []rejection `json:"rejected"`
+		Snapshot snapshot    `json:"snapshot"`
+	}
+	err := withTx(s.db, func(tx *sql.Tx) (err error) {
+		if err = recheck(tx, d.ID, false); err != nil {
+			return err
+		}
+		if resp.Rejected, err = applyBatch(tx, d, req.Ops, now); err != nil {
+			return err
+		}
+		resp.Snapshot, err = buildSnapshot(tx, d)
+		return err
+	})
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 type adminDevice struct {
