@@ -1,7 +1,8 @@
 # PocketLarder API, version 1
 
 This is the contract between a PocketLarder server and its clients. It covers
-pairing a device with an invite, signing out and the admin area.
+pairing a device with an invite, syncing the household's lists, signing out and
+the admin area.
 
 ## Basics
 
@@ -21,9 +22,10 @@ pairing a device with an invite, signing out and the admin area.
   A missing, malformed or revoked token gives 401 `unauthorized`. The token is
   checked before anything else about the request, and on admin endpoints admin
   rights (403 `forbidden`) are checked next, before the path and the body.
-- **Body size.** A request body may be at most 64 KiB. A larger one gives
-  413 `too_large`. A body that isn't valid JSON, has a field of the wrong type,
-  has a field the endpoint doesn't know, or is empty gives 400 `invalid`.
+- **Body size.** A request body may be at most 64 KiB, or 1 MiB for
+  `POST /v1/sync`. A larger one gives 413 `too_large`. A body that isn't valid
+  JSON, has a field of the wrong type, has a field the endpoint doesn't know,
+  or is empty gives 400 `invalid`.
 - **IDs** are lowercase UUIDs such as `3f367fb6-d649-4507-8a37-a0813a0cdfb7`.
   An id in a path that isn't in this form gives 404 `not_found`.
 - **Timestamps** are RFC 3339 strings in UTC without fractions, such as
@@ -41,14 +43,14 @@ anything else:
 
 | Status | Code | Meaning |
 |---|---|---|
-| 400 | `invalid` | The body is malformed, or a value in it isn't allowed. |
+| 400 | `invalid` | The body is malformed, a value in it isn't allowed, or a sync request has more than 500 ops. |
 | 401 | `unauthorized` | The device token is missing, malformed or revoked. Treat the device as signed out. |
 | 401 | `invalid_invite` | The invite code can't be redeemed. |
 | 403 | `forbidden` | The request needs an admin. |
 | 404 | `not_found` | The member or device doesn't exist, or the id isn't a lowercase UUID. |
 | 409 | `conflict` | Another member already has that name. |
 | 409 | `last_admin` | The request would leave the household without an admin. |
-| 413 | `too_large` | The body is over 64 KiB. |
+| 413 | `too_large` | The body is over 64 KiB, or over 1 MiB for `POST /v1/sync`. |
 | 429 | `rate_limited` | Too many redemption attempts. Try again in a minute. |
 | 500 | `internal` | The server failed. Nothing about the cause is sent. |
 
@@ -115,6 +117,7 @@ Version 1 accepts these. Each has an issue for a later fix.
 | `POST /v1/invites` | member |
 | `POST /v1/invites/revoke` | member |
 | `POST /v1/signout` | member |
+| `POST /v1/sync` | member |
 | `GET /v1/admin/members` | admin |
 | `PATCH /v1/admin/members/{id}` | admin |
 | `DELETE /v1/admin/members/{id}` | admin |
@@ -344,3 +347,259 @@ HTTP/1.1 204 No Content
 ```
 
 Errors: 401 `unauthorized`, 403 `forbidden`, 404 `not_found`.
+
+## Sync
+
+A client keeps a full local copy of everything its member may see, and works
+on that copy offline. Every change the member makes is an op: the client
+applies it to its copy, queues it, and sends the queue to `POST /v1/sync`. The
+server applies the ops in one transaction and answers with a snapshot of
+everything the member may see after them.
+
+### POST /v1/sync
+
+Applies queued ops and returns a snapshot. Any member.
+
+The body is `{"ops": [...]}` with at most 500 ops. A longer queue goes in
+several requests, in queue order, each sent after the one before got its
+response. `{"ops": []}` applies nothing and just fetches a snapshot. Each op
+carries an `op_id`, a `type` and the fields its type lists under
+[Operations](#operations). Send no other fields: one the API doesn't know
+makes the whole request 400 `invalid`.
+
+```http
+POST /v1/sync
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"ops": [
+  {"op_id": "c1556fb5-68a1-4d4b-874c-0a7d69c81dcc", "type": "entry.add", "id": "ae94504a-2040-4e7b-bfea-d548f7d2f25e", "list_id": "8832e435-0cdc-4290-b837-bbcc46e65f42", "text": "Burrito spice", "quantity": "2"},
+  {"op_id": "dd597075-5860-45fb-91e7-bd55836bf114", "type": "entry.buy", "id": "f4c9ecca-9050-43c7-b9af-3533815f47b4"}
+]}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "rejected": [
+    {"op_id": "dd597075-5860-45fb-91e7-bd55836bf114", "reason": "not_found"}
+  ],
+  "snapshot": {
+    "me": {"member_id": "3f367fb6-d649-4507-8a37-a0813a0cdfb7", "device_id": "41c68cb8-2f63-4d34-92b5-26d3521f739d", "is_admin": true},
+    "members": [
+      {"id": "3f367fb6-d649-4507-8a37-a0813a0cdfb7", "name": "Alex", "is_admin": true, "privacy": "open"},
+      {"id": "7317f087-10f7-4bd2-b23e-c5d5726c04bd", "name": "Sam", "is_admin": false, "privacy": "hidden"}
+    ],
+    "lists": [
+      {"id": "25662915-e490-432f-9165-23d1318ebafd", "owner_id": null, "name": "Party", "color": "teal", "archived": false, "writable": true},
+      {"id": "8832e435-0cdc-4290-b837-bbcc46e65f42", "owner_id": "3f367fb6-d649-4507-8a37-a0813a0cdfb7", "name": null, "color": null, "archived": false, "writable": true}
+    ],
+    "stores": [
+      {"id": "56058b71-5fd8-4e28-8784-5a26ddd960c0", "name": "Corner shop", "position": 0}
+    ],
+    "categories": [
+      {"id": "5cb64f0a-df16-48a1-bb51-7896414bc438", "store_id": "56058b71-5fd8-4e28-8784-5a26ddd960c0", "name": "Dairy", "position": 0}
+    ],
+    "items": [
+      {"id": "6c052e92-3357-493b-9e07-65ae1fb0802f", "name": "Milk", "default_store_id": "56058b71-5fd8-4e28-8784-5a26ddd960c0"}
+    ],
+    "placements": [
+      {"item_id": "6c052e92-3357-493b-9e07-65ae1fb0802f", "store_id": "56058b71-5fd8-4e28-8784-5a26ddd960c0", "category_id": "5cb64f0a-df16-48a1-bb51-7896414bc438"}
+    ],
+    "entries": [
+      {"id": "785a8c25-38e6-4526-80ca-290927283c0f", "list_id": "8832e435-0cdc-4290-b837-bbcc46e65f42", "item_id": "6c052e92-3357-493b-9e07-65ae1fb0802f", "text": "Milk", "quantity": "", "note": "", "store_id": "56058b71-5fd8-4e28-8784-5a26ddd960c0", "created_at": "2026-10-26T18:30:00Z", "bought_at": "2026-10-27T09:12:40Z"},
+      {"id": "ae94504a-2040-4e7b-bfea-d548f7d2f25e", "list_id": "8832e435-0cdc-4290-b837-bbcc46e65f42", "item_id": null, "text": "Burrito spice", "quantity": "2", "note": "", "store_id": null, "created_at": "2026-10-27T10:00:00Z", "bought_at": null}
+    ]
+  }
+}
+```
+
+`rejected` lists the ops that changed nothing, each with its `op_id` and a
+`reason`: `invalid`, `forbidden`, `not_found` or `conflict`. It is `[]` when
+every op applied.
+
+Errors: 400 `invalid` (a malformed body or more than 500 ops),
+401 `unauthorized`, 413 `too_large` (over 1 MiB). On any error nothing in the
+request was applied.
+
+### The snapshot
+
+Every array is present, and `[]` when empty.
+
+- `me`: the caller's `member_id` and `device_id`, and `is_admin`.
+- `members`: every member of the household, with `id`, `name`, `is_admin` and
+  `privacy` (`open`, `readonly` or `hidden`). Members who were invited but
+  never paired are included.
+- `lists`: the lists the caller sees, with `id`, `owner_id`, `name`, `color`,
+  `archived` and `writable`. `owner_id` is the member whose personal list it
+  is, or `null` for a shared list. `name` and `color` are `null` on personal
+  lists. `archived` and `writable` are booleans.
+- `stores` (`id`, `name`, `position`), `categories` (`id`, `store_id`, `name`,
+  `position`), `items` (`id`, `name`, `default_store_id`) and `placements`
+  (`item_id`, `store_id`, `category_id`): the household catalog, all of it, for
+  every member. An item's `default_store_id` is `null` until it has one. A
+  placement is the item's category in that store.
+- `entries`: `id`, `list_id`, `item_id`, `text`, `quantity`, `note`,
+  `store_id`, `created_at` and `bought_at`. `item_id` and `store_id` are `null`
+  until the entry is filed. `quantity` and `note` are `""` when not set.
+  `bought_at` is `null` while the entry is open.
+
+Stores and categories are ordered by `position`, then `id`. Placements are
+ordered by `item_id`, then `store_id`. Everything else is ordered by `id`, and
+that order means nothing else.
+
+What a member sees:
+
+- Every shared list, archived ones included, their own personal list, and
+  every other member's personal list unless its owner set it to `hidden`.
+- A hidden list and its entries, recently bought ones included, never reach
+  another member's device. Admins get no exception.
+- `writable` says whether the caller's ops on the list apply. It is `true` for
+  shared lists, the caller's own list and other members' `open` lists, and
+  `false` for `readonly` lists. Ops on a list that isn't writable, hidden ones
+  included, are rejected `forbidden`.
+- Every open entry of each list the member sees, plus the newest 50 bought
+  entries of each of those lists. Older bought entries stay on the server but
+  aren't sent.
+
+**Not filed yet.** A client shows an entry under "Not filed yet" when it has
+no `item_id`, no `store_id`, or no placement for its (`item_id`, `store_id`).
+
+### Operations
+
+Every op has an `op_id`, a lowercase UUID the client makes for it, and a
+`type`. An op whose `op_id` isn't a lowercase UUID, or whose `type` isn't one
+below, is rejected `invalid`. The ids a client creates, the `id` of
+`entry.add` and the `new_item_id` of `entry.place`, are lowercase UUIDs too.
+
+Text is cleaned before it is stored: Unicode normalisation (NFC), leading and
+trailing whitespace removed and runs of whitespace collapsed to one space.
+What's left must not be empty, must have no control characters, and must fit
+its limit in characters (Unicode code points): `text` 100, `quantity` 32 and
+`note` 200. A value that fails is `invalid`.
+
+Fields marked `?` are optional. Every entry op except `entry.add` gives
+`not_found` when the entry doesn't exist and `forbidden` when its list isn't
+writable.
+
+#### entry.add
+
+Fields: `id`, `list_id`, `item_id?`, `text?`, `store_id?`, `quantity?`,
+`note?`.
+
+Adds an open entry to the list.
+
+- With `item_id`: the entry's `text` is the item's name, and a `text` in the
+  op is ignored. Its store is `store_id`, or else the item's default store.
+- Without `item_id`: `text` is required, and the entry is unfiled, with no
+  item and no store. Giving `store_id` is `invalid`.
+- `quantity` and `note` are `""` when absent or `""`.
+- An `id` that an entry already has makes the op do nothing, without a
+  rejection.
+
+Rejected: `not_found` (the list, the item or the store doesn't exist),
+`forbidden` (the list isn't writable), `invalid` (a bad `id`, no `text`
+without `item_id`, a `store_id` without `item_id`, or a value that fails
+cleaning).
+
+#### entry.update
+
+Fields: `id`, `quantity?`, `note?`.
+
+Sets each field that is present. `""` clears it.
+
+Rejected: `not_found`, `forbidden`, `invalid` (neither field, or a value that
+fails cleaning).
+
+#### entry.buy
+
+Fields: `id`.
+
+Crosses the entry off. `bought_at` is the time the first `entry.buy` reached
+the server, and buying the entry again keeps that time.
+
+Rejected: `not_found`, `forbidden`.
+
+#### entry.unbuy
+
+Fields: `id`.
+
+Makes the entry open again: `bought_at` becomes `null`.
+
+Rejected: `not_found`, `forbidden`.
+
+#### entry.delete
+
+Fields: `id`.
+
+Deletes the entry.
+
+Rejected: `not_found`, `forbidden`.
+
+#### entry.place
+
+Fields: `id`, `store_id`, `category_id?`, `new_item_id?`.
+
+Files an entry in a store, or moves it to another store.
+
+- `store_id` must exist. A `category_id` must be a category of that store.
+- An entry with no item needs `category_id` and `new_item_id`. If an item has
+  the entry's text as its name, ignoring case, the entry links to that item.
+  Otherwise a new item is created with `new_item_id` as its id, the entry's
+  text as its name and `store_id` as its default store.
+- On an entry that has an item, `new_item_id` is ignored.
+- Then the entry's store becomes `store_id`. If `category_id` is given, it
+  becomes the item's placement in that store. An item without a default store
+  gets `store_id`.
+
+Rejected: `not_found` (the entry or the store doesn't exist), `forbidden`,
+`invalid` (a `category_id` that doesn't exist or is in another store, or, on
+an entry with no item, a missing `category_id` or a bad `new_item_id`),
+`conflict` (`new_item_id` is already another item's id).
+
+#### member.set_privacy
+
+Fields: `privacy`.
+
+Sets the privacy of the caller's own personal list:
+
+- `open`: other members see it and may change it.
+- `readonly`: other members see it, and their ops on it are rejected
+  `forbidden`.
+- `hidden`: other members don't get the list or its entries at all, and their
+  ops on it are rejected `forbidden`.
+
+The owner always sees and changes their own list. Hidden covers the list and
+its entries, not the catalog: an item created by filing an entry from a hidden
+list is in every member's snapshot, like the rest of the catalog.
+
+Rejected: `invalid` (anything but `open`, `readonly` or `hidden`).
+
+### Rules
+
+- **Ops are idempotent by `op_id`.** The server remembers every `op_id` it
+  has applied for 90 days, and skips an op whose `op_id` it remembers, without
+  a rejection. A batch sent again after a lost response therefore changes
+  nothing twice, and doesn't bring back an entry deleted since.
+- **A 200 consumes every op in the request.** Each op was applied, skipped as
+  a repeat or rejected. The client drops all of them from its queue, whether
+  or not they are in `rejected`. A rejected op's effect isn't in the snapshot,
+  so it leaves the client's copy when the snapshot replaces it.
+- **Any other status applies nothing.** The client keeps the batch and sends
+  it again later, unchanged. A batch within the limits above never gets 400 or
+  413, and a 401 means the device is signed out.
+- **Ops apply in the order they arrive**, within a request and across
+  requests, and the last one wins: when two members change the same thing,
+  the change that reaches the server last stays.
+- **Each snapshot replaces the client's whole local copy.** Anything not in it
+  is gone from the client. This is how a list that was just hidden, with its
+  entries, leaves other members' devices.
+
+**The client's duty.** The server can't see a client's queue. The client keeps
+every op the server hasn't acknowledged with a 200, both those still queued
+and those in a request awaiting its response, and re-applies them, in queue
+order, on top of every snapshot it receives. This way a sync never undoes a
+local change: an entry crossed off offline stays crossed off until its
+`entry.buy` reaches the server.

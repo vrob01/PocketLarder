@@ -188,6 +188,7 @@ func TestAuthRequired(t *testing.T) {
 		"POST /v1/invites",
 		"POST /v1/invites/revoke",
 		"POST /v1/signout",
+		"POST /v1/sync",
 		"GET /v1/admin/members",
 		"PATCH /v1/admin/members/" + id,
 		"DELETE /v1/admin/members/" + id,
