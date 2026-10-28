@@ -1,0 +1,16 @@
+services:
+  pocketlarder:
+    build: ..
+    container_name: pocketlarder
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      POCKETLARDER_PUBLIC_URL: https://lists.example.com
+    volumes:
+      - pocketlarder-data:/data
+    ports: ["127.0.0.1:8080:8080"]
+
+volumes:
+  pocketlarder-data:
