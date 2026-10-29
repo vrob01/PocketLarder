@@ -10,4 +10,10 @@ services:
       POCKETLARDER_PUBLIC_URL: ${POCKETLARDER_PUBLIC_URL:?set it in server/deploy/.env}
     volumes:
       - ${POCKETLARDER_HOST_DATA_DIR:?set it in server/deploy/.env}:/data
-    ports: ["127.0.0.1:8080:8080"]
+    # No published port: only containers on the proxy network, i.e. the reverse proxy, reach it.
+    networks: [proxy]
+
+networks:
+  proxy:
+    external: true
+    name: ${POCKETLARDER_PROXY_NETWORK:?set it in server/deploy/.env}
