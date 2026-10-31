@@ -100,9 +100,9 @@ complicated.
     and the plan decides how the merge step gets a CI result.
   - The builder learns to read failed CI logs, and the UI and UX reviewers
     learn to fetch the screenshot artifacts.
-  - `.github/workflows/*` joins `protected_paths`, so no factory branch can
-    weaken the checks it's judged by. The first iOS piece may still add the
-    workflow, because adding files is allowed.
+  - The GitHub Actions workflow lands by hand with these changes, and
+    `.github/*` joins `protected_paths`, which now refuse additions too. No
+    factory branch ever writes or weakens the checks it's judged by.
 - **The Xcode project** is kept in a form the factory can edit without Xcode,
   with the project's folders synchronized to disk, so adding a source file
   never touches the project file **[Claude's call]**.

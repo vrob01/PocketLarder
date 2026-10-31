@@ -8,8 +8,8 @@ Usage:
 
 The gate runs the main checkout's factory/checks.sh inside the job's worktree,
 so a branch can't change the checks it is judged by. It also fails when the
-branch modifies or deletes a file matching config.json `protected_paths`
-(fnmatch patterns, where `*` also matches `/`). Adding new files is fine.
+branch adds, modifies or deletes a file matching config.json `protected_paths`
+(fnmatch patterns, where `*` also matches `/`).
 
 checks.sh waits for GitHub's Mac build on branches that touch ios/. The hook
 can't wait that long, so it skips the wait. The merge gate runs on a local merge
@@ -45,23 +45,19 @@ def git(worktree, *args):
 
 
 def protected_changes(worktree):
-    """Existing files under protected_paths that the branch modified or deleted."""
-    diff = git(worktree, "diff", "--name-status", f"origin/{CONFIG['base_branch']}...HEAD")
-    hits = []
-    for line in diff.splitlines():
-        status, *paths = line.split("\t")
-        if status.startswith("A"):
-            continue
-        old = paths[0]  # for renames and copies, the original path
-        if any(fnmatch.fnmatch(old, pattern) for pattern in CONFIG["protected_paths"]):
-            hits.append(f"{status[0]} {old}")
-    return hits
+    """Files under protected_paths that the branch added, modified or deleted."""
+    # -z leaves odd file names unquoted; --no-renames reports both sides of a rename.
+    diff = git(worktree, "diff", "--name-status", "--no-renames", "-z", f"origin/{CONFIG['base_branch']}...HEAD")
+    fields = diff.split("\0")
+    return [f"{status} {path}" for status, path in zip(fields[0::2], fields[1::2])
+            if any(fnmatch.fnmatch(path, pattern) for pattern in CONFIG["protected_paths"])]
 
 
 def unbuilt_app_changes(worktree, gated):
     """ios/ paths the merge added to a branch that needs a Mac build, since the commit that got one."""
     def ios_paths(revisions):
-        return [p for p in git(worktree, "diff", "--name-only", revisions).splitlines() if p.startswith("ios/")]
+        out = git(worktree, "diff", "--name-only", "--no-renames", "-z", revisions)
+        return [p for p in out.split("\0") if p.startswith("ios/")]
     if not ios_paths(f"origin/{CONFIG['base_branch']}...HEAD"):
         return []
     return ios_paths(f"{gated}..HEAD")

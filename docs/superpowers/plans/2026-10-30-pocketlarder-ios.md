@@ -65,11 +65,12 @@ The design leaves these to the builder.
 `factory/*`, `.claude/*` and, from this task on, `.github/*` are protected, so Claude makes these changes in a session with the owner, on a branch the owner merges, before Task 1's issue gets the `factory` label.
 
 **Files:**
+- Create: `.github/workflows/ios.yml`
 - Modify: `factory/config.json`, `factory/checks.sh`, `factory/bin/gate`
 - Modify: `.claude/agents/builder.md`, `.claude/agents/reviewer-ui.md`, `.claude/agents/reviewer-ux.md`, `.claude/skills/factory/SKILL.md`
 - Modify: `AGENTS.md` (Status)
 
-- [ ] **Step 1: Protect workflows.** Add `".github/*"` to `protected_paths` in `factory/config.json`. Adding files stays allowed, so Task 1 can create the workflow, and later tasks can't change it.
+- [ ] **Step 1: Protect workflows.** Add `".github/*"` to `protected_paths` in `factory/config.json`, and make the gate refuse additions under protected paths too. Task 1 is a branch like any other, so it can't write the workflow that judges it. A builder fighting a red build could otherwise weaken the checks for good.
 
 - [ ] **Step 2: `factory/checks.sh`.** Keep the Go block unchanged. After it, add:
 
@@ -99,13 +100,25 @@ if grep -q '^ios/' <<<"$changed" && [ -z "${FACTORY_SKIP_CI:-}" ]; then
 fi
 ```
 
-Write the CI block's body with `gh api "repos/{owner}/{repo}/actions/runs?head_sha=$sha"`, picking the run whose `path` is `.github/workflows/ios.yml`, and `timeout 2700 gh run watch "$id" --exit-status --interval 30`. Picking by path means a branch can't answer with a workflow of its own, and it works before the workflow file is on `main`. After the wait, require that the `ios` job's conclusion is `success`, because a skipped job leaves the run green too. A commit that isn't on GitHub fails at once with a message to push the branch.
+Write the CI block's body with `gh api "repos/{owner}/{repo}/actions/runs?head_sha=$sha"`, picking the run whose `path` is `.github/workflows/ios.yml`, and `timeout 2700 gh run watch "$id" --exit-status --interval 30`. Picking by path means a branch can't answer with a workflow of its own. After the wait, require that the `ios` job's conclusion is `success`, because a skipped job leaves the run green too. A commit that isn't on GitHub fails at once with a message to push the branch, and so does one whose `ios.yml` differs from `origin/main`'s, or a `main` that has none.
+
+Every `git diff` that decides something about paths, here and in the gate, uses `--no-renames -z`. Otherwise a file with a non-ASCII name is quoted and misses `^ios/`, and a rename out of `ios/` lists only its new path.
 
 - [ ] **Step 3: `factory/bin/gate`.**
   - `hook()` runs `checks.sh` with `FACTORY_SKIP_CI=1`, because a stop hook can't wait for a macOS run.
   - `gate(job, merge=True)` reads `COMMIT` from the round's `checks.md`. If the branch touches `ios/` and `git diff --name-only <COMMIT> HEAD` lists any `ios/` path, the merge brought in app changes that GitHub never built: FAIL with "main changed ios/ since the gate: merge origin/main, push, and gate again". Otherwise it runs `checks.sh` with `FACTORY_CI_COMMIT=<COMMIT>`, whose run already passed.
 
-- [ ] **Step 4: Agents and skill.**
+- [ ] **Step 4: `.github/workflows/ios.yml`.**
+  - The workflow's `name` is `ios`. It runs on `push` to any branch and on `workflow_dispatch`, with `permissions: contents: read`, `concurrency` per ref with `cancel-in-progress`, and `persist-credentials: false` on checkouts.
+  - **Job `changes`** (`ubuntu-latest`): checkout with `fetch-depth: 0`. Its output `ios` is whether `git diff --name-only --no-renames -z origin/main...HEAD` touches `ios/`.
+  - **Job `ios`** runs `needs: changes` with `if: needs.changes.outputs.ios == 'true'` on `runs-on: xcode-27` with `timeout-minutes: 45`. It:
+    - runs `swift test --package-path ios/PocketLarderKit`;
+    - picks the newest available iPhone simulator on the newest iOS runtime (`xcrun simctl list devices available -j`);
+    - runs `xcodebuild test -project ios/PocketLarder.xcodeproj -scheme PocketLarder -destination "id=$SIM" -resultBundlePath "$RUNNER_TEMP/Tests.xcresult" CODE_SIGNING_ALLOWED=NO`;
+    - exports attachments to a folder and uploads the artifact `screenshots`, with `if: always()`;
+    - uploads the result bundle as `xcresult` on failure.
+
+- [ ] **Step 5: Agents and skill.**
   - `builder.md`: give the Stop hook `timeout: 900`. Add an "iOS" section:
     - Xcode isn't available here. Run the kit tests (the command from `AGENTS.md`).
     - Run the local checks with `FACTORY_SKIP_CI=1`.
@@ -114,11 +127,11 @@ Write the CI block's body with `gh api "repos/{owner}/{repo}/actions/runs?head_s
   - `reviewer-ui.md` and `reviewer-ux.md`: for a branch touching `ios/`, skip the dev server and `agent-browser`. Download the gated commit's `screenshots` artifact and read the PNGs, at least every screen the task names.
   - `SKILL.md`: run `factory/bin/gate <job>` and `factory/bin/job merge <job>` with `run_in_background: true`, and act on the result when they finish. The skill stays free of repo specifics, so this holds for every job.
 
-- [ ] **Step 5: `AGENTS.md` Status.** Add the iOS design and this plan to the list of documents to read, for `ios/` as well as `server/`.
+- [ ] **Step 6: `AGENTS.md` Status.** Add the iOS design and this plan to the list of documents to read, for `ios/` as well as `server/`.
 
-- [ ] **Step 6: Verify.** On main, `bash factory/checks.sh` passes with the same output and about the same time as before, because no package exists yet. `factory/bin/gate --hook` behavior is unchanged for server jobs. Task 1's first gate is the first real test of the iOS paths. If it shows a bug in this task, fix it by hand the same way.
+- [ ] **Step 7: Verify.** On main, `bash factory/checks.sh` passes with the same output and about the same time as before, because no package exists yet. `factory/bin/gate --hook` behavior is unchanged for server jobs. Task 1's first gate is the first test of the iOS paths against the real app. If it shows a bug in this task, fix it by hand the same way.
 
-- [ ] **Step 7: Commit** on `factory/ios-support`: `git commit -m "Teach the factory to gate iOS changes on the GitHub ios run"`. Open a PR. The owner merges it.
+- [ ] **Step 8: Commit** on `factory/ios-support`: `git commit -m "Teach the factory to gate iOS changes on the GitHub ios run"`. Open a PR. The owner merges it.
 
 ---
 
@@ -131,8 +144,9 @@ Write the CI block's body with `gh api "repos/{owner}/{repo}/actions/runs?head_s
 - Create: `ios/Config/PocketLarder.xcconfig`, `ios/Config/Local.xcconfig.example`, `ios/Config/Info.plist`
 - Create: `ios/PocketLarder/PocketLarderApp.swift`, `ios/PocketLarder/AppModel.swift`, `ios/PocketLarder/Welcome/WelcomeView.swift`, `ios/PocketLarder/Welcome/EnterInviteView.swift`, `ios/PocketLarder/Localizable.xcstrings`, `ios/PocketLarder/Assets.xcassets/` (`AppIcon`, `AccentColor`, `Logo`)
 - Test: `ios/PocketLarderTests/AppModelTests.swift`, `ios/PocketLarderUITests/ScreenshotTests.swift`
-- Create: `.github/workflows/ios.yml`
 - Modify: `.gitignore`, `AGENTS.md`, `README.md`
+
+The `ios` workflow already exists (Task 0) and expects these names: project `ios/PocketLarder.xcodeproj`, scheme `PocketLarder`, package `ios/PocketLarderKit`. It's protected: if it has to change, write BLOCKED and say how.
 
 **Interfaces:**
 - Produces (package): `Package.swift` with `// swift-tools-version: 6.2`, `platforms: [.iOS("27.0"), .macOS("26.0")]`, library `PocketLarderKit`, test target `PocketLarderKitTests`, and no dependencies.
@@ -143,7 +157,7 @@ Write the CI block's body with `gh api "repos/{owner}/{repo}/actions/runs?head_s
 - Produces (app):
   - `@MainActor @Observable final class AppModel` with `var pendingInvite: Invite?`, `func open(_ url: URL)` (an invite link sets `pendingInvite`) and `func signIn(_ invite: Invite, deviceName: String) async`. It's empty here. Task 4 implements it and gives it its final return type.
   - `PocketLarderApp` routes to `WelcomeView`. `.onOpenURL` calls `open`. The root applies `@AppStorage("appearance")` with `.preferredColorScheme`.
-  - The screenshot naming convention, and the `ios` workflow with the artifact `screenshots`.
+  - The screenshot naming convention.
 
 - [ ] **Step 1: Write the failing kit tests** in `InviteTests.swift`
 
@@ -222,18 +236,7 @@ func testEnterInvite()          // empty form: enter-invite-<lang>-<appearance>;
                                 // Invite code fills Server "lists.example.com", and attaches enter-invite-filled-<lang>-<appearance>
 ```
 
-- [ ] **Step 9: `.github/workflows/ios.yml`.**
-  - It runs on `push` to any branch and on `workflow_dispatch`, with `permissions: contents: read` and `concurrency` per ref with `cancel-in-progress`.
-  - The workflow's `name` is `ios`, and the job below keeps the id and name `ios`. The gate and the reviewers look for those.
-  - **Job `changes`** (`ubuntu-latest`): checkout with `fetch-depth: 0`. Its output `ios` is whether `git diff --name-only origin/main...HEAD` touches `ios/`.
-  - **Job `ios`** runs `needs: changes` with `if: needs.changes.outputs.ios == 'true'` on `runs-on: xcode-27` with `timeout-minutes: 45`. It:
-    - runs `swift test --package-path ios/PocketLarderKit`;
-    - picks the newest available iPhone simulator on the newest iOS runtime (`xcrun simctl list devices available -j`);
-    - runs `xcodebuild test -project ios/PocketLarder.xcodeproj -scheme PocketLarder -destination "id=$SIM" -resultBundlePath "$RUNNER_TEMP/Tests.xcresult" CODE_SIGNING_ALLOWED=NO`;
-    - exports attachments to a folder and uploads the artifact `screenshots`, with `if: always()`;
-    - uploads the result bundle as `xcresult` on failure.
-
-- [ ] **Step 10: Docs.**
+- [ ] **Step 9: Docs.**
   - `.gitignore` gets: `ios/Config/Local.xcconfig`, `ios/PocketLarderKit/.build/`, `xcuserdata/`, `DerivedData/`.
   - `AGENTS.md` gets an iOS part under Setup and Validation:
     - the layout;
@@ -246,7 +249,7 @@ func testEnterInvite()          // empty form: enter-invite-<lang>-<appearance>;
     - that a free Apple ID needs a reinstall every 7 days;
     - "To use PocketLarder in another language than your iPhone's, open Settings > Apps > PocketLarder > Language."
 
-- [ ] **Step 11: Commit and push.** `git add ios .github .gitignore AGENTS.md README.md && git commit -m "Add the iOS project, CI and the signed-out screens" && git push`. Wait for the `ios` run of HEAD. Expected: green, with 12 screenshots in `screenshots` (welcome and enter-invite in both languages and appearances, plus the filled form). Look at every screenshot. Fix and push until it's green and they match the mockups.
+- [ ] **Step 10: Commit and push.** `git add ios .gitignore AGENTS.md README.md && git commit -m "Add the iOS project, CI and the signed-out screens" && git push`. Wait for the `ios` run of HEAD. Expected: green, with 12 screenshots in `screenshots` (welcome and enter-invite in both languages and appearances, plus the filled form). Look at every screenshot. Fix and push until it's green and they match the mockups.
 
 **On your phone:**
 - Install from the Mac. The icon shows on the home screen, and also in dark and tinted mode.

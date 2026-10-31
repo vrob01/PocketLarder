@@ -1,0 +1,71 @@
+# Judges every factory branch that touches ios/. It lands by hand and is protected,
+# so no branch ever writes or changes the checks it is judged by (see factory/checks.sh).
+name: ios
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      ios: ${{ steps.diff.outputs.ios }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: diff
+        # -z and --no-renames, so that odd file names and renames out of ios/ still count.
+        run: |
+          paths=$(git diff --name-only --no-renames -z origin/main...HEAD | tr '\0' '\n')
+          if grep -q '^ios/' <<<"$paths"; then echo "ios=true"; else echo "ios=false"; fi >> "$GITHUB_OUTPUT"
+
+  ios:
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
+    runs-on: xcode-27
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Test the Swift package on macOS
+        run: swift test --package-path ios/PocketLarderKit
+      - name: Pick the newest iPhone simulator
+        id: simulator
+        run: |
+          xcrun simctl list devices available -j | python3 -c '
+          import json, re, sys
+          runtimes = json.load(sys.stdin)["devices"]
+          iphones = {k: [d for d in v if d["name"].startswith("iPhone")] for k, v in runtimes.items() if ".iOS-" in k}
+          newest = max((k for k, v in iphones.items() if v), key=lambda k: [int(n) for n in re.findall(r"\d+", k)])
+          print("id=" + iphones[newest][-1]["udid"])' >> "$GITHUB_OUTPUT"
+      - name: Build and test the app
+        run: |
+          xcodebuild test -project ios/PocketLarder.xcodeproj -scheme PocketLarder \
+            -destination "id=${{ steps.simulator.outputs.id }}" \
+            -resultBundlePath "$RUNNER_TEMP/Tests.xcresult" CODE_SIGNING_ALLOWED=NO
+      - name: Export the screenshots
+        if: always() && hashFiles('ios/PocketLarder.xcodeproj/project.pbxproj') != ''
+        run: xcrun xcresulttool export attachments --path "$RUNNER_TEMP/Tests.xcresult" --output-path "$RUNNER_TEMP/screenshots"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: xcresult
+          path: ${{ runner.temp }}/Tests.xcresult
+          if-no-files-found: ignore

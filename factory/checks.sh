@@ -16,7 +16,8 @@ go test ./...
 CGO_ENABLED=0 go build ./...
 cd ..
 
-changed=$(git diff --name-only "origin/main...HEAD")
+# -z and --no-renames, so that odd file names and renames out of ios/ still count.
+changed=$(git diff --name-only --no-renames -z "origin/main...HEAD" | tr '\0' '\n')
 
 # Kit and contract tests: any branch touching ios/ or server/, once the package
 # exists. A server change has to keep working with the app. Docker runs as this
@@ -45,11 +46,17 @@ fi
 if grep -q '^ios/' <<<"$changed" && [ -z "${FACTORY_SKIP_CI:-}" ]; then
   exec >&2 # The gate logs stdout before stderr and tails the log: failures here must come last.
   sha=${FACTORY_CI_COMMIT:-$(git rev-parse HEAD)}
+  # The workflow that judges a branch comes from main: branches never write it.
+  if ! git cat-file -e origin/main:.github/workflows/ios.yml 2>/dev/null \
+    || ! git diff --quiet origin/main "$sha" -- .github/workflows/ios.yml; then
+    echo "$sha doesn't have main's .github/workflows/ios.yml. Merge origin/main; branches can't change it."
+    exit 1
+  fi
   if ! gh api "repos/{owner}/{repo}/commits/$sha" --silent 2>/dev/null; then
     echo "$sha isn't on GitHub. Push the branch, then gate again."
     exit 1
   fi
-  # By path, not name: .github/ is protected, so a branch can't answer with a workflow of its own.
+  # By path, not name, so that a branch can't answer with a workflow of its own.
   id=
   for _ in $(seq 60); do
     id=$(gh api "repos/{owner}/{repo}/actions/runs?head_sha=$sha" \

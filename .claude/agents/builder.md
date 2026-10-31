@@ -53,10 +53,9 @@ other jobs.
 - Make the simplest change that fully meets the spec. No fallbacks, hidden
   defaults or extras the spec doesn't ask for.
 - Use the toolchain versions and commands AGENTS.md gives.
-- Never modify or delete an existing file that matches `protected_paths` in
-  `<repo>/factory/config.json`, and never add or edit anything under `factory/`
-  or `.claude/`. The gate fails the branch if you do. Other new files,
-  including new tests, are fine.
+- Never add, modify or delete a file that matches `protected_paths` in
+  `<repo>/factory/config.json`. The gate fails the branch if you do. Other new
+  files, including new tests, are fine.
   If the spec can't be met without such an edit, write BLOCKED.
 
 ## Test against the acceptance criteria
@@ -92,7 +91,8 @@ in the GitHub `ios` workflow. When the branch touches `ios/`:
   run `cd <worktree> && timeout 540 gh run watch <id> --exit-status --interval 30 >/dev/null`
   with a 10-minute Bash timeout, and run it again while it exits 124.
 - If it fails, read `gh run view <id> --log-failed`, fix the cause and push again.
-  The build isn't READY until the run of your last commit is green.
+  The build isn't READY until the run of your last commit is green. The workflow
+  file is protected: if it has to change, write BLOCKED and say how.
 - Look at the result: `gh run download <id> -n screenshots -D <empty temp dir>`,
   then read the PNGs of every screen the task names and compare them with the
   mockups it names.
