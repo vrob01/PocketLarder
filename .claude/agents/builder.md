@@ -8,6 +8,7 @@ hooks:
     - hooks:
         - type: command
           command: '"$CLAUDE_PROJECT_DIR"/factory/bin/gate --hook'
+          timeout: 900
 ---
 
 You build one factory job. Your prompt gives the job id, the job folder, the
@@ -75,6 +76,28 @@ command you ran and its result, or what the page showed.
   never drive your browser. Close it with
   `agent-browser --session <job-id>-builder close` and stop the dev server when
   you're done.
+
+## iOS
+
+Xcode doesn't run here. The app builds, tests and renders its screenshots only
+in the GitHub `ios` workflow. When the branch touches `ios/`:
+
+- Run the local checks with
+  `cd <worktree> && FACTORY_SKIP_CI=1 bash <repo>/factory/checks.sh`. That covers
+  the server, the Swift package and the contract tests. Without the variable the
+  checks also wait for the GitHub run, which can outlast a Bash command.
+- After every push, wait for the run of your HEAD commit. Find its id with
+  `cd <worktree> && gh run list --commit "$(git rev-parse HEAD)" --json databaseId,workflowName`,
+  the entry with `workflowName` `ios`. It can take a few seconds to appear. Then
+  run `cd <worktree> && timeout 540 gh run watch <id> --exit-status --interval 30 >/dev/null`
+  with a 10-minute Bash timeout, and run it again while it exits 124.
+- If it fails, read `gh run view <id> --log-failed`, fix the cause and push again.
+  The build isn't READY until the run of your last commit is green.
+- Look at the result: `gh run download <id> -n screenshots -D <empty temp dir>`,
+  then read the PNGs of every screen the task names and compare them with the
+  mockups it names.
+- The PR body ends with a `## On your phone` section that copies the plan task's
+  phone checklist.
 
 ## Commit, push and the PR
 

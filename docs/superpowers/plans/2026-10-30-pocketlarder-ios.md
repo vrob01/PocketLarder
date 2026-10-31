@@ -99,19 +99,20 @@ if grep -q '^ios/' <<<"$changed" && [ -z "${FACTORY_SKIP_CI:-}" ]; then
 fi
 ```
 
-Write the CI block's body with `gh run list --commit "$sha" --workflow ios.yml --json databaseId -q '.[0].databaseId'` and `timeout 2700 gh run watch "$id" --exit-status --interval 30`. If no run appears, the failure message says to push the branch.
+Write the CI block's body with `gh api "repos/{owner}/{repo}/actions/runs?head_sha=$sha"`, picking the run whose `path` is `.github/workflows/ios.yml`, and `timeout 2700 gh run watch "$id" --exit-status --interval 30`. Picking by path means a branch can't answer with a workflow of its own, and it works before the workflow file is on `main`. After the wait, require that the `ios` job's conclusion is `success`, because a skipped job leaves the run green too. A commit that isn't on GitHub fails at once with a message to push the branch.
 
 - [ ] **Step 3: `factory/bin/gate`.**
   - `hook()` runs `checks.sh` with `FACTORY_SKIP_CI=1`, because a stop hook can't wait for a macOS run.
-  - `gate(job, merge=True)` reads `COMMIT` from the round's `checks.md`. If `git diff --name-only <COMMIT> HEAD` lists any `ios/` path, the merge brought in app changes that GitHub never built: FAIL with "main changed ios/ since the gate: merge origin/main, push, and gate again". Otherwise it runs `checks.sh` with `FACTORY_CI_COMMIT=<COMMIT>`, whose run already passed.
+  - `gate(job, merge=True)` reads `COMMIT` from the round's `checks.md`. If the branch touches `ios/` and `git diff --name-only <COMMIT> HEAD` lists any `ios/` path, the merge brought in app changes that GitHub never built: FAIL with "main changed ios/ since the gate: merge origin/main, push, and gate again". Otherwise it runs `checks.sh` with `FACTORY_CI_COMMIT=<COMMIT>`, whose run already passed.
 
 - [ ] **Step 4: Agents and skill.**
   - `builder.md`: give the Stop hook `timeout: 900`. Add an "iOS" section:
     - Xcode isn't available here. Run the kit tests (the command from `AGENTS.md`).
-    - After every push touching `ios/`, find the run with `gh run list --commit $(git rev-parse HEAD) --workflow ios.yml`, wait with `gh run watch <id> --exit-status` in the background, read failures with `gh run view <id> --log-failed`, and look at `gh run download <id> -n screenshots -D <tmp>` before writing build.md.
+    - Run the local checks with `FACTORY_SKIP_CI=1`.
+    - After every push touching `ios/`, find the run with `gh run list --commit "$(git rev-parse HEAD)" --json databaseId,workflowName`, wait with `timeout 540 gh run watch <id> --exit-status` (repeating while it exits 124), read failures with `gh run view <id> --log-failed`, and look at `gh run download <id> -n screenshots -D <tmp>` before writing build.md.
     - Copy the plan task's phone checklist into the PR body as `## On your phone`.
   - `reviewer-ui.md` and `reviewer-ux.md`: for a branch touching `ios/`, skip the dev server and `agent-browser`. Download the gated commit's `screenshots` artifact and read the PNGs, at least every screen the task names.
-  - `SKILL.md` Gate section: run `factory/bin/gate <job>` with `run_in_background: true` when the branch touches `ios/`, and act on its result when it finishes.
+  - `SKILL.md`: run `factory/bin/gate <job>` and `factory/bin/job merge <job>` with `run_in_background: true`, and act on the result when they finish. The skill stays free of repo specifics, so this holds for every job.
 
 - [ ] **Step 5: `AGENTS.md` Status.** Add the iOS design and this plan to the list of documents to read, for `ios/` as well as `server/`.
 
@@ -223,6 +224,7 @@ func testEnterInvite()          // empty form: enter-invite-<lang>-<appearance>;
 
 - [ ] **Step 9: `.github/workflows/ios.yml`.**
   - It runs on `push` to any branch and on `workflow_dispatch`, with `permissions: contents: read` and `concurrency` per ref with `cancel-in-progress`.
+  - The workflow's `name` is `ios`, and the job below keeps the id and name `ios`. The gate and the reviewers look for those.
   - **Job `changes`** (`ubuntu-latest`): checkout with `fetch-depth: 0`. Its output `ios` is whether `git diff --name-only origin/main...HEAD` touches `ios/`.
   - **Job `ios`** runs `needs: changes` with `if: needs.changes.outputs.ios == 'true'` on `runs-on: xcode-27` with `timeout-minutes: 45`. It:
     - runs `swift test --package-path ios/PocketLarderKit`;
