@@ -16,7 +16,7 @@ private let inviteMarker = "pocketlarder://invite?"
 public func parseInvite(_ text: String) -> Invite? {
     guard let token = text.split(whereSeparator: \.isWhitespace).first(where: { $0.contains(inviteMarker) }),
           let start = token.range(of: inviteMarker),
-          let components = URLComponents(string: String(token[start.lowerBound...])),
+          let components = URLComponents(string: trimmed(token[start.lowerBound...])),
           components.host == "invite",
           let serverText = components.queryItems?.first(where: { $0.name == "server" })?.value,
           let server = normalizeServer(serverText),
@@ -24,6 +24,11 @@ public func parseInvite(_ text: String) -> Invite? {
           !code.isEmpty, !code.contains(where: \.isWhitespace)
     else { return nil }
     return Invite(server: server, code: code)
+}
+
+/// A code is unpadded base64url, so it ends in a letter, digit, `-` or `_`; anything after that is prose punctuation.
+private func trimmed(_ link: Substring) -> String {
+    String(link.reversed().drop(while: { !($0.isASCII && ($0.isLetter || $0.isNumber)) && $0 != "-" && $0 != "_" }).reversed())
 }
 
 /// `https://host[:port]`, or `http://` for localhost and 127.0.0.1 only. Nil for anything else.

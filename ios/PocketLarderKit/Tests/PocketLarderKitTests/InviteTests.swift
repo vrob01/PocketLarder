@@ -14,6 +14,14 @@ let exampleInvite = Invite(server: URL(string: "https://lists.example.com")!, co
     #expect(parseInvite("Here's your invite:\n\n" + example + "\nSee you!") == exampleInvite)
     #expect(parseInvite("  " + example + "\n") == exampleInvite)
     #expect(parseInvite("iPhone" + example) == exampleInvite)
+    for tail in [".", ",", ";", ":", "!", "?", ")", ").", "...", "'", "*", "**", "\"", "]", "}", ">", "`", "”", "’", "»", "…"] {
+        #expect(parseInvite(example + tail) == exampleInvite)
+    }
+    #expect(parseInvite("(" + example + ")") == exampleInvite)
+    #expect(parseInvite("<" + example + ">") == exampleInvite)
+    #expect(parseInvite("\"" + example + "\"") == exampleInvite)
+    #expect(parseInvite("[invite](" + example + ")") == exampleInvite)
+    #expect(parseInvite("Join: " + example + ". Thanks") == exampleInvite)
 }
 
 @Test func rejectsBadInvites() {
@@ -22,6 +30,7 @@ let exampleInvite = Invite(server: URL(string: "https://lists.example.com")!, co
     #expect(parseInvite("pocketlarder://other?server=https%3A%2F%2Flists.example.com&code=x") == nil)
     #expect(parseInvite(noCode) == nil)
     #expect(parseInvite(noCode + "&code=") == nil)
+    #expect(parseInvite(noCode + "&code=...") == nil)
     #expect(parseInvite(noCode + "&code=a%20b") == nil)
     #expect(parseInvite(noCode + "&code=a%0Ab") == nil)
     #expect(parseInvite(noCode + "&code=%20") == nil)
