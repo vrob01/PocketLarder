@@ -5,6 +5,7 @@ Usage:
   gate <job-id>            write round-N/checks.md; exit 0 on PASS, 1 on FAIL
   gate <job-id> --merge    same, as round-N/merge-checks.md (job merge runs it)
   gate --hook              builder SubagentStop hook: run the checks once, exit 2 on failure
+  gate --review-hook       reviewer PreToolUse hook on SubagentHandback: exit 2 while the review file is missing
 
 The gate runs the main checkout's factory/checks.sh inside the job's worktree,
 so a branch can't change the checks it is judged by. It also fails when the
@@ -106,13 +107,34 @@ def gate(job_id, merge):
     sys.exit(0 if verdict == "PASS" else 1)
 
 
+def agent_prompt(transcript):
+    with open(Path(transcript).expanduser()) as f:
+        content = json.loads(f.readline())["message"]["content"]
+    return content if isinstance(content, str) else " ".join(b.get("text", "") for b in content)
+
+
+def review_hook():
+    event = json.load(sys.stdin)
+    # shortcut: PreToolUse gives only the session transcript, so this assumes the harness's
+    # subagents/ layout. If that moves, the hook errors without blocking and the factory's
+    # missing-file stop still applies.
+    transcript = Path(event["transcript_path"]).with_suffix("") / "subagents" / f"agent-{event['agent_id']}.jsonl"
+    prompt = agent_prompt(transcript)
+    folder = prompt.split("Job folder: ", 1)[1].split("/. ", 1)[0]
+    round_n = prompt.split("Review round ", 1)[1].split(".", 1)[0]
+    reviewer = event["agent_type"].removeprefix("reviewer-")
+    path = Path(folder) / f"round-{round_n}" / f"review-{reviewer}.md"
+    if not path.exists():
+        print(f"{path} does not exist, and the job stops without it. Write is in your tool list: "
+              "create the file with the Write tool now, then finish.", file=sys.stderr)
+        sys.exit(2)
+
+
 def hook():
     event = json.load(sys.stdin)
     if event.get("stop_hook_active"):
         sys.exit(0)  # one nudge per stop; the gate decides
-    with open(Path(event["agent_transcript_path"]).expanduser()) as f:
-        content = json.loads(f.readline())["message"]["content"]
-    prompt = content if isinstance(content, str) else " ".join(b.get("text", "") for b in content)
+    prompt = agent_prompt(event["agent_transcript_path"])
     job_id = prompt.split("Job: ", 1)[1].split(".", 1)[0]
     job = json.loads((FACTORY / "jobs" / job_id / "job.json").read_text())
     code, log, _ = run_checks(job["worktree"], FACTORY_SKIP_CI="1")
@@ -127,6 +149,8 @@ def hook():
 def main(argv):
     if argv == ["--hook"]:
         hook()
+    elif argv == ["--review-hook"]:
+        review_hook()
     elif len(argv) == 1 and not argv[0].startswith("-"):
         gate(argv[0], merge=False)
     elif len(argv) == 2 and argv[1] == "--merge":
