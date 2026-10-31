@@ -1,0 +1,91 @@
+<style>
+  .phone { width: 290px; height: 590px; margin: 0 auto; border: 10px solid #111; border-radius: 38px;
+    background: #fff; color: #111; overflow: hidden; display: flex; flex-direction: column;
+    font: 14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; text-align: left; }
+  .phone.dark { background: #000; color: #f2f2f7; border-color: #333; }
+  .w-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 26px; text-align: center; }
+  .logo { width: 76px; height: 76px; border-radius: 18px; background: #0a7d6b; display: grid; place-items: center; margin-bottom: 14px; }
+  .app-name { font-size: 26px; font-weight: 700; margin-bottom: 10px; }
+  .intro { font-size: 14px; color: #6c6c70; margin-bottom: 26px; }
+  .dark .intro { color: #a1a1a6; }
+  .btn { display: block; width: 100%; box-sizing: border-box; text-align: center; font-weight: 600; font-size: 15px;
+    padding: 12px; border-radius: 12px; background: #0a7d6b; color: #fff; }
+  .link { display: block; margin-top: 14px; font-size: 14px; color: #0a7d6b; }
+  .dark .link { color: #4cd3bd; }
+  .foot { padding: 0 22px 22px; font-size: 11px; color: #8a8a8e; text-align: center; }
+  .nav { padding: 14px 14px 6px; display: flex; align-items: center; gap: 8px; }
+  .nav .back { color: #0a7d6b; font-size: 15px; }
+  .nav-title { font-size: 22px; font-weight: 700; padding: 0 14px 12px; }
+  .form { padding: 0 14px; flex: 1; }
+  .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #8a8a8e; margin: 12px 4px 4px; }
+  .field { background: #f0f0f3; border-radius: 10px; padding: 10px; font-size: 14px; color: #111; word-break: break-all; }
+  .field.ph { color: #8a8a8e; }
+  .hint { font-size: 12px; color: #8a8a8e; margin: 5px 4px 0; }
+  .server { margin: 14px 4px 0; font-size: 13px; color: #333; background: #e0f5f1; color: #0a5c4f; border-radius: 10px; padding: 8px 10px; }
+  .form .btn { margin-top: 22px; }
+  .card-image { padding: 16px 0; background: transparent !important; }
+</style>
+
+<h2>Signed out: welcome screen and entering an invite by hand</h2>
+<p class="subtitle">Your five parts on the welcome screen, in light and dark, plus the screen behind "Enter invite". The logo is a placeholder. Click any card if you like it as is.</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="welcome-light" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="phone">
+        <div class="w-body">
+          <div class="logo"><svg width="40" height="40" viewBox="0 0 40 40" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 14h24l-2.5 18h-19z"/><path d="M14 14c0-4 2.5-7 6-7s6 3 6 7"/><path d="M15 22l4 4 7-8"/></svg></div>
+          <div class="app-name">PocketLarder</div>
+          <div class="intro">Shopping lists for your household. To start, this iPhone needs an invite from someone in your household: scan its QR code with the Camera app.</div>
+          <span class="btn">Enter invite</span>
+          <span class="link">Set up your own server ↗</span>
+        </div>
+        <div class="foot">Open source and private. No tracking, no ads, no analytics. Your lists are stored only on your household's own server.</div>
+      </div>
+    </div>
+    <div class="card-body"><h3>1 · Welcome, light</h3><p>"Enter invite" leads to the screen on the right. The link opens the self-hosting guide in Safari.</p></div>
+  </div>
+
+  <div class="card" data-choice="welcome-dark" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="phone dark">
+        <div class="w-body">
+          <div class="logo"><svg width="40" height="40" viewBox="0 0 40 40" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 14h24l-2.5 18h-19z"/><path d="M14 14c0-4 2.5-7 6-7s6 3 6 7"/><path d="M15 22l4 4 7-8"/></svg></div>
+          <div class="app-name">PocketLarder</div>
+          <div class="intro">Shopping lists for your household. To start, this iPhone needs an invite from someone in your household: scan its QR code with the Camera app.</div>
+          <span class="btn">Enter invite</span>
+          <span class="link">Set up your own server ↗</span>
+        </div>
+        <div class="foot">Open source and private. No tracking, no ads, no analytics. Your lists are stored only on your household's own server.</div>
+      </div>
+    </div>
+    <div class="card-body"><h3>2 · Welcome, dark</h3><p>Same screen, following the iPhone's dark mode.</p></div>
+  </div>
+
+  <div class="card" data-choice="enter-invite" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="phone">
+        <div class="nav"><span class="back">‹ Back</span></div>
+        <div class="nav-title">Enter invite</div>
+        <div class="form">
+          <div class="lbl">Invite</div>
+          <div class="field">pocketlarder://invite?server=https%3A%2F%2Flists.example.com&amp;code=fdd4…LPio</div>
+          <div class="hint">Paste the invite text you were sent.</div>
+          <div class="lbl">Device name</div>
+          <div class="field">iPhone</div>
+          <div class="hint">Shows in your household's device list, e.g. "Sam's iPhone".</div>
+          <div class="server">Signs in to <b>lists.example.com</b></div>
+          <span class="btn">Sign in</span>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>3 · Enter invite</h3><p>The server shown comes from the pasted invite, so you see where you're signing in before you do. Opening a pocketlarder:// link lands here too, already filled in: one tap on Sign in.</p></div>
+  </div>
+
+</div>
+
+<div class="section" style="margin-top:1.5rem">
+  <h3>My calls in these screens</h3>
+  <p class="subtitle">No QR scanner inside the app: the iPhone's Camera app opens the invite link (to be confirmed on your phone) · the footer says "stored only on your household's server" rather than "sent nowhere", because the lists do go to your server · German copy follows the same wording.</p>
+</div>

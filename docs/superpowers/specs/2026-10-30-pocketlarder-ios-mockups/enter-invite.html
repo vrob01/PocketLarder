@@ -1,0 +1,70 @@
+<style>
+  .phone { width: 290px; height: 590px; margin: 0 auto; border: 10px solid #111; border-radius: 38px;
+    background: #fff; color: #111; overflow: hidden; display: flex; flex-direction: column;
+    font: 14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; text-align: left; }
+  .btn { display: block; width: 100%; box-sizing: border-box; text-align: center; font-weight: 600; font-size: 15px;
+    padding: 12px; border-radius: 12px; background: #0a7d6b; color: #fff; }
+  .btn.off { background: #c7e6e0; }
+  .nav { padding: 14px 14px 6px; display: flex; align-items: center; justify-content: space-between; }
+  .nav .back { color: #0a7d6b; font-size: 15px; }
+  .paste { font-size: 13px; font-weight: 600; color: #0a7d6b; background: #e0f5f1; border-radius: 14px; padding: 4px 10px; }
+  .nav-title { font-size: 22px; font-weight: 700; padding: 0 14px 4px; }
+  .sub { font-size: 13px; color: #6c6c70; padding: 0 14px 6px; }
+  .form { padding: 0 14px; flex: 1; }
+  .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #8a8a8e; margin: 12px 4px 4px; }
+  .field { background: #f0f0f3; border-radius: 10px; padding: 10px; font-size: 14px; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .field.ph { color: #a1a1a6; }
+  .field .pre { color: #8a8a8e; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; }
+  .hint { font-size: 12px; color: #8a8a8e; margin: 5px 4px 0; }
+  .form .btn { margin-top: 22px; }
+  .card-image { padding: 16px 0; background: transparent !important; }
+</style>
+
+<h2>Enter invite, with separate fields</h2>
+<p class="subtitle">Server, invite code and device name as three fields. Left: opened from a pocketlarder:// link, everything filled in. Right: opened from "Enter invite" on the welcome screen, nothing filled in yet.</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="v2-filled" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="phone">
+        <div class="nav"><span class="back">‹ Back</span><span class="paste">Paste invite</span></div>
+        <div class="nav-title">Enter invite</div>
+        <div class="form">
+          <div class="lbl">Server</div>
+          <div class="field"><span class="pre">https://</span>lists.example.com</div>
+          <div class="lbl">Invite code</div>
+          <div class="field mono">fdd4efb3-cf5b-44e7-bec4-94df8e478f5f.ArBLMeKiOpJu5jbcasIRDr8-zlqlbdWCoIfZ9EsLPio</div>
+          <div class="lbl">Device name</div>
+          <div class="field">iPhone</div>
+          <div class="hint">Shows in your household's device list, e.g. "Sam's iPhone".</div>
+          <span class="btn">Sign in</span>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>A · Filled from a link</h3><p>One tap on Sign in, or fix a field first.</p></div>
+  </div>
+
+  <div class="card" data-choice="v2-empty" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="phone">
+        <div class="nav"><span class="back">‹ Back</span><span class="paste">Paste invite</span></div>
+        <div class="nav-title">Enter invite</div>
+        <div class="sub">Got the invite as one link? Tap Paste invite and the fields fill themselves.</div>
+        <div class="form">
+          <div class="lbl">Server</div>
+          <div class="field ph"><span class="pre">https://</span>lists.example.com</div>
+          <div class="lbl">Invite code</div>
+          <div class="field ph mono">from your invite</div>
+          <div class="lbl">Device name</div>
+          <div class="field">iPhone</div>
+          <div class="hint">Shows in your household's device list, e.g. "Sam's iPhone".</div>
+          <span class="btn off">Sign in</span>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>B · Empty</h3><p>Paste invite splits the link into the fields. Pasting the whole link into any field does the same.</p></div>
+  </div>
+
+</div>
