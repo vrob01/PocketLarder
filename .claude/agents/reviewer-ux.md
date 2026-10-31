@@ -40,6 +40,15 @@ reviewers never drive your browser. Don't sign in or submit forms against
 anything but the dev server. When you're done, run
 `agent-browser --session <job-id>-ux close` and stop the dev server.
 
+If the branch touches `ios/`, there is no dev server or page to open: the GitHub
+`ios` workflow renders every screen in the simulator. Skip the steps above and
+download its screenshots. Find the run with
+`cd <worktree> && gh run list --commit "$(git rev-parse HEAD)" --json databaseId,workflowName`
+(the entry with `workflowName` `ios`), then run
+`gh run download <id> -n screenshots -D <empty temp dir>`. Read at least the PNGs
+of every screen the task names, in both languages and appearances, and compare
+them with the mockups it names.
+
 ## Who uses PocketLarder
 
 - **Household members** add items through the week, often in a hurry, and tick

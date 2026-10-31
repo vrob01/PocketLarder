@@ -181,7 +181,9 @@ Read the first line of `build.md`:
 
 ### Gate
 
-Run `factory/bin/gate <job>`.
+Run `factory/bin/gate <job>` with `run_in_background: true`: the checks can wait
+on remote builds for longer than a foreground command may take. Act on it when
+it finishes.
 
 - `GATE: PASS` (exit 0): `factory/bin/job advance <job> review`. Go to
   **Review round N**.
@@ -220,7 +222,8 @@ No reviewer is ever spawned on a failing gate.
 Spawn `approver` with `<paths> PR: #<pr>. Final round: N.` When it finishes,
 read the first line of `decision.md`:
 
-- `APPROVE`: run `factory/bin/job merge <job>`. It merges
+- `APPROVE`: run `factory/bin/job merge <job>`, also with
+  `run_in_background: true`. It merges
   `origin/<base_branch>` into the branch, gates it again
   (`round-N/merge-checks.md`), pushes, and merges the PR with `gh pr merge`.
   On a conflict, a failing gate or a refused merge, it escalates the job

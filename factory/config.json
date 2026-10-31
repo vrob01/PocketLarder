@@ -19,7 +19,8 @@
   },
   "protected_paths": [
     "factory/*",
-    ".claude/*"
+    ".claude/*",
+    ".github/*"
   ],
   "ports": { "base": 5100, "step": 10 },
   "prices_usd_per_mtok": {

@@ -5,20 +5,23 @@ shared shopping lists.
 
 ## Status
 
-The design is settled and the server is being built. Read these before touching
-`server/`:
+The design is settled, the server is built and the iOS app is being built. Read
+these before touching `server/` or `ios/`:
 
 - Spec: `docs/superpowers/specs/2026-10-27-pocketlarder-design.md`
 - Server plan: `docs/superpowers/plans/2026-10-27-pocketlarder-server.md`
+- iOS design: `docs/superpowers/specs/2026-10-30-pocketlarder-ios-design.md`.
+  It wins over the spec where they disagree about the app.
+- iOS plan: `docs/superpowers/plans/2026-10-30-pocketlarder-ios.md`
 
-The plan is built one task at a time, one factory issue per task, in order.
+Each plan is built one task at a time, one factory issue per task, in order.
 Each task builds on the merged PRs of the tasks before it. An issue that names a
 plan task means exactly that task as the plan writes it: its files, interfaces,
 tests and values. Where the plan and the spec disagree, the plan wins, because
 it records decisions the spec left to the builder.
 
-Layout: `server/` is the Go server (AGPL-3.0). `ios/` will hold the SwiftUI app
-(MPL-2.0); its plan isn't written yet.
+Layout: `server/` is the Go server (AGPL-3.0). `ios/` holds the SwiftUI app
+(MPL-2.0).
 
 ## Setup
 

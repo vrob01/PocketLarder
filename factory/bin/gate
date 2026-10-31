@@ -8,12 +8,18 @@ Usage:
 
 The gate runs the main checkout's factory/checks.sh inside the job's worktree,
 so a branch can't change the checks it is judged by. It also fails when the
-branch modifies or deletes a file matching config.json `protected_paths`
-(fnmatch patterns, where `*` also matches `/`). Adding new files is fine.
+branch adds, modifies or deletes a file matching config.json `protected_paths`
+(fnmatch patterns, where `*` also matches `/`).
+
+checks.sh waits for GitHub's Mac build on branches that touch ios/. The hook
+can't wait that long, so it skips the wait. The merge gate runs on a local merge
+commit GitHub never built, so it relies on the build of the commit the round
+gated, and fails when the merge brought in ios/ changes that build didn't see.
 """
 
 import fnmatch
 import json
+import os
 import subprocess
 import sys
 import time
@@ -39,22 +45,28 @@ def git(worktree, *args):
 
 
 def protected_changes(worktree):
-    """Existing files under protected_paths that the branch modified or deleted."""
-    diff = git(worktree, "diff", "--name-status", f"origin/{CONFIG['base_branch']}...HEAD")
-    hits = []
-    for line in diff.splitlines():
-        status, *paths = line.split("\t")
-        if status.startswith("A"):
-            continue
-        old = paths[0]  # for renames and copies, the original path
-        if any(fnmatch.fnmatch(old, pattern) for pattern in CONFIG["protected_paths"]):
-            hits.append(f"{status[0]} {old}")
-    return hits
+    """Files under protected_paths that the branch added, modified or deleted."""
+    # -z leaves odd file names unquoted; --no-renames reports both sides of a rename.
+    diff = git(worktree, "diff", "--name-status", "--no-renames", "-z", f"origin/{CONFIG['base_branch']}...HEAD")
+    fields = diff.split("\0")
+    return [f"{status} {path}" for status, path in zip(fields[0::2], fields[1::2])
+            if any(fnmatch.fnmatch(path, pattern) for pattern in CONFIG["protected_paths"])]
 
 
-def run_checks(worktree):
+def unbuilt_app_changes(worktree, gated):
+    """ios/ paths the merge added to a branch that needs a Mac build, since the commit that got one."""
+    def ios_paths(revisions):
+        out = git(worktree, "diff", "--name-only", "--no-renames", "-z", revisions)
+        return [p for p in out.split("\0") if p.startswith("ios/")]
+    if not ios_paths(f"origin/{CONFIG['base_branch']}...HEAD"):
+        return []
+    return ios_paths(f"{gated}..HEAD")
+
+
+def run_checks(worktree, **env):
     start = time.monotonic()
-    res = subprocess.run(["bash", str(CHECKS)], cwd=worktree, capture_output=True, text=True)
+    res = subprocess.run(["bash", str(CHECKS)], cwd=worktree, capture_output=True, text=True,
+                         env={**os.environ, **env})
     return res.returncode, res.stdout + res.stderr, int(time.monotonic() - start)
 
 
@@ -66,7 +78,19 @@ def gate(job_id, merge):
     round_dir = FACTORY / "jobs" / job_id / f"round-{job['round']}"
     commit = git(worktree, "rev-parse", "HEAD").strip()
     protected = protected_changes(worktree)
-    code, log, seconds = run_checks(worktree)
+    if merge:
+        lines = (round_dir / "checks.md").read_text().splitlines()
+        gated = next((l.removeprefix("COMMIT: ") for l in lines if l.startswith("COMMIT: ")), "")
+        if not gated:
+            die(f"round-{job['round']}/checks.md names no gated commit")
+        unbuilt = unbuilt_app_changes(worktree, gated)
+        if unbuilt:
+            code, log, seconds = 1, ("main changed ios/ since the gate: merge origin/main, push, and gate again.\n"
+                                     + "\n".join(unbuilt) + "\n"), 0
+        else:
+            code, log, seconds = run_checks(worktree, FACTORY_CI_COMMIT=gated)
+    else:
+        code, log, seconds = run_checks(worktree)
     verdict = "PASS" if code == 0 and not protected else "FAIL"
     name = "merge-checks" if merge else "checks"
     (round_dir / f"{name}.log").write_text(log)
@@ -91,7 +115,7 @@ def hook():
     prompt = content if isinstance(content, str) else " ".join(b.get("text", "") for b in content)
     job_id = prompt.split("Job: ", 1)[1].split(".", 1)[0]
     job = json.loads((FACTORY / "jobs" / job_id / "job.json").read_text())
-    code, log, _ = run_checks(job["worktree"])
+    code, log, _ = run_checks(job["worktree"], FACTORY_SKIP_CI="1")
     if code != 0:
         tail = "\n".join(log.rstrip().splitlines()[-40:])
         print(f"factory/checks.sh fails in your worktree (exit {code}). The gate will reject this "
