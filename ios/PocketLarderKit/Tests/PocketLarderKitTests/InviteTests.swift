@@ -22,6 +22,9 @@ let exampleInvite = Invite(server: URL(string: "https://lists.example.com")!, co
     #expect(parseInvite("pocketlarder://other?server=https%3A%2F%2Flists.example.com&code=x") == nil)
     #expect(parseInvite(noCode) == nil)
     #expect(parseInvite(noCode + "&code=") == nil)
+    #expect(parseInvite(noCode + "&code=a%20b") == nil)
+    #expect(parseInvite(noCode + "&code=a%0Ab") == nil)
+    #expect(parseInvite(noCode + "&code=%20") == nil)
     #expect(parseInvite("pocketlarder://invite?server=http%3A%2F%2Flists.example.com&code=x") == nil)
 }
 

@@ -21,7 +21,7 @@ public func parseInvite(_ text: String) -> Invite? {
           let serverText = components.queryItems?.first(where: { $0.name == "server" })?.value,
           let server = normalizeServer(serverText),
           let code = components.queryItems?.first(where: { $0.name == "code" })?.value,
-          !code.isEmpty
+          !code.isEmpty, !code.contains(where: \.isWhitespace)
     else { return nil }
     return Invite(server: server, code: code)
 }
