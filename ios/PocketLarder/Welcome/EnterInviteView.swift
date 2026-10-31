@@ -96,7 +96,7 @@ struct EnterInviteView: View {
     }
 
     private func label(_ key: LocalizedStringKey) -> some View {
-        Text(key).font(.subheadline.weight(.semibold)).accessibilityHidden(true).padding(.top, 8)
+        Text(key).font(.caption).textCase(.uppercase).tracking(0.6).foregroundStyle(.secondary).accessibilityHidden(true).padding(.top, 8)
     }
 
     /// Fills the form when `text` holds an invite link. Other text changes nothing.
