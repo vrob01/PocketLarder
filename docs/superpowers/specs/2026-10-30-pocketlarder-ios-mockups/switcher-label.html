@@ -1,0 +1,91 @@
+<style>
+  .phone { width: 290px; height: 430px; margin: 0 auto; border: 10px solid #111; border-radius: 38px;
+    background: #fff; color: #111; overflow: hidden; display: flex; flex-direction: column; position: relative;
+    font: 14px/1.3 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; text-align: left; }
+  .ph-top { padding: 16px 14px 6px; display: flex; justify-content: space-between; align-items: center; }
+  .ph-title { font-size: 24px; font-weight: 700; }
+  .avatar { width: 30px; height: 30px; border-radius: 50%; background: #e0f5f1; color: #0a7d6b; font-weight: 700; display: grid; place-items: center; font-size: 14px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; background: #e0f5f1; color: #0a5c4f; border-radius: 18px; padding: 6px 12px; font-weight: 700; font-size: 17px; }
+  .pill .chev { font-size: 11px; }
+  .glass { display: inline-flex; align-items: center; gap: 6px; background: #f0f0f3; border-radius: 18px; padding: 6px 12px; font-weight: 600; font-size: 14px; color: #0a7d6b; box-shadow: inset 0 0 0 0.5px #d8d8de; }
+  .big { font-size: 28px; font-weight: 700; padding: 4px 14px 0; }
+  .sub { font-size: 12px; color: #8a8a8e; padding: 0 14px 2px; }
+  .cap { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: #8a8a8e; font-weight: 600; }
+  .tint { color: #0a7d6b; }
+  .chips { display: flex; gap: 6px; padding: 8px 14px 6px; overflow: hidden; }
+  .chip { font-size: 12px; padding: 4px 10px; border-radius: 14px; background: #f0f0f3; color: #333; white-space: nowrap; }
+  .chip.on { background: #111; color: #fff; }
+  .ph-body { flex: 1; overflow: hidden; padding: 0 14px; }
+  .store { font-weight: 700; font-size: 15px; padding: 8px 0 4px; border-bottom: 1px solid #e5e5ea; display: flex; justify-content: space-between; }
+  .store small { font-weight: 400; color: #8a8a8e; font-size: 12px; }
+  .cat { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #8a8a8e; margin: 10px 0 2px; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 0.5px solid #f0f0f2; }
+  .ck { width: 18px; height: 18px; border: 1.5px solid #c7c7cc; border-radius: 50%; flex: none; }
+  .name { flex: 1; min-width: 0; }
+  .qty { color: #8a8a8e; font-size: 13px; }
+  .tag { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: #e0f5f1; color: #0a7d6b; margin-left: 4px; vertical-align: 1px; }
+  .mv { width: 26px; height: 22px; border-radius: 6px; background: #f0f0f3; color: #0a7d6b; display: grid; place-items: center; font-size: 13px; flex: none; }
+  .card-image { padding: 16px 0; background: transparent !important; }
+</style>
+
+<h2>Making the list switcher look like a button</h2>
+<p class="subtitle">Three ways to make "you can tap this to change lists" obvious. Only the top of the screen differs; the add bar at the bottom stays as before.</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="1-pill" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="phone">
+        <div class="ph-top"><span class="pill">My view <span class="chev">▼</span></span><div class="avatar">A</div></div>
+        <div class="sub" style="padding-top:2px">Your list + 2 shared</div>
+        <div class="chips"><span class="chip on">All</span><span class="chip">Market</span><span class="chip">Drugstore</span><span class="chip">Bakery</span></div>
+        <div class="ph-body">
+          <div class="store">Market <small>5 items</small></div>
+          <div class="cat">Produce</div>
+          <div class="row"><span class="ck"></span><span class="name">Bananas</span><span class="qty">6</span><span class="mv">⇄</span></div>
+          <div class="row"><span class="ck"></span><span class="name">Bell peppers</span><span class="qty">3</span><span class="mv">⇄</span></div>
+          <div class="cat">Dairy</div>
+          <div class="row"><span class="ck"></span><span class="name">Milk<span class="tag">Shared</span></span><span class="qty">2</span><span class="mv">⇄</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>1 · The title is a tinted button</h3><p>The list name sits in a colored capsule with an arrow, like the add bar's button. One element, clearly tappable.</p></div>
+  </div>
+
+  <div class="card" data-choice="2-lists-button" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="phone">
+        <div class="ph-top"><span class="glass">☰ Lists</span><div class="avatar">A</div></div>
+        <div class="big">My view</div>
+        <div class="sub">Your list + 2 shared</div>
+        <div class="chips"><span class="chip on">All</span><span class="chip">Market</span><span class="chip">Drugstore</span><span class="chip">Bakery</span></div>
+        <div class="ph-body">
+          <div class="store">Market <small>5 items</small></div>
+          <div class="cat">Produce</div>
+          <div class="row"><span class="ck"></span><span class="name">Bananas</span><span class="qty">6</span><span class="mv">⇄</span></div>
+          <div class="row"><span class="ck"></span><span class="name">Bell peppers</span><span class="qty">3</span><span class="mv">⇄</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>2 · A separate "Lists" button</h3><p>The standard iPhone pattern: buttons in the top bar, a plain title below. The title really is just a header. Costs one line of height.</p></div>
+  </div>
+
+  <div class="card" data-choice="3-showing" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="phone">
+        <div class="ph-top"><div><div class="cap">Showing</div><div class="ph-title tint">My view <span style="font-size:13px">▼</span></div></div><div class="avatar">A</div></div>
+        <div class="chips"><span class="chip on">All</span><span class="chip">Market</span><span class="chip">Drugstore</span><span class="chip">Bakery</span></div>
+        <div class="ph-body">
+          <div class="store">Market <small>5 items</small></div>
+          <div class="cat">Produce</div>
+          <div class="row"><span class="ck"></span><span class="name">Bananas</span><span class="qty">6</span><span class="mv">⇄</span></div>
+          <div class="row"><span class="ck"></span><span class="name">Bell peppers</span><span class="qty">3</span><span class="mv">⇄</span></div>
+          <div class="cat">Dairy</div>
+          <div class="row"><span class="ck"></span><span class="name">Milk<span class="tag">Shared</span></span><span class="qty">2</span><span class="mv">⇄</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>3 · "Showing" above a colored title</h3><p>A small word says what the title is; the tint and arrow say you can change it. Lightest touch, least obvious of the three.</p></div>
+  </div>
+
+</div>

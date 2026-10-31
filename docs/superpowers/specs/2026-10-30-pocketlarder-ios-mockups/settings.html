@@ -1,0 +1,148 @@
+<style>
+  .phone { width: 290px; height: 590px; margin: 0 auto; border: 10px solid #111; border-radius: 38px;
+    background: #f2f2f7; color: #111; overflow: hidden; display: flex; flex-direction: column; position: relative;
+    font: 13.5px/1.3 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; text-align: left; }
+  .bar { padding: 14px 14px 4px; display: flex; justify-content: space-between; align-items: center; font-size: 15px; }
+  .bar .l, .bar .r { color: #0a7d6b; min-width: 50px; } .bar .r { text-align: right; font-weight: 600; }
+  .bar .t { font-weight: 600; }
+  .scroll { flex: 1; overflow: hidden; padding: 4px 14px 14px; }
+  .sec { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #6c6c70; margin: 14px 6px 5px; }
+  .grp { background: #fff; border-radius: 11px; overflow: hidden; }
+  .it { padding: 9px 12px; border-bottom: 0.5px solid #e5e5ea; display: flex; align-items: center; gap: 8px; }
+  .it:last-child { border-bottom: 0; }
+  .it .v { margin-left: auto; color: #8a8a8e; }
+  .it .chev { margin-left: auto; color: #c7c7cc; }
+  .it .v + .chev { margin-left: 4px; }
+  .red { color: #d70015; }
+  .tint { color: #0a7d6b; }
+  .foot { font-size: 11px; color: #6c6c70; margin: 5px 8px 0; line-height: 1.35; }
+  .seg { display: flex; background: #e4e4e9; border-radius: 8px; padding: 2px; margin: 0; }
+  .seg span { flex: 1; text-align: center; padding: 5px 0; font-size: 12.5px; border-radius: 6px; }
+  .seg .on { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.15); font-weight: 600; }
+  .radio { width: 16px; color: #0a7d6b; font-weight: 700; }
+  .me { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+  .avatar { width: 38px; height: 38px; border-radius: 50%; background: #e0f5f1; color: #0a7d6b; font-weight: 700; display: grid; place-items: center; font-size: 17px; flex: none; }
+  .badge { font-size: 10px; background: #e0f5f1; color: #0a5c4f; border-radius: 7px; padding: 1px 6px; margin-left: 4px; vertical-align: 1px; }
+  .small { font-size: 12px; color: #8a8a8e; }
+  .handle { color: #c7c7cc; margin-left: auto; font-size: 15px; }
+  .qr { width: 150px; height: 150px; margin: 8px auto 10px; background:
+      conic-gradient(#111 25%, #fff 0 50%, #111 0 75%, #fff 0) 0 0/18px 18px; border: 10px solid #fff; outline: 1px solid #e5e5ea; position: relative; }
+  .qr::after { content: ""; position: absolute; inset: 52px; background: #0a7d6b; border: 5px solid #fff; border-radius: 6px; }
+  .center { text-align: center; }
+  .btn { display: block; text-align: center; font-weight: 600; font-size: 14px; padding: 10px; border-radius: 11px; background: #0a7d6b; color: #fff; }
+  .card-image { padding: 16px 0; background: transparent !important; }
+</style>
+
+<h2>Account, adding a device, stores &amp; items, admin</h2>
+<p class="subtitle">Standard iPhone settings screens with the spec's content. Nothing to pick here: tell me what you'd change. Items marked ★ are my additions.</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="account" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="phone">
+        <div class="bar"><span class="l"></span><span class="t">My account</span><span class="r">Done</span></div>
+        <div class="scroll">
+          <div class="grp"><div class="me"><div class="avatar">A</div><div><b>Alex</b><span class="badge">Admin</span><div class="small">lists.example.com</div></div></div></div>
+          <div class="sec">List layout</div>
+          <div class="seg"><span class="on">Rows</span><span>Tiles</span></div>
+          <div class="sec">Appearance</div>
+          <div class="seg"><span class="on">System</span><span>Light</span><span>Dark</span></div>
+          <div class="sec">Who can see my list</div>
+          <div class="grp">
+            <div class="it"><span class="radio">✓</span>Open<span class="v small">others can edit</span></div>
+            <div class="it"><span class="radio"></span>Read-only</div>
+            <div class="it"><span class="radio"></span>Hidden</div>
+          </div>
+          <div class="foot">Hidden isn't encryption: whoever runs your server can read every list. Filing an entry puts its name in the shared catalog, where others see it in suggestions. Leave it unfiled to keep it private.</div>
+          <div class="sec">This iPhone</div>
+          <div class="grp">
+            <div class="it tint">Add a device…</div>
+            <div class="it">★ Language<span class="v">English</span><span class="chev">›</span></div>
+            <div class="it red">Sign out</div>
+          </div>
+          <div class="sec">Household</div>
+          <div class="grp"><div class="it">Members &amp; devices<span class="chev">›</span></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>1 · My account</h3><p>Opens from the circle. "Household" only for admins. ★ Language just opens this app's page in the iPhone's Settings, where iOS keeps the language choice.</p></div>
+  </div>
+
+  <div class="card" data-choice="add-device" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="phone">
+        <div class="bar"><span class="l">Cancel</span><span class="t">Add a device</span><span class="r"></span></div>
+        <div class="scroll">
+          <div class="grp" style="padding:12px">
+            <div class="center"><b>Scan with the new iPhone's Camera</b></div>
+            <div class="qr"></div>
+            <div class="center small">Signs in as Alex · one use · valid until tomorrow, 09:00</div>
+          </div>
+          <div class="sec">Or send it</div>
+          <div class="grp">
+            <div class="it tint">Share invite…</div>
+            <div class="it tint">Copy invite</div>
+          </div>
+          <div class="foot">Anyone with this invite can sign in as you until it's used or expires. Only send it to yourself.</div>
+          <div class="sec" style="margin-top:18px"></div>
+          <div class="grp"><div class="it red">Cancel this invite</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>2 · Add a device</h3><p>From My account. The admin's "Invite a new member" shows the same sheet with the new member's name. "Cancel this invite" revokes it.</p></div>
+  </div>
+
+  <div class="card" data-choice="stores" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="phone">
+        <div class="bar"><span class="l"></span><span class="t">Stores &amp; items</span><span class="r">Done</span></div>
+        <div class="scroll">
+          <div class="seg" style="margin-top:4px"><span class="on">Stores</span><span>Items</span></div>
+          <div class="sec">In the order you shop</div>
+          <div class="grp">
+            <div class="it">Market<span class="small" style="margin-left:6px">8 categories</span><span class="handle">≡</span></div>
+            <div class="it">Organic shop<span class="small" style="margin-left:6px">3</span><span class="handle">≡</span></div>
+            <div class="it">Corner shop<span class="small" style="margin-left:6px">2</span><span class="handle">≡</span></div>
+            <div class="it">Drugstore<span class="small" style="margin-left:6px">5</span><span class="handle">≡</span></div>
+            <div class="it">Bakery<span class="small" style="margin-left:6px">1</span><span class="handle">≡</span></div>
+            <div class="it tint">＋ Add store</div>
+          </div>
+          <div class="foot">Drag ≡ to match your round trip. Tap a store to rename it, delete it, or sort its categories the way you walk through it. Deleting a store keeps its entries under "Not filed yet".</div>
+          <div class="sec">Items tab, for comparison</div>
+          <div class="grp">
+            <div class="it">Bell peppers<span class="v small">Market · Produce · +2</span></div>
+            <div class="it">Burrito spice<span class="v small">Market · Spices</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>3 · Stores &amp; items</h3><p>From the "My view ▼" menu. Items: rename, change the usual store and the category in each store, or delete. Searchable.</p></div>
+  </div>
+
+  <div class="card" data-choice="admin" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="phone">
+        <div class="bar"><span class="l">‹ Account</span><span class="t">Members</span><span class="r"></span></div>
+        <div class="scroll">
+          <div class="grp">
+            <div class="it"><div><b>Alex</b><span class="badge">Admin</span><div class="small">iPhone · active now</div></div><span class="chev">›</span></div>
+            <div class="it"><div><b>Sam</b><div class="small">iPhone · 2 hours ago</div></div><span class="chev">›</span></div>
+            <div class="it"><div><b>Robin</b><div class="small">Invited, not signed in yet</div></div><span class="chev">›</span></div>
+          </div>
+          <div class="grp" style="margin-top:12px"><div class="it tint">＋ Invite a new member…</div></div>
+          <div class="sec">Sam, after tapping</div>
+          <div class="grp">
+            <div class="it">Admin<span class="v">○</span></div>
+            <div class="it"><div>iPhone<div class="small">added 27 Oct · seen 2 hours ago</div></div><span class="v red">Sign out</span></div>
+            <div class="it tint">Add a device for Sam…</div>
+          </div>
+          <div class="grp" style="margin-top:12px"><div class="it red">Remove Sam…</div></div>
+          <div class="foot">Removing signs out all of Sam's devices and, after you confirm, deletes Sam's list.</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>4 · Members &amp; devices (admins)</h3><p>Admins see devices and can sign any out. A hidden list stays hidden here too.</p></div>
+  </div>
+
+</div>
