@@ -1,0 +1,136 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "Shopping lists for your household. To start, this iPhone needs an invite from someone in your household: scan its QR code with the Camera app.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einkaufslisten für deinen Haushalt. Zum Start braucht dieses iPhone eine Einladung von jemandem aus deinem Haushalt: Scanne den QR-Code mit der Kamera-App."
+          }
+        }
+      }
+    },
+    "Open source and private. No tracking, no ads, no analytics. Your lists are stored only on your household's own server.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Source und privat. Kein Tracking, keine Werbung, keine Analysen. Deine Listen liegen nur auf dem eigenen Server deines Haushalts."
+          }
+        }
+      }
+    },
+    "Enter invite": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einladung eingeben"
+          }
+        }
+      }
+    },
+    "Set up your own server": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eigenen Server einrichten"
+          }
+        }
+      }
+    },
+    "Server": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server"
+          }
+        }
+      }
+    },
+    "Invite code": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einladungscode"
+          }
+        }
+      }
+    },
+    "Device name": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gerätename"
+          }
+        }
+      }
+    },
+    "Sign in": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anmelden"
+          }
+        }
+      }
+    },
+    "Shows in your household's device list, e.g. \"Sam's iPhone\".": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erscheint in der Geräteliste deines Haushalts, z. B. „Sams iPhone“."
+          }
+        }
+      }
+    },
+    "Got the invite as one link? Tap Paste and the fields fill themselves.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hast du die Einladung als einen Link bekommen? Tippe auf Einsetzen und die Felder füllen sich von selbst."
+          }
+        }
+      }
+    },
+    "lists.example.com": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "lists.example.com"
+          }
+        }
+      }
+    },
+    "from your invite": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "aus deiner Einladung"
+          }
+        }
+      }
+    },
+    "Done": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fertig"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

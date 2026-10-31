@@ -1,3 +1,7 @@
 /factory/jobs/
 .superpowers/
 server/deploy/.env
+ios/Config/Local.xcconfig
+ios/PocketLarderKit/.build/
+xcuserdata/
+DerivedData/

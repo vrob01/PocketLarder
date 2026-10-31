@@ -1,0 +1,7 @@
+// Copy this file to Local.xcconfig (gitignored) and fill it in.
+
+// Your Apple developer team ID (Xcode > Settings > Accounts, or developer.apple.com > Membership).
+DEVELOPMENT_TEAM = ABCDE12345
+
+// A bundle ID of your own: Apple signs each ID to one team, so org.pocketlarder.app won't work for you.
+PL_BUNDLE_ID = com.example.pocketlarder
