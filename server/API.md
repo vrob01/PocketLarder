@@ -30,7 +30,8 @@ the admin area.
   An id in a path that isn't in this form gives 404 `not_found`.
 - **Timestamps** are RFC 3339 strings in UTC without fractions, such as
   `2026-10-27T10:00:00Z`.
-- **Tokens and invite codes** are opaque strings. Don't parse them.
+- **Tokens and invite codes** are opaque strings. Don't parse them. The only
+  exception is how an invite code ends, described under Invite URL.
 
 ## Errors
 
@@ -72,6 +73,9 @@ member: redeeming it adds a device for that member.
   `pocketlarder://invite?server=https%3A%2F%2Flists.example.com&code=fdd4efb3-cf5b-44e7-bec4-94df8e478f5f.ArBLMeKiOpJu5jbcasIRDr8-zlqlbdWCoIfZ9EsLPio`.
   The same string is the QR code payload and the copyable text code. A client
   takes `server` as the base URL and sends `code` to `POST /v1/invites/redeem`.
+  A code always ends in an ASCII letter, an ASCII digit, `-` or `_`, so a client
+  reading the URL out of pasted text can drop anything after that, such as a
+  full stop or a closing bracket.
 - **Single-use and short-lived.** An invite can be redeemed once, and it
   expires 24 hours after it was created.
 - **One answer for every bad code.** An unknown, used, expired or revoked code
