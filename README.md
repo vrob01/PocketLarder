@@ -66,6 +66,18 @@ Run all commands from the repo root.
 - Invite URLs are secrets, and `invite` prints them to stdout. With `exec` the output goes only to your terminal. With `docker compose run` it goes to the logging driver. With the default `json-file` or `local` driver it is in `docker logs` and on disk under `/var/lib/docker/containers/`; `--rm` removes that copy, without `--rm` you must `docker rm` the stopped container. With `journald` or `syslog` it is also in the host journal or syslog files, and with a remote driver (for example `fluentd`, `gelf` or `awslogs`) on the remote log server, and `--rm` does not remove those. Treat an invite that was logged as exposed and revoke it: `docker compose -f server/deploy/compose.yaml exec pocketlarder pocketlarder invite --revoke <name>`. An admin who already has a paired device can instead use `POST /v1/invites/revoke` (see [server/API.md](server/API.md)). Otherwise the invite expires after 24 hours. **Warning:** anyone who can read the logs while an invite is outstanding and redeems it first can impersonate that member, in the worst case the first admin.
 - The data directory is owned by uid 65532 on the host, so any host account with that uid can read the database.
 
+## The iOS app
+
+The iPhone app lives in `ios/`. It needs a PocketLarder server (see Self-hosting), an iPhone with iOS 27, and a Mac with Xcode 27 to install it.
+
+1. Copy `ios/Config/Local.xcconfig.example` to `ios/Config/Local.xcconfig`. Set your Apple developer team and a bundle ID of your own.
+2. Open `ios/PocketLarder.xcodeproj` in Xcode, pick your iPhone and run the `PocketLarder` scheme.
+3. Create an invite on the server with `pocketlarder invite <name>`, then open the link on the iPhone or paste it into "Enter invite".
+
+With a free Apple ID, the app stops opening after 7 days: install it again from Xcode.
+
+To use PocketLarder in another language than your iPhone's, open Settings > Apps > PocketLarder > Language.
+
 ## License
 
 The server (`server/`) is AGPL-3.0. The iOS app (`ios/`) is MPL-2.0. See the root `LICENSE`.

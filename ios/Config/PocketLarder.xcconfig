@@ -1,0 +1,25 @@
+// Build settings shared by every target. Local.xcconfig (gitignored, see Local.xcconfig.example)
+// sets your signing team and your own bundle ID.
+PL_BUNDLE_ID = org.pocketlarder.app
+PRODUCT_BUNDLE_IDENTIFIER = $(PL_BUNDLE_ID)
+
+IPHONEOS_DEPLOYMENT_TARGET = 27.0
+TARGETED_DEVICE_FAMILY = 1
+SWIFT_VERSION = 6.0
+CODE_SIGN_STYLE = Automatic
+
+MARKETING_VERSION = 0.1.0
+CURRENT_PROJECT_VERSION = 1
+
+GENERATE_INFOPLIST_FILE = YES
+INFOPLIST_FILE = Config/Info.plist
+INFOPLIST_KEY_CFBundleDisplayName = PocketLarder
+INFOPLIST_KEY_UILaunchScreen_Generation = YES
+INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+
+ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon
+ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor
+LOCALIZATION_PREFERS_STRING_CATALOGS = YES
+SWIFT_EMIT_LOC_STRINGS = YES
+
+#include? "Local.xcconfig"

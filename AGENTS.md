@@ -28,6 +28,23 @@ Layout: `server/` is the Go server (AGPL-3.0). `ios/` holds the SwiftUI app
 Go 1.24 or newer on PATH. `server/go.mod` pins a newer toolchain, which `go`
 downloads on first use. Then `cd server && go mod download`.
 
+### iOS
+
+`ios/PocketLarderKit/` is the Swift package (models, API client, sync; no UI),
+`ios/PocketLarder/` the app, `ios/PocketLarderTests/` and
+`ios/PocketLarderUITests/` its tests, `ios/Config/` the xcconfig and
+`Info.plist`, `ios/PocketLarder.xcodeproj` the hand-written Xcode project (new
+files in the app folders need no project edit). Docker, no Xcode needed, runs
+the kit tests from the repo root:
+
+```bash
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/ios/PocketLarderKit:/pkg" -w /pkg swift:6.4.2-noble swift test
+```
+
+Xcode builds run only on GitHub: push, then wait for the `ios` run of your commit.
+The screenshots of its UI tests are in the `screenshots` artifact:
+`gh run download <id> -n screenshots -D <dir>`.
+
 ## Dev server
 
 Factory agents each start their own server on the port their prompt gives. From
@@ -45,7 +62,9 @@ once and keep the export for every later `go run . invite <name>`.
 
 ## Validation
 
-`bash factory/checks.sh`. In `server/` it runs `gofmt -l`, `go vet ./...`,
+`bash factory/checks.sh`. For `ios/` changes it also runs the kit tests and
+waits for the green `ios` run of the commit (`FACTORY_SKIP_CI=1` skips the wait).
+In `server/` it runs `gofmt -l`, `go vet ./...`,
 `go test ./...` and a static build (`CGO_ENABLED=0 go build ./...`).
 
 ## Software factory

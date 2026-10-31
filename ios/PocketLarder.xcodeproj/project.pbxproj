@@ -1,0 +1,426 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A00000000000000000000051 /* PocketLarderKit in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000062 /* PocketLarderKit */; };
+		A00000000000000000000052 /* PocketLarderKit in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000063 /* PocketLarderKit */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A00000000000000000000081 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A00000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A00000000000000000000031;
+			remoteInfo = PocketLarder;
+		};
+		A00000000000000000000082 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A00000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A00000000000000000000031;
+			remoteInfo = PocketLarder;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		A00000000000000000000005 /* PocketLarder.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = PocketLarder.xcconfig; sourceTree = "<group>"; };
+		A00000000000000000000006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A00000000000000000000021 /* PocketLarder.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PocketLarder.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00000000000000000000022 /* PocketLarderTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PocketLarderTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00000000000000000000023 /* PocketLarderUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PocketLarderUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		A00000000000000000000011 /* PocketLarder */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = PocketLarder;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000012 /* PocketLarderTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = PocketLarderTests;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000013 /* PocketLarderUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = PocketLarderUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A00000000000000000000042 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000051 /* PocketLarderKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A00000000000000000000045 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000052 /* PocketLarderKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A00000000000000000000048 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A00000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000004 /* Config */,
+				A00000000000000000000011 /* PocketLarder */,
+				A00000000000000000000012 /* PocketLarderTests */,
+				A00000000000000000000013 /* PocketLarderUITests */,
+				A00000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A00000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000021 /* PocketLarder.app */,
+				A00000000000000000000022 /* PocketLarderTests.xctest */,
+				A00000000000000000000023 /* PocketLarderUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000004 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000005 /* PocketLarder.xcconfig */,
+				A00000000000000000000006 /* Info.plist */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A00000000000000000000031 /* PocketLarder */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A00000000000000000000076 /* Build configuration list for PBXNativeTarget "PocketLarder" */;
+			buildPhases = (
+				A00000000000000000000041 /* Sources */,
+				A00000000000000000000042 /* Frameworks */,
+				A00000000000000000000043 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A00000000000000000000011 /* PocketLarder */,
+			);
+			name = PocketLarder;
+			packageProductDependencies = (
+				A00000000000000000000062 /* PocketLarderKit */,
+			);
+			productName = PocketLarder;
+			productReference = A00000000000000000000021 /* PocketLarder.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A00000000000000000000032 /* PocketLarderTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A00000000000000000000079 /* Build configuration list for PBXNativeTarget "PocketLarderTests" */;
+			buildPhases = (
+				A00000000000000000000044 /* Sources */,
+				A00000000000000000000045 /* Frameworks */,
+				A00000000000000000000046 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A00000000000000000000083 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A00000000000000000000012 /* PocketLarderTests */,
+			);
+			name = PocketLarderTests;
+			packageProductDependencies = (
+				A00000000000000000000063 /* PocketLarderKit */,
+			);
+			productName = PocketLarderTests;
+			productReference = A00000000000000000000022 /* PocketLarderTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		A00000000000000000000033 /* PocketLarderUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A0000000000000000000007C /* Build configuration list for PBXNativeTarget "PocketLarderUITests" */;
+			buildPhases = (
+				A00000000000000000000047 /* Sources */,
+				A00000000000000000000048 /* Frameworks */,
+				A00000000000000000000049 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A00000000000000000000084 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A00000000000000000000013 /* PocketLarderUITests */,
+			);
+			name = PocketLarderUITests;
+			productName = PocketLarderUITests;
+			productReference = A00000000000000000000023 /* PocketLarderUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A00000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					A00000000000000000000032 = {
+						TestTargetID = A00000000000000000000031;
+					};
+					A00000000000000000000033 = {
+						TestTargetID = A00000000000000000000031;
+					};
+				};
+			};
+			buildConfigurationList = A00000000000000000000073 /* Build configuration list for PBXProject "PocketLarder" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				de,
+				Base,
+			);
+			mainGroup = A00000000000000000000002;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A00000000000000000000061 /* XCLocalSwiftPackageReference "PocketLarderKit" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = A00000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A00000000000000000000031 /* PocketLarder */,
+				A00000000000000000000032 /* PocketLarderTests */,
+				A00000000000000000000033 /* PocketLarderUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A00000000000000000000043 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A00000000000000000000046 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A00000000000000000000049 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A00000000000000000000041 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A00000000000000000000044 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A00000000000000000000047 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A00000000000000000000083 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A00000000000000000000031 /* PocketLarder */;
+			targetProxy = A00000000000000000000081 /* PBXContainerItemProxy */;
+		};
+		A00000000000000000000084 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A00000000000000000000031 /* PocketLarder */;
+			targetProxy = A00000000000000000000082 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A00000000000000000000071 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A00000000000000000000005 /* PocketLarder.xcconfig */;
+			buildSettings = {
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A00000000000000000000072 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A00000000000000000000005 /* PocketLarder.xcconfig */;
+			buildSettings = {
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A00000000000000000000074 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		A00000000000000000000075 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+			};
+			name = Release;
+		};
+		A00000000000000000000077 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				INFOPLIST_FILE = "";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(PL_BUNDLE_ID).tests";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PocketLarder.app/PocketLarder";
+			};
+			name = Debug;
+		};
+		A00000000000000000000078 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				INFOPLIST_FILE = "";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(PL_BUNDLE_ID).tests";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PocketLarder.app/PocketLarder";
+			};
+			name = Release;
+		};
+		A0000000000000000000007A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				INFOPLIST_FILE = "";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(PL_BUNDLE_ID).uitests";
+				TEST_TARGET_NAME = PocketLarder;
+			};
+			name = Debug;
+		};
+		A0000000000000000000007B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				INFOPLIST_FILE = "";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(PL_BUNDLE_ID).uitests";
+				TEST_TARGET_NAME = PocketLarder;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A00000000000000000000073 /* Build configuration list for PBXProject "PocketLarder" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000071 /* Debug */,
+				A00000000000000000000072 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A00000000000000000000076 /* Build configuration list for PBXNativeTarget "PocketLarder" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000074 /* Debug */,
+				A00000000000000000000075 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A00000000000000000000079 /* Build configuration list for PBXNativeTarget "PocketLarderTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000077 /* Debug */,
+				A00000000000000000000078 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A0000000000000000000007C /* Build configuration list for PBXNativeTarget "PocketLarderUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A0000000000000000000007A /* Debug */,
+				A0000000000000000000007B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		A00000000000000000000061 /* XCLocalSwiftPackageReference "PocketLarderKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = PocketLarderKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A00000000000000000000062 /* PocketLarderKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PocketLarderKit;
+		};
+		A00000000000000000000063 /* PocketLarderKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PocketLarderKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = A00000000000000000000001 /* Project object */;
+}
