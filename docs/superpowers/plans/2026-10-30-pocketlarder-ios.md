@@ -55,7 +55,7 @@ The design leaves these to the builder.
 1. **A change made while a sync request is in flight**, such as crossing something off during the request, must survive the response and stay on screen. Test: Task 3, `opsAddedDuringSyncSurvive`.
 2. **The app is killed right after an offline change, before any sync.** On relaunch the change is still shown and still gets sent. Test: Task 3, `queueSurvivesRelaunch`.
 3. **More than 500 ops queued during a long offline stretch** go out in queue order, 500 at a time, each request after the previous answer. Test: Task 3, `longQueueSendsInOrderedBatches`.
-4. **An invite pasted from a messaging app** comes with surrounding text and line breaks. The link is still found and the fields fill. Test: Task 1, `findsInviteInsideText`.
+4. **An invite pasted from a messaging app** comes with surrounding text, line breaks and punctuation stuck to the link. The link is still found, the fields fill and the code stays exact. Test: Task 1, `findsInviteInsideText`.
 5. **The list on screen becomes hidden by its owner.** The app returns to My view and says why, instead of showing an empty or stale list. Tests: Task 3, `hiddenListNotice`, and Task 5, `hiddenScopeFallsBackToMyView`.
 
 ---
@@ -152,7 +152,7 @@ The `ios` workflow already exists (Task 0) and expects these names: project `ios
 - Produces (package): `Package.swift` with `// swift-tools-version: 6.2`, `platforms: [.iOS("27.0"), .macOS("26.0")]`, library `PocketLarderKit`, test target `PocketLarderKitTests`, and no dependencies.
 - Produces, in `Invite.swift`:
   - `public struct Invite: Equatable, Sendable { public let server: URL; public let code: String }`
-  - `public func parseInvite(_ text: String) -> Invite?`: finds the first `pocketlarder://invite?…` token in `text`, which may be surrounded by other text or whitespace. It requires host `invite`, a `server` that `normalizeServer` accepts, and a non-empty `code` with no whitespace. The code is opaque and isn't parsed further.
+  - `public func parseInvite(_ text: String) -> Invite?`: finds the first `pocketlarder://invite?…` token in `text`, which may be surrounded by other text or whitespace. It requires host `invite`, a `server` that `normalizeServer` accepts, and a non-empty `code` with no whitespace. Before parsing the token, it drops characters from the token's end until it ends in an ASCII letter, an ASCII digit, `-` or `_`, which is how `server/API.md` says a code ends, so punctuation stuck to a pasted link never reaches the code. A trailing `_` stays, because it's a legal code character. Apart from that, the code is opaque and isn't parsed further.
   - `public func normalizeServer(_ text: String) -> URL?`: trims the text and puts `https://` in front when there's no `://`. It requires scheme `https`, or `http` with host `localhost` or `127.0.0.1`, and a non-empty host. It refuses user info, a path other than `/`, a query and a fragment. It returns `scheme://host[:port]` with scheme and host lowercased and no trailing `/`.
 - Produces (app):
   - `@MainActor @Observable final class AppModel` with `var pendingInvite: Invite?`, `func open(_ url: URL)` (an invite link sets `pendingInvite`) and `func signIn(_ invite: Invite, deviceName: String) async`. It's empty here. Task 4 implements it and gives it its final return type.
@@ -169,10 +169,11 @@ let example = "pocketlarder://invite?server=https%3A%2F%2Flists.example.com&code
 
 @Test func findsInviteInsideText() // Review Focus 4
 // parseInvite("Here's your invite:\n\n" + example + "\nSee you!") == the same Invite; "  " + example + "\n" too
+// and with punctuation stuck on: example + ".", example + ")", "(" + example + ")", "[invite](" + example + ")"
 
 @Test func rejectsBadInvites()
 // nil for: "https://lists.example.com", "pocketlarder://other?server=…&code=x", the example without &code,
-// "…&code=" (empty), and a server of http%3A%2F%2Flists.example.com
+// "…&code=" (empty), "…&code=..." (empty once stripped), and a server of http%3A%2F%2Flists.example.com
 
 @Test(arguments: [
   ("lists.example.com", "https://lists.example.com"), ("HTTPS://Lists.Example.com/", "https://lists.example.com"),
@@ -184,7 +185,7 @@ func normalizesServer(input: String, expected: String?)
 ```
 
 - [ ] **Step 2: Run the kit tests.** Expected: FAIL, `cannot find 'parseInvite' in scope`.
-- [ ] **Step 3: Implement `Invite.swift`** against the Interfaces. Use `URLComponents` for parsing. Find the token by splitting on whitespace.
+- [ ] **Step 3: Implement `Invite.swift`** against the Interfaces. Use `URLComponents` for parsing. Find the token by splitting on whitespace, and strip its trailing punctuation before `URLComponents` parses it.
 - [ ] **Step 4: Run the kit tests.** Expected: PASS.
 
 - [ ] **Step 5: The Xcode project.** Write the following:
