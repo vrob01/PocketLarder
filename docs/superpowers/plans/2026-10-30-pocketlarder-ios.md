@@ -411,8 +411,8 @@ func testEnterInvite()          // empty form: enter-invite-<lang>-<appearance>;
   - `func sync() async`: one request at a time. A call during a request makes the loop run once more.
     - Each round sends `pending.prefix(500)` (and `[]` when nothing is pending, which fetches a snapshot).
     - On 200 it removes exactly the sent `opId`s from `pending`, saves the queue and the snapshot, appends `notices(before: oldView, …)`, recomputes `view`, clears `isOffline`, and loops while ops are pending.
-    - On `.server(code: "unauthorized")` it calls `files.wipe()`, clears the state, and calls `onSignedOut(pending.count)` with the count from before the clearing.
-    - On any other error it keeps `pending` unchanged, sets `isOffline` for `.offline` and for 5xx, and stops.
+    - On `.server(code: "unauthorized")` it calls `files.wipe()`, clears the state, and calls `onSignedOut(pending.count)` with the count from before the clearing. `APIClient` only produces this code for an HTTP 401.
+    - On any other error it keeps `pending` unchanged, sets `isOffline` for `.offline`, for `.server(code: "missing_token")` and for 5xx, and stops.
   - `func dismissNotice()`: removes the first notice.
 - Produces (tests): `TestData.household`, a `Snapshot` built in code with fixed lowercase UUIDs. The builder names the id constants. Its contents:
   - **Members:** me is Alex, an admin with privacy open. Sam is a member with privacy open.

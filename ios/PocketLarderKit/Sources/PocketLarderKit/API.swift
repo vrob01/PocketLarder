@@ -177,7 +177,9 @@ public struct APIClient: Sendable {
         }
         guard let (data, response) = try? await transport.send(request) else { throw .offline }
         guard (200..<300).contains(response.statusCode) else {
-            if let failure = try? JSON.decoder.decode(ErrorBody.self, from: data) {
+            // `unauthorized` wipes the phone, so a gateway's 403 or 500 with that body must not count as one.
+            if let failure = try? JSON.decoder.decode(ErrorBody.self, from: data),
+               failure.error != "unauthorized" || response.statusCode == 401 {
                 throw .server(code: failure.error)
             }
             throw .unexpected(status: response.statusCode)

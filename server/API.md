@@ -19,9 +19,12 @@ the admin area.
   Authorization: Bearer <token>
   ```
 
-  A missing, malformed or revoked token gives 401 `unauthorized`. The token is
-  checked before anything else about the request, and on admin endpoints admin
-  rights (403 `forbidden`) are checked next, before the path and the body.
+  No such header, or one without the `Bearer ` prefix, gives 401
+  `missing_token`. A malformed, unknown or revoked token gives 401
+  `unauthorized`. The `Errors:` list of each endpoint doesn't repeat
+  `missing_token`. The token is checked before anything else about the request,
+  and on admin endpoints admin rights (403 `forbidden`) are checked next,
+  before the path and the body.
 - **Body size.** A request body may be at most 64 KiB, or 1 MiB for
   `POST /v1/sync`. A larger one gives 413 `too_large`. A body that isn't valid
   JSON, has a field of the wrong type, has a field the endpoint doesn't know,
@@ -45,7 +48,8 @@ anything else:
 | Status | Code | Meaning |
 |---|---|---|
 | 400 | `invalid` | The body is malformed, a value in it isn't allowed, or a sync request has more than 500 ops. |
-| 401 | `unauthorized` | The device token is missing, malformed or revoked. Treat the device as signed out. |
+| 401 | `unauthorized` | The device token is malformed, unknown or revoked. Treat the device as signed out. |
+| 401 | `missing_token` | The request has no `Authorization` header with a `Bearer ` prefix. A proxy may have dropped or replaced the header. The device isn't signed out: it keeps its data and tries again later. |
 | 401 | `invalid_invite` | The invite code can't be redeemed. |
 | 403 | `forbidden` | The request needs an admin. |
 | 404 | `not_found` | The member or device doesn't exist, or the id isn't a lowercase UUID. |
@@ -734,7 +738,7 @@ Rejected: `not_found`.
   so it leaves the client's copy when the snapshot replaces it.
 - **Any other status applies nothing.** The client keeps the batch and sends
   it again later, unchanged. A batch within the limits above never gets 400 or
-  413, and a 401 means the device is signed out.
+  413, and a 401 `unauthorized` means the device is signed out.
 - **Ops apply in the order they arrive**, within a request and across
   requests, and the last one wins: when two members change the same thing,
   the change that reaches the server last stays.
