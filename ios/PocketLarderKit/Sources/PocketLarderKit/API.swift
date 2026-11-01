@@ -13,7 +13,8 @@ public struct URLSessionTransport: Transport {
     public init() {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 30
-        session = URLSession(configuration: configuration)
+        // shortcut: the session holds its delegate until invalidated and this struct never does that, so each transport leaks both; upgrade if the app ever makes more than a few.
+        session = URLSession(configuration: configuration, delegate: RedirectRefuser(), delegateQueue: nil)
     }
 
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
@@ -28,6 +29,19 @@ public struct URLSessionTransport: Transport {
                 }
             }.resume()
         }
+    }
+}
+
+/// Keeps the bearer token from following a redirect to another host. `send` returns the 3xx as an ordinary response.
+private final class RedirectRefuser: NSObject, URLSessionTaskDelegate {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping @Sendable (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
     }
 }
 

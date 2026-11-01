@@ -85,3 +85,99 @@ private func expectRequest(
         }
     }
 }
+
+@Test func redirectsAreNotFollowed() async throws {
+    let target = try LoopbackServer(answer: "200 OK\r\n")
+    let targetURL = "http://localhost:\(target.port)/v1/sync"
+    let (_, control) = try await URLSessionTransport().send(URLRequest(url: URL(string: targetURL)!))
+    #expect(control.statusCode == 200)
+    #expect(target.requests.count == 1)
+
+    for status in [301, 302, 303, 307, 308] {
+        let origin = try LoopbackServer(answer: "\(status) Redirect\r\nLocation: \(targetURL)\r\n")
+        let client = APIClient(server: URL(string: "http://127.0.0.1:\(origin.port)")!, token: "t")
+        await #expect(throws: APIError.unexpected(status: status)) {
+            _ = try await client.sync([])
+        }
+        #expect(origin.requests.count == 1)
+        #expect(origin.requests.first?.localizedCaseInsensitiveContains("Authorization: Bearer t") == true)
+    }
+
+    #expect(target.requests.count == 1)
+    #expect(!target.requests.contains { $0.localizedCaseInsensitiveContains("Authorization:") })
+}
+
+#if canImport(Glibc)
+private let streamSocket = Int32(SOCK_STREAM.rawValue)
+#else
+private let streamSocket = SOCK_STREAM
+#endif
+
+/// A real HTTP server on `127.0.0.1` that records each raw request and gives every one the same empty answer.
+private final class LoopbackServer: @unchecked Sendable {
+    let port: Int
+    private let answer: String
+    private let lock = NSLock()
+    private var recorded: [String] = []
+
+    var requests: [String] {
+        lock.withLock { recorded }
+    }
+
+    /// `answer` is the status line and any headers, without the leading `HTTP/1.1 `.
+    init(answer: String) throws {
+        self.answer = answer
+        let listener = socket(AF_INET, streamSocket, 0)
+        try #require(listener >= 0)
+        var address = sockaddr_in()
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_addr.s_addr = inet_addr("127.0.0.1")
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let bound = withUnsafeMutablePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                bind(listener, $0, length) == 0 && getsockname(listener, $0, &length) == 0
+            }
+        }
+        try #require(bound && listen(listener, 16) == 0)
+        port = Int(UInt16(bigEndian: address.sin_port))
+        // shortcut: the listener and its thread live until the test process exits, fine for one test's few servers.
+        Thread { [self] in serve(listener) }.start()
+    }
+
+    private func serve(_ listener: Int32) {
+        while true {
+            let connection = accept(listener, nil, nil)
+            guard connection >= 0 else { return }
+            let request = readRequest(connection)
+            // A connection that closes without sending anything is not a request.
+            if !request.isEmpty {
+                lock.withLock { recorded.append(String(decoding: request, as: UTF8.self)) }
+            }
+            let reply = Data("HTTP/1.1 \(answer)Content-Length: 0\r\nConnection: close\r\n\r\n".utf8)
+            _ = reply.withUnsafeBytes { write(connection, $0.baseAddress, $0.count) }
+            close(connection)
+        }
+    }
+
+    /// Reads the headers and their `Content-Length` bytes. Closing with unread bytes could reset the connection.
+    private func readRequest(_ connection: Int32) -> Data {
+        var request = Data()
+        var chunk = [UInt8](repeating: 0, count: 4096)
+        while !isComplete(request) {
+            let count = read(connection, &chunk, chunk.count)
+            guard count > 0 else { break }
+            request.append(contentsOf: chunk[..<count])
+        }
+        return request
+    }
+
+    private func isComplete(_ request: Data) -> Bool {
+        guard let end = request.range(of: Data("\r\n\r\n".utf8)) else { return false }
+        let name = "content-length:"
+        let contentLength = String(decoding: request[..<end.lowerBound], as: UTF8.self).lowercased()
+            .components(separatedBy: "\r\n")
+            .first { $0.hasPrefix(name) }
+            .flatMap { Int($0.dropFirst(name.count).drop { $0 == " " }) } ?? 0
+        return request.count - end.upperBound >= contentLength
+    }
+}
