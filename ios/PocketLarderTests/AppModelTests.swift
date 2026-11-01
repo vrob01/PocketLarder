@@ -13,8 +13,12 @@ private let offline = FakeTransport.Step.error(URLError(.notConnectedToInternet)
 private let unauthorized = FakeTransport.Step.answer(status: 401, json: #"{"error":"unauthorized"}"#)
 private let signedOut = FakeTransport.Step.answer(status: 204, json: "")
 
+private func redeemJSON(token: String) -> String {
+    #"{"token":"\#(token)","member_id":"\#(member)","device_id":"\#(device)"}"#
+}
+
 private func redeemed(token: String = "test-token") -> FakeTransport.Step {
-    .answer(status: 200, json: #"{"token":"\#(token)","member_id":"\#(member)","device_id":"\#(device)"}"#)
+    .answer(status: 200, json: redeemJSON(token: token))
 }
 
 private let syncJSON = #"""
@@ -73,6 +77,20 @@ private func paths(_ transport: FakeTransport) async -> [String?] {
         try? await Task.sleep(for: .milliseconds(10))
     }
     return false
+}
+
+/// A sign-in still waiting for its answer, overtaken by a second one that completed. The last step answers the sync
+/// that a late answer must not start, so a bug fails the test instead of crashing the process.
+@MainActor private func overtakenSignIn() async throws -> (
+    model: AppModel, transport: FakeTransport, directory: URL, first: Task<AppModel.SignInError?, Never>
+) {
+    let directory = try temporaryDirectory()
+    let transport = FakeTransport([.hold, redeemed(token: "next-token"), synced, synced])
+    let model = AppModel(transport: transport, dataDirectory: directory)
+    let first = Task { await model.signIn(invite, deviceName: "iPhone") }
+    try #require(await waitUntil { await transport.requests.count == 1 })
+    try #require(await model.signIn(invite, deviceName: "iPhone") == nil)
+    return (model, transport, directory, first)
 }
 
 private struct RedeemBody: Decodable {
@@ -224,6 +242,37 @@ extension KeychainSuite {
         #expect(model.larder?.snapshot != nil)
         #expect(try contents(directory).contains("snapshot.json"))
         #expect(model.signedOutLostChanges == nil)
+    }
+
+    @Test @MainActor func lateRedeemSparesSignedInAccount() async throws {
+        defer { Keychain.delete() }
+        let (model, transport, directory, first) = try await overtakenSignIn()
+        let next = try #require(model.account)
+        let larder = try #require(model.larder)
+        #expect(next.token == "next-token")
+
+        await transport.release(status: 200, json: redeemJSON(token: "late-token"))
+
+        #expect(await first.value == .alreadySignedIn(name: "Alex"))
+        #expect(model.account == next)
+        #expect(Keychain.load() == next)
+        #expect(model.larder === larder)
+        #expect(try contents(directory).contains("snapshot.json"))
+        #expect(await transport.requests.count == 3)
+    }
+
+    @Test @MainActor func lateRedeemAfterSignOutStaysSignedOut() async throws {
+        defer { Keychain.delete() }
+        let (model, transport, _, first) = try await overtakenSignIn()
+        #expect(await model.signOut(force: true) == .done)
+
+        await transport.release(status: 200, json: redeemJSON(token: "late-token"))
+
+        #expect(await first.value == .other)
+        #expect(model.account == nil)
+        #expect(model.larder == nil)
+        #expect(Keychain.load() == nil)
+        #expect(await transport.requests.count == 3)
     }
 
     @Test @MainActor func signInIgnoresLeftoverFiles() async throws {

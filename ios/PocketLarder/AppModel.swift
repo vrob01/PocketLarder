@@ -22,6 +22,7 @@ final class AppModel {
 
     private let transport: any Transport
     private let files: LocalFiles
+    private var signInAttempts = 0
 
     /// The member's name, or the server's host until the first snapshot arrives.
     var memberName: String {
@@ -60,6 +61,8 @@ final class AppModel {
 
     func signIn(_ invite: Invite, deviceName: String) async -> SignInError? {
         if account != nil { return .alreadySignedIn(name: memberName) }
+        signInAttempts += 1
+        let attempt = signInAttempts
         let redemption: Redemption
         do {
             redemption = try await APIClient(server: invite.server, token: nil, transport: transport)
@@ -71,6 +74,11 @@ final class AppModel {
             case .offline: return .unreachable(host: invite.server.host() ?? "")
             default: return .other
             }
+        }
+        // A newer attempt took over while this request was open. This answer must not replace that account or sign the
+        // phone back in after it signed out, so the device it created stays unused on its server.
+        guard attempt == signInAttempts else {
+            return account == nil ? .other : .alreadySignedIn(name: memberName)
         }
         let account = Account(server: invite.server, token: redemption.token, memberId: redemption.memberId, deviceId: redemption.deviceId)
         do {
