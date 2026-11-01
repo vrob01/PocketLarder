@@ -49,6 +49,9 @@ jobs:
           iphones = {k: [d for d in v if d["name"].startswith("iPhone")] for k, v in runtimes.items() if ".iOS-" in k}
           newest = max((k for k, v in iphones.items() if v), key=lambda k: [int(n) for n in re.findall(r"\d+", k)])
           print("id=" + iphones[newest][-1]["udid"])' >> "$GITHUB_OUTPUT"
+      # UI tests stall on a simulator that is still booting.
+      - name: Boot the simulator
+        run: xcrun simctl bootstatus "${{ steps.simulator.outputs.id }}" -b
       - name: Build and test the app
         run: |
           xcodebuild test -project ios/PocketLarder.xcodeproj -scheme PocketLarder \
