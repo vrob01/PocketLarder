@@ -72,6 +72,9 @@ private func expectRequest(
 @Test func errorsMapToCodes() async {
     let cases: [(FakeTransport.Step, APIError)] = [
         (.answer(status: 401, json: #"{"error":"unauthorized"}"#), .server(code: "unauthorized")),
+        (.answer(status: 403, json: #"{"error":"unauthorized"}"#), .unexpected(status: 403)),
+        (.answer(status: 500, json: #"{"error":"unauthorized"}"#), .unexpected(status: 500)),
+        (.answer(status: 401, json: #"{"error":"missing_token"}"#), .server(code: "missing_token")),
         (.answer(status: 429, json: #"{"error":"rate_limited"}"#), .server(code: "rate_limited")),
         (.answer(status: 500, json: #"{"error":"internal"}"#), .server(code: "internal")),
         (.answer(status: 404, json: "404 page not found\n"), .unexpected(status: 404)),

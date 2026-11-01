@@ -16,6 +16,13 @@ import Testing
     }
 }
 
+@Test(.enabled(if: Contract.isConfigured)) func noTokenIsMissingToken() async throws {
+    let client = APIClient(server: try Contract.serverURL(), token: nil)
+    await #expect(throws: APIError.server(code: "missing_token")) {
+        _ = try await client.sync([])
+    }
+}
+
 @Test(.enabled(if: Contract.isConfigured)) func everyOpTypeIsAccepted() async throws {
     let list = newID(), store = newID(), otherStore = newID(), category = newID()
     let unfiled = newID(), filed = newID(), item = newID()

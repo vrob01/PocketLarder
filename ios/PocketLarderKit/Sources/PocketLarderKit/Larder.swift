@@ -109,7 +109,8 @@ import Observation
             schedule?.cancel()
             schedule = nil
             onSignedOut?(lostChanges)
-        case .offline, .server(code: "internal"), .unexpected(status: 500...599):
+        case .offline, .server(code: "internal"), .server(code: "missing_token"), .unexpected(status: 500...599):
+            // `missing_token` means a proxy may have dropped the header, not that this device is signed out.
             isOffline = true
         default:
             // The server answered, so this isn't a lack of connection.

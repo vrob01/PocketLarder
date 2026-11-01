@@ -218,6 +218,34 @@ private func sentOpIds(_ request: URLRequest) throws -> [String] {
     #expect(await transport.requests.count == 3)
 }
 
+@Test @MainActor func onlyARealUnauthorizedWipes() async throws {
+    let cases: [(step: FakeTransport.Step, isOffline: Bool)] = [
+        (.answer(status: 403, json: unauthorized), false),
+        (.answer(status: 500, json: unauthorized), true),
+        (.answer(status: 401, json: #"{"error":"missing_token"}"#), true),
+    ]
+    for (step, isOffline) in cases {
+        let (larder, transport, files, _) = try makeLarder([step])
+        var signedOut = false
+        larder.onSignedOut = { _ in signedOut = true }
+        try larder.perform([add("A"), add("B")], now: at)
+        let queued = larder.pending
+        let view = larder.view
+
+        await larder.sync()
+
+        #expect(larder.isOffline == isOffline)
+        #expect(!signedOut)
+        #expect(larder.pending == queued)
+        #expect(larder.snapshot == TestData.household)
+        #expect(larder.view == view)
+        let loaded = files.load()
+        #expect(loaded.snapshot == TestData.household)
+        #expect(loaded.queue == queued)
+        #expect(await transport.requests.count == 1)
+    }
+}
+
 @Test @MainActor func serverErrorKeepsQueue() async throws {
     let cases: [FakeTransport.Step] = [
         .answer(status: 500, json: #"{"error":"internal"}"#),
