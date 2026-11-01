@@ -109,7 +109,7 @@ extension KeychainSuite {
         #expect(model.memberName == "Alex")
         let requests = await transport.requests
         #expect(requests.map(\.url?.path) == ["/v1/invites/redeem", "/v1/sync"])
-        let body = try JSON.decoder.decode(RedeemBody.self, from: try #require(requests[0].httpBody))
+        let body = try JSON.decoder.decode(RedeemBody.self, from: try #require(requests.first?.httpBody))
         #expect(body.deviceName == "Kitchen iPhone")
         #expect(body.code == "code")
     }
@@ -235,10 +235,10 @@ extension KeychainSuite {
         let transport = FakeTransport([redeemed(), synced])
         let model = AppModel(transport: transport, dataDirectory: directory)
 
-        #expect(await model.signIn(invite, deviceName: "iPhone") == nil)
+        try #require(await model.signIn(invite, deviceName: "iPhone") == nil)
 
-        let requests = await transport.requests
-        let body = try JSON.decoder.decode(SyncBody.self, from: try #require(requests[1].httpBody))
+        let request = try #require(await transport.requests.last)
+        let body = try JSON.decoder.decode(SyncBody.self, from: try #require(request.httpBody))
         #expect(body.ops.isEmpty)
         #expect(model.larder?.pending.isEmpty == true)
     }
