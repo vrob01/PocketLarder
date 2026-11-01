@@ -101,7 +101,8 @@ func (s *server) authed(adminOnly bool, h func(http.ResponseWriter, *http.Reques
 	return func(w http.ResponseWriter, r *http.Request) {
 		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if !ok {
-			s.fail(w, errUnauthorized)
+			// A proxy may have dropped or replaced the header, so the client must not read this as signed out.
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing_token"})
 			return
 		}
 		var d device

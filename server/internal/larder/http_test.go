@@ -195,9 +195,8 @@ func TestAuthRequired(t *testing.T) {
 		"DELETE /v1/admin/devices/" + id,
 	} {
 		method, path, _ := strings.Cut(route, " ")
-		for _, token := range []string{"", "x.y"} {
-			e.wantError(e.call(method, path, token, map[string]any{}), http.StatusUnauthorized, "unauthorized")
-		}
+		e.wantError(e.call(method, path, "", map[string]any{}), http.StatusUnauthorized, "missing_token")
+		e.wantError(e.call(method, path, "x.y", map[string]any{}), http.StatusUnauthorized, "unauthorized")
 	}
 
 	// A valid token only counts with the Bearer scheme.
@@ -206,7 +205,7 @@ func TestAuthRequired(t *testing.T) {
 	r.Header.Set("Authorization", "Token "+token)
 	w := httptest.NewRecorder()
 	e.h.ServeHTTP(w, r)
-	e.wantError(w, http.StatusUnauthorized, "unauthorized")
+	e.wantError(w, http.StatusUnauthorized, "missing_token")
 }
 
 func TestRedeemRateLimited(t *testing.T) {
