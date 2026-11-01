@@ -66,8 +66,8 @@ stop that job and tell the user what it printed.
   the user's: never change its files or branch.
 - Everything about a job is in `<repo>/factory/jobs/<job-id>/` (gitignored):
   `job.json`, `issue.md`, `intake.md` (earlier ones as `intake-<k>.md`),
-  `spec.md`, `build.md`, `rework-<k>.md`, `decision.md`, and per round
-  `round-<N>/checks.md`, `checks.log`, `review-<r>.md`, `merge-checks.md`.
+  `spec.md`, `build.md`, `rework-<k>.md`, `decision.md`, `hook-nudged`, and per
+  round `round-<N>/checks.md`, `checks.log`, `review-<r>.md`, `merge-checks.md`.
 - Read `job.json` for `issue`, `pr`, `worktree`, `round`, `round_limit` and
   `agents`. The job number `n` is the id's prefix (`004-dark-mode` → 4).
 
@@ -75,7 +75,7 @@ stop that job and tell the user what it printed.
 
 Every agent prompt starts with
 `Job: <job-id>. Job folder: <repo>/factory/jobs/<job-id>/. Worktree: <worktree>. Branch: factory/<job-id>.`
-Below, `<paths>` stands for that sentence. Keep it exact: the builder's stop
+Below, `<paths>` stands for that sentence. Keep it exact: the builder's
 hook finds its job by `Job: <job-id>.` and `factory/bin/job` finds each agent's
 cost by `Job folder: <path>/`.
 
@@ -160,7 +160,9 @@ Spawn `spec-writer` with `<paths> Issue: #<issue>.` When it finishes, run
 
 Spawn `builder` **with the name `builder-<job-id>`**, model `agents.builder`,
 and the prompt `<paths> Issue: #<issue>. Build round 1. Port: <port>.` When it
-finishes, go to **Build check**.
+hands back, go to **Build check** in the same turn: its checks hook has already
+run. The task-notification that follows doesn't wake an idle session, so never
+end a turn waiting for it. The same goes for every later builder round.
 
 Whenever a step below resumes the builder with `SendMessage` to
 `builder-<job-id>` and that builder no longer exists (a new session, say),

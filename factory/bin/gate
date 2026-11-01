@@ -4,7 +4,7 @@
 Usage:
   gate <job-id>            write round-N/checks.md; exit 0 on PASS, 1 on FAIL
   gate <job-id> --merge    same, as round-N/merge-checks.md (job merge runs it)
-  gate --hook              builder SubagentStop hook: run the checks once, exit 2 on failure
+  gate --hook              builder PreToolUse hook on SubagentHandback: run the checks, exit 2 once per commit on failure
   gate --review-hook       reviewer PreToolUse hook on SubagentHandback: exit 2 while the review file is missing
 
 The gate runs the main checkout's factory/checks.sh inside the job's worktree,
@@ -107,19 +107,19 @@ def gate(job_id, merge):
     sys.exit(0 if verdict == "PASS" else 1)
 
 
-def agent_prompt(transcript):
-    with open(Path(transcript).expanduser()) as f:
+def agent_prompt(event):
+    # shortcut: PreToolUse gives only the session transcript, so this assumes the harness's
+    # subagents/ layout. If that moves, the hooks error without blocking, and the gate and the
+    # factory's missing-file stop still apply.
+    transcript = Path(event["transcript_path"]).with_suffix("") / "subagents" / f"agent-{event['agent_id']}.jsonl"
+    with open(transcript.expanduser()) as f:
         content = json.loads(f.readline())["message"]["content"]
     return content if isinstance(content, str) else " ".join(b.get("text", "") for b in content)
 
 
 def review_hook():
     event = json.load(sys.stdin)
-    # shortcut: PreToolUse gives only the session transcript, so this assumes the harness's
-    # subagents/ layout. If that moves, the hook errors without blocking and the factory's
-    # missing-file stop still applies.
-    transcript = Path(event["transcript_path"]).with_suffix("") / "subagents" / f"agent-{event['agent_id']}.jsonl"
-    prompt = agent_prompt(transcript)
+    prompt = agent_prompt(event)
     folder = prompt.split("Job folder: ", 1)[1].split("/. ", 1)[0]
     round_n = prompt.split("Review round ", 1)[1].split(".", 1)[0]
     reviewer = event["agent_type"].removeprefix("reviewer-")
@@ -132,17 +132,25 @@ def review_hook():
 
 def hook():
     event = json.load(sys.stdin)
-    if event.get("stop_hook_active"):
-        sys.exit(0)  # one nudge per stop; the gate decides
-    prompt = agent_prompt(event["agent_transcript_path"])
-    job_id = prompt.split("Job: ", 1)[1].split(".", 1)[0]
-    job = json.loads((FACTORY / "jobs" / job_id / "job.json").read_text())
+    job_id = agent_prompt(event).split("Job: ", 1)[1].split(".", 1)[0]
+    folder = FACTORY / "jobs" / job_id
+    build = folder / "build.md"
+    if build.exists() and build.read_text().startswith("STATUS: BLOCKED"):
+        return  # the job goes to a person, so there's nothing to check
+    job = json.loads((folder / "job.json").read_text())
+    # Not git(): its exit 2 would block the hand-back whenever git fails.
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=job["worktree"],
+                          capture_output=True, text=True).stdout.strip()
+    nudged = folder / "hook-nudged"
+    if nudged.exists() and nudged.read_text() == head:
+        return  # one nudge per commit, so a builder can't get stuck here; the gate decides
     code, log, _ = run_checks(job["worktree"], FACTORY_SKIP_CI="1")
     if code != 0:
+        nudged.write_text(head)
         tail = "\n".join(log.rstrip().splitlines()[-40:])
         print(f"factory/checks.sh fails in your worktree (exit {code}). The gate will reject this "
-              f"build. Fix it, or write STATUS: BLOCKED in build.md if you can't.\n\n{tail}",
-              file=sys.stderr)
+              f"build. Fix it and commit, or write STATUS: BLOCKED in build.md if you can't, "
+              f"then finish.\n\n{tail}", file=sys.stderr)
         sys.exit(2)
 
 

@@ -4,8 +4,9 @@ description: Factory build step. Implements a job's spec on its factory/<job-id>
 tools: Read, Grep, Glob, Bash, Edit, Write
 model: sonnet
 hooks:
-  Stop:
-    - hooks:
+  PreToolUse:
+    - matcher: SubagentHandback
+      hooks:
         - type: command
           command: '"$CLAUDE_PROJECT_DIR"/factory/bin/gate --hook'
           timeout: 900
