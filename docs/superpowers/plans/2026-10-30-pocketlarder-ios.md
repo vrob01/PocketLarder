@@ -571,7 +571,7 @@ And in the kit's `LarderTests` (the Docker command in AGENTS.md runs them):
 - [ ] **Step 2: Implement** against the Interfaces. Each test cleans the Keychain item before it starts.
 - [ ] **Step 3: Add the screenshot** `welcome-signed-out-<lang>-<appearance>`, launched with the Debug-only argument `-signedOutLostChanges 2`, plus `enter-invite-error-<lang>-<appearance>` with the `invalidInvite` message, launched with `-inviteError invalidInvite` in Debug.
 - [ ] **Step 4: Commit and push.** `git commit -m "Sign in with an invite, keep the token in the Keychain, sign out"`. The `ios` run must be green. Look at the new screenshots.
-- [ ] **Step 5: README.** Add "Signing in" to "The iOS app": open the invite link on the iPhone (from a message or the QR code), or enter it by hand under "Enter invite". Commit with the code.
+- [ ] **Step 5: README.** Add "Signing in" to "The iOS app": open the invite link on the iPhone (from a message or the QR code), or enter it by hand under "Enter invite". Also say to update the server before installing the app: an older server answers a request that lost its `Authorization` header with `unauthorized`, which makes the app sign out and delete its data. Commit with the code.
 
 **On your phone:**
 - Get an invite with `pocketlarder invite <you>`, send it to yourself and tap it. The form is filled. Sign in, and it says "Signed in as <you>".
