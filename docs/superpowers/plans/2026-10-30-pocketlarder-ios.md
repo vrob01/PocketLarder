@@ -39,7 +39,7 @@ The design leaves these to the builder.
 
 - **Layout:** `ios/PocketLarderKit/` (package), `ios/PocketLarder/` (app sources, assets, strings, fixtures), `ios/PocketLarderTests/` (hosted unit tests), `ios/PocketLarderUITests/` (screenshot tests), `ios/Config/` (xcconfig, `Info.plist`), `ios/PocketLarder.xcodeproj`.
 - **Xcode project:** written by hand, `objectVersion = 77`, with one `PBXFileSystemSynchronizedRootGroup` per source folder, so a new file never touches `project.pbxproj`. `Info.plist` and the xcconfig sit outside the synchronized folders. The package is an `XCLocalSwiftPackageReference` with `relativePath = PocketLarderKit`.
-- **Signing:** `ios/Config/PocketLarder.xcconfig` (committed) sets `PRODUCT_BUNDLE_IDENTIFIER = $(PL_BUNDLE_ID)` with the default `PL_BUNDLE_ID = org.pocketlarder.app`, and ends with `#include? "Local.xcconfig"`. The gitignored `ios/Config/Local.xcconfig` on the Mac sets `DEVELOPMENT_TEAM` and a unique `PL_BUNDLE_ID`. CI builds with `CODE_SIGNING_ALLOWED=NO`.
+- **Signing:** `ios/Config/PocketLarder.xcconfig` (committed) sets `PRODUCT_BUNDLE_IDENTIFIER = $(PL_BUNDLE_ID)` with the default `PL_BUNDLE_ID = org.pocketlarder.app`, and ends with `#include? "Local.xcconfig"`. The gitignored `ios/Config/Local.xcconfig` on the Mac sets `DEVELOPMENT_TEAM` and a unique `PL_BUNDLE_ID`. CI signs the simulator build ad hoc, with no team, because the Keychain refuses an unsigned app with -34018.
 - **JSON:** Swift property names are the API names in camelCase (`listId`, `defaultStoreId`), and `JSON.encoder` and `JSON.decoder` convert to and from snake_case with ISO 8601 dates. Absent optionals are left out, which keeps the server's unknown-field check happy.
 - **Local copy:** `snapshot.json` and `queue.json` in `Application Support/Larder/`. Both are written atomically, and the directory is excluded from backup.
 - **Queue entries carry their creation time** (`PendingOp.at`). Applying them locally uses it for `created_at` and `bought_at`, so re-applying over each snapshot gives stable times.
@@ -114,7 +114,8 @@ Every `git diff` that decides something about paths, here and in the gate, uses 
   - **Job `ios`** runs `needs: changes` with `if: needs.changes.outputs.ios == 'true'` on `runs-on: xcode-27` with `timeout-minutes: 45`. It:
     - runs `swift test --package-path ios/PocketLarderKit`;
     - picks the newest available iPhone simulator on the newest iOS runtime (`xcrun simctl list devices available -j`);
-    - runs `xcodebuild test -project ios/PocketLarder.xcodeproj -scheme PocketLarder -destination "id=$SIM" -resultBundlePath "$RUNNER_TEMP/Tests.xcresult" CODE_SIGNING_ALLOWED=NO`;
+    - boots it and waits (`xcrun simctl bootstatus "$SIM" -b`), because UI tests stall on a simulator that is still booting;
+    - runs `xcodebuild test -project ios/PocketLarder.xcodeproj -scheme PocketLarder -destination "id=$SIM" -resultBundlePath "$RUNNER_TEMP/Tests.xcresult"`;
     - exports attachments to a folder and uploads the artifact `screenshots`, with `if: always()`;
     - uploads the result bundle as `xcresult` on failure.
 
