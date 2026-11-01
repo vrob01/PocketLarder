@@ -400,3 +400,70 @@ private func sentOpIds(_ request: URLRequest) throws -> [String] {
     larder.dismissNotice()
     #expect(larder.notices == [])
 }
+
+@Test @MainActor func closeDropsAnswerInFlight() async throws {
+    let (larder, transport, files, directory) = try makeLarder([.hold, try synced()])
+    try larder.perform([add("A")])
+    let call = SyncCall(larder)
+    try #require(await waitUntil { await transport.requests.count == 1 })
+
+    larder.close()
+    files.wipe()
+    await transport.release(status: 200, json: try syncJSON())
+    try #require(await waitUntil { call.returned })
+    try await pause()
+
+    #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path) == [])
+    #expect(await transport.requests.count == 1)
+    #expect(larder.pending.count == 1)
+}
+
+@Test @MainActor func closeDropsUnauthorizedInFlight() async throws {
+    let (larder, transport, files, _) = try makeLarder([.hold])
+    var signedOut = false
+    larder.onSignedOut = { _ in signedOut = true }
+    try larder.perform([add("A")], now: at)
+    let queued = larder.pending
+    let call = SyncCall(larder)
+    try #require(await waitUntil { await transport.requests.count == 1 })
+
+    larder.close()
+    await transport.release(status: 401, json: unauthorized)
+    try #require(await waitUntil { call.returned })
+
+    #expect(!signedOut)
+    #expect(files.load().queue == queued)
+    #expect(files.load().snapshot == TestData.household)
+    #expect(larder.pending == queued)
+}
+
+@Test @MainActor func closedLarderDoesNothing() async throws {
+    let (larder, transport, files, directory) = try makeLarder([try synced()])
+    try larder.perform([add("A")])
+    let queued = larder.pending
+
+    larder.close()
+    larder.close()
+    try await pause()
+    #expect(await transport.requests.isEmpty)
+
+    await larder.sync()
+    #expect(await transport.requests.isEmpty)
+
+    files.wipe()
+    try larder.perform([add("B")])
+    try await pause()
+    #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path) == [])
+    #expect(larder.pending == queued)
+    #expect(await transport.requests.isEmpty)
+}
+
+@Test @MainActor func closeBeforeFirstRoundSendsNothing() async throws {
+    let (larder, transport, _, _) = try makeLarder([try synced()])
+
+    let call = SyncCall(larder)
+    larder.close()
+    try #require(await waitUntil { call.returned })
+
+    #expect(await transport.requests.isEmpty)
+}

@@ -3,6 +3,7 @@ import SwiftUI
 struct WelcomeView: View {
     @Environment(AppModel.self) private var model
     @State private var showingForm = false
+    @State private var signedOutMessage: String?
     @ScaledMetric private var logoSize = 96.0
 
     var body: some View {
@@ -16,6 +17,12 @@ struct WelcomeView: View {
                 Text(verbatim: "PocketLarder")
                     .font(.largeTitle.bold())
                     .accessibilityAddTraits(.isHeader)
+                if let signedOutMessage {
+                    Text(signedOutMessage)
+                        .font(.headline)
+                        .multilineTextAlignment(.center)
+                        .accessibilityIdentifier("welcome.signedOut")
+                }
                 Text("Shopping lists for your household. To start, this iPhone needs an invite from someone in your household: scan its QR code with the Camera app.")
                     .multilineTextAlignment(.center)
                 Button("Enter invite") { showingForm = true }
@@ -42,7 +49,18 @@ struct WelcomeView: View {
         .onChange(of: model.pendingInvite, initial: true) {
             if model.pendingInvite != nil { showingForm = true }
         }
+        .onChange(of: model.signedOutLostChanges, initial: true) {
+            guard let lostChanges = model.signedOutLostChanges else { return }
+            signedOutMessage = signedOutText(lostChanges: lostChanges)
+            model.signedOutLostChanges = nil
+        }
     }
+}
+
+func signedOutText(lostChanges: Int) -> String {
+    let signedOut = String(localized: "This iPhone was signed out.")
+    guard lostChanges > 0 else { return signedOut }
+    return signedOut + String(localized: " \(lostChanges) changes that weren't sent yet are lost.")
 }
 
 /// Accent fill with the system background as label: 5:1 in light, 11:1 in dark.
