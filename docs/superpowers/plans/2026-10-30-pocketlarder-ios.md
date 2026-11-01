@@ -401,7 +401,7 @@ func testEnterInvite()          // empty form: enter-invite-<lang>-<appearance>;
   - `func notices(before: Snapshot?, after: Snapshot, sent: [Op], rejected: [Rejection]) -> [Notice]`. `before` is the view the user saw, so an op's list is found through `op.listId`, or through the entry with `op.id` in `before`. The rules:
     - **`listHidden`:** a personal list of another member that is in `before` but not in `after`, while its owner is in `after.members` with privacy `hidden`. `lostChanges` is true when a `forbidden` rejection targets it.
     - **`listReadOnly`:** a `forbidden` rejection on a list that is in `after` with `writable == false`.
-    - **`renameConflict`:** a `conflict` rejection of an `item.update` with a name, where `from` is the item's name in `before`.
+    - **`renameConflict`:** a `conflict` rejection of an `item.update` with a name, where `from` is the item's name in `after`, or in `before` when `after` no longer has the item. `before` already shows the refused rename, so it can't come first.
     - There is at most one notice per list. `not_found` rejections produce nothing.
 - Produces, in `Larder.swift`: `@MainActor @Observable public final class Larder` with
   - `private(set) var snapshot: Snapshot?`, `pending: [PendingOp]`, `view: Snapshot?` (snapshot with pending applied), `isOffline: Bool` and `notices: [Notice]`
@@ -494,12 +494,13 @@ func testEnterInvite()          // empty form: enter-invite-<lang>-<appearance>;
 
 **Files:**
 - Create: `ios/PocketLarder/Keychain.swift`, `ios/PocketLarder/Main/SignedInView.swift` (a placeholder until Task 5), `ios/PocketLarder/Account/AccountView.swift`
-- Modify: `AppModel.swift`, `PocketLarderApp.swift`, `Welcome/WelcomeView.swift`, `Welcome/EnterInviteView.swift`, `Localizable.xcstrings`
-- Test: `ios/PocketLarderTests/AppModelTests.swift`, `ios/PocketLarderTests/KeychainTests.swift`, `ios/PocketLarderTests/Support/FakeTransport.swift` (a small copy for the app tests)
+- Modify: `AppModel.swift`, `PocketLarderApp.swift`, `Welcome/WelcomeView.swift`, `Welcome/EnterInviteView.swift`, `Localizable.xcstrings`, `ios/PocketLarderKit/Sources/PocketLarderKit/Larder.swift`
+- Test: `ios/PocketLarderTests/AppModelTests.swift`, `ios/PocketLarderTests/KeychainTests.swift`, `ios/PocketLarderTests/Support/FakeTransport.swift` (a small copy for the app tests, including the `.hold` step), `ios/PocketLarderKit/Tests/PocketLarderKitTests/LarderTests.swift`
 
 **Interfaces:**
 - Consumes: `Invite`, `normalizeServer` (Task 1), `APIClient`, `APIError`, `Transport` (Task 2), `Larder`, `LocalFiles`, `Notice` (Task 3).
 - Produces:
+  - `public func close()` on `Larder`: ends this `Larder` for good, without waiting for a request in flight, because a forced sign-out is for a server that may never answer. It cancels the schedule. After it, `perform` and `sync()` do nothing, and the answer to a request in flight is dropped, whether it's a 200, `unauthorized` or any other error: no file is written or wiped, no state changes, `onSignedOut` isn't called and no further round runs. Without this, a 200 landing after a sign-out writes `snapshot.json` and `queue.json` back, and a late `unauthorized` wipes the files of the account signed in since.
   - `struct Account: Codable, Equatable, Sendable { var server: URL; var token: String; var memberId: String; var deviceId: String }`
   - `enum Keychain { static func load() -> Account?; static func save(_ a: Account) throws; static func delete() }`: one generic-password item with service `org.pocketlarder.account`, `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`, and `kSecAttrSynchronizable = false`.
   - `AppModel(transport: any Transport = URLSessionTransport(), dataDirectory: URL = AppModel.defaultDataDirectory)` with:
@@ -507,14 +508,16 @@ func testEnterInvite()          // empty form: enter-invite-<lang>-<appearance>;
     - `var signedOutLostChanges: Int?`, shown once on the welcome screen, then cleared.
     - `static var defaultDataDirectory: URL`: `Application Support/Larder`, created with `isExcludedFromBackup = true`.
     - `enum SignInError: Error, Equatable { case invalidInvite, rateLimited, unreachable(host: String), alreadySignedIn(name: String), other }`
-    - `func signIn(_ invite: Invite, deviceName: String) async -> SignInError?`. It redeems, saves the `Account`, creates the `Larder` and awaits the first `sync()`. If the account is already signed in, it returns `.alreadySignedIn`.
+    - `func signIn(_ invite: Invite, deviceName: String) async -> SignInError?`. It redeems, saves the `Account`, wipes the data directory, so that files left by a failed wipe never reach the new account, creates the `Larder` and awaits the first `sync()`. If the account is already signed in, it returns `.alreadySignedIn`.
     - `enum SignOutResult: Equatable { case done, unsentChanges(Int), unreachable }`
     - `func signOut(force: Bool) async -> SignOutResult`. Without `force` it syncs first, then:
       - returns `.unsentChanges(n)` if ops are still pending;
       - calls `POST /v1/signout` and wipes on success;
       - returns `.unreachable` when the server can't be reached.
 
-      `force: true` wipes everything locally without asking the server.
+      `force: true` wipes everything locally without asking the server and without waiting for a request in flight.
+
+      Every wipe, here and in `Larder.onSignedOut`, is one step on the main actor with no `await` inside: `larder?.close()`, clear `larder` and `account`, delete the Keychain item, wipe the data directory.
     - `func open(_ url: URL)`: while signed in, an invite link shows the already-signed-in message instead of the form.
   - The root shows `WelcomeView` without an account and `SignedInView` with one. `Larder.onSignedOut` wipes the Keychain and the data, and sets `signedOutLostChanges`.
   - Sync triggers: becoming active, and every 60 seconds while active (a `.task` loop keyed on `scenePhase`).
@@ -546,12 +549,29 @@ Copy (exact English):
 // after save, SecItemCopyMatching with kSecReturnAttributes → kSecAttrAccessible == kSecAttrAccessibleWhenUnlockedThisDeviceOnly, not synchronizable
 @Test func dataDirectoryIsExcludedFromBackup()
 @Test @MainActor func inviteLinkWhileSignedIn() // signed in as "Alex": open(example link) → already-signed-in state with "Alex", account unchanged
+@Test @MainActor func forcedSignOutDropsAnswerInFlight()
+// sync held → signOut(force: true) returns .done while it's still held; release 200 → data directory still empty, account nil
+@Test @MainActor func lateUnauthorizedSparesNextAccount()
+// sync held, force sign-out, sign in again; release 401 for the old request → account is the new one, its files remain, signedOutLostChanges nil
+@Test @MainActor func signInIgnoresLeftoverFiles()
+// data directory holds snapshot.json and queue.json with 1 op; signIn → the first sync request sends no ops, model.larder?.pending is empty
+```
+
+And in the kit's `LarderTests` (the Docker command in AGENTS.md runs them):
+
+```swift
+@Test @MainActor func closeDropsAnswerInFlight()
+// sync held, close(), files.wipe(); release 200 → snapshot.json and queue.json don't exist, no further request
+@Test @MainActor func closeDropsUnauthorizedInFlight()
+// 1 op, sync held, close(); release 401 → onSignedOut not called, queue.json still there
+@Test @MainActor func closedLarderDoesNothing()
+// perform, close(): no request after syncDelay; sync() sends nothing; perform writes no queue.json after a wipe
 ```
 
 - [ ] **Step 2: Implement** against the Interfaces. Each test cleans the Keychain item before it starts.
 - [ ] **Step 3: Add the screenshot** `welcome-signed-out-<lang>-<appearance>`, launched with the Debug-only argument `-signedOutLostChanges 2`, plus `enter-invite-error-<lang>-<appearance>` with the `invalidInvite` message, launched with `-inviteError invalidInvite` in Debug.
 - [ ] **Step 4: Commit and push.** `git commit -m "Sign in with an invite, keep the token in the Keychain, sign out"`. The `ios` run must be green. Look at the new screenshots.
-- [ ] **Step 5: README.** Add "Signing in" to "The iOS app": open the invite link on the iPhone (from a message or the QR code), or enter it by hand under "Enter invite". Commit with the code.
+- [ ] **Step 5: README.** Add "Signing in" to "The iOS app": open the invite link on the iPhone (from a message or the QR code), or enter it by hand under "Enter invite". Also say to update the server before installing the app: an older server answers a request that lost its `Authorization` header with `unauthorized`, which makes the app sign out and delete its data. Commit with the code.
 
 **On your phone:**
 - Get an invite with `pocketlarder invite <you>`, send it to yourself and tap it. The form is filled. Sign in, and it says "Signed in as <you>".
