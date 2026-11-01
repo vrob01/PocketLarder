@@ -37,11 +37,30 @@ final class ScreenshotTests: XCTestCase {
         }
     }
 
+    func testWelcomeSignedOut() {
+        for (language, appearance) in variants {
+            let app = launch(language, appearance, "-signedOutLostChanges", "2")
+            XCTAssertTrue(app.staticTexts["welcome.signedOut"].waitForExistence(timeout: 10))
+            attach(app, "welcome-signed-out-\(language)-\(appearance)")
+            app.terminate()
+        }
+    }
+
+    func testEnterInviteError() {
+        for (language, appearance) in variants {
+            let app = launch(language, appearance, "-inviteError", "invalidInvite")
+            app.buttons["welcome.enterInvite"].tap()
+            XCTAssertTrue(app.staticTexts["invite.error"].waitForExistence(timeout: 10))
+            attach(app, "enter-invite-error-\(language)-\(appearance)")
+            app.terminate()
+        }
+    }
+
     private let variants = [("en", "light"), ("en", "dark"), ("de", "light"), ("de", "dark")]
 
-    private func launch(_ language: String, _ appearance: String) -> XCUIApplication {
+    private func launch(_ language: String, _ appearance: String, _ extra: String...) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(\(language))", "-AppleLocale", language, "-appearance", appearance]
+        app.launchArguments = ["-AppleLanguages", "(\(language))", "-AppleLocale", language, "-appearance", appearance] + extra
         app.launch()
         return app
     }

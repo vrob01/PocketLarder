@@ -81,6 +81,12 @@ With a free Apple ID, the app stops opening after 7 days: install it again from 
 
 To use PocketLarder in another language than your iPhone's, open Settings > Apps > PocketLarder > Language.
 
+### Signing in
+
+Open the invite link on the iPhone, from a message or the QR code, or enter it by hand under "Enter invite".
+
+Update the server before installing the app. An older server answers a request that lost its `Authorization` header with `unauthorized`, which makes the app sign out and delete its data.
+
 ## License
 
 The server (`server/`) is AGPL-3.0. The iOS app (`ios/`) is MPL-2.0. See the root `LICENSE`.
