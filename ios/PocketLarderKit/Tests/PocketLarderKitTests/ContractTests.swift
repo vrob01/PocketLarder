@@ -63,3 +63,47 @@ import Testing
     #expect(members.first { $0.id == memberId }?.devices.count == 1)
     #expect(members.first { $0.id == memberId }?.name == name)
 }
+
+@Test(.enabled(if: Contract.isConfigured)) @MainActor func larderRoundTrip() async throws {
+    let adminLarder = Larder(files: try TestData.temporaryFiles().files, client: try await Contract.admin())
+    await adminLarder.sync()
+    let myList = adminLarder.snapshot?.myList
+    let listId = try #require(myList?.id)
+
+    let entryId = newID()
+    try adminLarder.perform([Op(.entryAdd, id: entryId, listId: listId, text: "Contract round trip")])
+    await adminLarder.sync()
+
+    let pending = adminLarder.pending
+    let entries = adminLarder.snapshot?.entries
+    #expect(pending.isEmpty)
+    #expect(entries?.contains { $0.id == entryId } == true)
+}
+
+@Test(.enabled(if: Contract.isConfigured)) @MainActor func privacyNoticesAgainstServer() async throws {
+    let (samClient, samId, samName) = try await Contract.newMember("Sam")
+    let samLarder = Larder(files: try TestData.temporaryFiles().files, client: samClient)
+    let adminLarder = Larder(files: try TestData.temporaryFiles().files, client: try await Contract.admin())
+    await adminLarder.sync()
+    let lists = adminLarder.view?.lists
+    let samList = try #require(lists?.first { $0.ownerId == samId })
+
+    try samLarder.perform([Op(.memberSetPrivacy, privacy: .readonly)])
+    await samLarder.sync()
+    let entryId = newID()
+    try adminLarder.perform([Op(.entryAdd, id: entryId, listId: samList.id, text: "Contract privacy")])
+    await adminLarder.sync()
+
+    let readOnlyNotices = adminLarder.notices
+    let entries = adminLarder.view?.entries
+    #expect(readOnlyNotices == [.listReadOnly(ownerName: samName)])
+    #expect(entries?.contains { $0.id == entryId } == false)
+
+    adminLarder.dismissNotice()
+    try samLarder.perform([Op(.memberSetPrivacy, privacy: .hidden)])
+    await samLarder.sync()
+    await adminLarder.sync()
+
+    let hiddenNotices = adminLarder.notices
+    #expect(hiddenNotices == [.listHidden(ownerName: samName, lostChanges: false)])
+}
