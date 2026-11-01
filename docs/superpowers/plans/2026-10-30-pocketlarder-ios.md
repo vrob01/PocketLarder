@@ -114,6 +114,7 @@ Every `git diff` that decides something about paths, here and in the gate, uses 
   - **Job `ios`** runs `needs: changes` with `if: needs.changes.outputs.ios == 'true'` on `runs-on: xcode-27` with `timeout-minutes: 45`. It:
     - runs `swift test --package-path ios/PocketLarderKit`;
     - picks the newest available iPhone simulator on the newest iOS runtime (`xcrun simctl list devices available -j`);
+    - boots it and waits (`xcrun simctl bootstatus "$SIM" -b`), because UI tests stall on a simulator that is still booting;
     - runs `xcodebuild test -project ios/PocketLarder.xcodeproj -scheme PocketLarder -destination "id=$SIM" -resultBundlePath "$RUNNER_TEMP/Tests.xcresult"`;
     - exports attachments to a folder and uploads the artifact `screenshots`, with `if: always()`;
     - uploads the result bundle as `xcresult` on failure.
