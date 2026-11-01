@@ -287,7 +287,7 @@ func testEnterInvite()          // empty form: enter-invite-<lang>-<appearance>;
   - `init(_ type: OpType, id: String? = nil, …every field… = nil)`, which sets `opId = newID()`. Encoding leaves out nil fields.
 - Produces, in `API.swift`:
   - `protocol Transport: Sendable { func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) }`
-  - `struct URLSessionTransport: Transport`: an ephemeral `URLSession`, `dataTask` wrapped in a checked continuation so it also works on Linux (`import FoundationNetworking` when available), and a 30-second timeout.
+  - `struct URLSessionTransport: Transport`: an ephemeral `URLSession`, `dataTask` wrapped in a checked continuation so it also works on Linux (`import FoundationNetworking` when available), a 30-second timeout, and a session-level `URLSessionTaskDelegate` that refuses every redirect with `completionHandler(nil)`, so the bearer token never follows one (the owner's decision on PR #41). `send` returns the 3xx as an ordinary response, and the mapping below turns it into an error. Don't use a per-task delegate: on Linux, `session.data(for:delegate:)` never asks it and follows the redirect with the token. `redirectsAreNotFollowed` in `APIClientTests.swift` covers this.
   - `enum APIError: Error, Equatable, Sendable { case offline; case server(code: String); case unexpected(status: Int) }`
   - Response types, all `Decodable, Equatable, Sendable`:
     - `Redemption { token, memberId, deviceId }`
