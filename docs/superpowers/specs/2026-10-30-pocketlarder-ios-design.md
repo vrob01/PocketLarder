@@ -253,7 +253,11 @@ mockup's "Items tab, for comparison" and "+2" were mockup notes.
 - **Sign out** first tries to send the queue. If changes are still unsent, it
   asks before discarding them. If the server can't be reached, it offers "Sign
   out anyway", which deletes everything locally and says an admin should remove
-  the device from the household's list **[Claude's call]**.
+  the device from the household's list **[Claude's call]**. After either
+  question, "Sign out anyway" also tries once to tell the server to remove the
+  device, without waiting for the answer, so that no device is left for an admin
+  to remove when the server can be reached. If that fails, the device stays on
+  the list until an admin removes it.
 - **Add a device**: a QR code of the invite URL with "Scan with the new
   iPhone's Camera", who it signs in, that it works once, and when it expires.
   Then Share invite, Copy invite, the warning "Anyone with this invite can sign
@@ -345,7 +349,10 @@ All **[Claude's call]**, within the product spec and `API.md`.
   after the same cleaning, so a valid queue never gets 400 `invalid`.
 - **Token:** in the Keychain, readable only while the phone is unlocked, this
   device only, never synced or backed up (from the product spec). It never
-  appears in logs, error messages or screenshots.
+  appears in logs, error messages or screenshots. If the app starts while the
+  phone is locked, it can't read the token, so it reads it again each time it
+  becomes active while signed out. A signed-in phone never stays on the welcome
+  screen because of a locked launch.
 - **Invite URLs** are secrets as well: never logged, kept only in memory while
   the sign-in or Add a device screen is open.
 - **Accessibility:** the app works with Dynamic Type up to the largest
