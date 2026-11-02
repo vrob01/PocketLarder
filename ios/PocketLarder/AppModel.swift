@@ -100,6 +100,10 @@ final class AppModel {
         guard let account, let larder else { return .done }
         if force {
             wipe()
+            // One try, so that no device row is left for an admin when the server can be reached. A plain client can't
+            // reach `onSignedOut` and the task holds no `self`, so the answer can't touch this or a later account.
+            let client = APIClient(server: account.server, token: account.token, transport: transport)
+            Task { try? await client.signOut() }
             return .done
         }
         await larder.sync()
