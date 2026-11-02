@@ -130,6 +130,216 @@
           }
         }
       }
+    },
+    "This invite can't be used. It may have expired or been used already. Ask for a new one.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Einladung kann nicht verwendet werden. Vielleicht ist sie abgelaufen oder wurde schon benutzt. Bitte um eine neue."
+          }
+        }
+      }
+    },
+    "Too many sign-in attempts on this server. Try again in a minute.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zu viele Anmeldeversuche auf diesem Server. Versuch es in einer Minute noch einmal."
+          }
+        }
+      }
+    },
+    "Can't reach %@.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ist nicht erreichbar."
+          }
+        }
+      }
+    },
+    "Couldn't sign in. Try again, or ask for a new invite.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Anmeldung hat nicht geklappt. Versuch es noch einmal oder bitte um eine neue Einladung."
+          }
+        }
+      }
+    },
+    "This iPhone is already signed in as %@. Sign out first to use this invite.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses iPhone ist schon als %@ angemeldet. Melde dich zuerst ab, um diese Einladung zu verwenden."
+          }
+        }
+      }
+    },
+    "This iPhone was signed out.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses iPhone wurde abgemeldet."
+          }
+        }
+      }
+    },
+    " %lld changes that weren't sent yet are lost.": {
+      "localizations": {
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": " %lld Änderung, die noch nicht gesendet wurde, ist verloren."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": " %lld Änderungen, die noch nicht gesendet wurden, sind verloren."
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": " %lld change that wasn't sent yet is lost."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": " %lld changes that weren't sent yet are lost."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld changes haven't been sent yet. Sign out and lose them?": {
+      "localizations": {
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Änderung wurde noch nicht gesendet. Abmelden und sie verlieren?"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Änderungen wurden noch nicht gesendet. Abmelden und sie verlieren?"
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld change hasn't been sent yet. Sign out and lose it?"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld changes haven't been sent yet. Sign out and lose them?"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Can't reach your server. Sign out anyway? This deletes everything on this iPhone. Ask an admin to remove this device from the household.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dein Server ist nicht erreichbar. Trotzdem abmelden? Das löscht alles auf diesem iPhone. Bitte einen Admin, dieses Gerät aus dem Haushalt zu entfernen."
+          }
+        }
+      }
+    },
+    "Signed in as %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Angemeldet als %@"
+          }
+        }
+      }
+    },
+    "Sign out": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abmelden"
+          }
+        }
+      }
+    },
+    "Sign out anyway": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trotzdem abmelden"
+          }
+        }
+      }
+    },
+    "Cancel": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abbrechen"
+          }
+        }
+      }
+    },
+    "OK": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        }
+      }
+    },
+    "My account": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mein Konto"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

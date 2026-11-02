@@ -6,6 +6,13 @@ struct EnterInviteView: View {
     @State private var server = ""
     @State private var code = ""
     @State private var deviceName = "iPhone"
+    @State private var signingIn = false
+    @State private var signInError: AppModel.SignInError? = {
+        #if DEBUG
+        if UserDefaults.standard.string(forKey: "inviteError") == "invalidInvite" { return .invalidInvite }
+        #endif
+        return nil
+    }()
     @FocusState private var focused: Field?
 
     private enum Field { case server, code, deviceName }
@@ -57,15 +64,38 @@ struct EnterInviteView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
-                Button("Sign in") {
+                Button {
                     guard let url = signInURL else { return }
+                    focused = nil
+                    signInError = nil
+                    signingIn = true
                     let invite = Invite(server: url, code: trimmedCode)
-                    Task { await model.signIn(invite, deviceName: deviceName) }
+                    Task {
+                        let error = await model.signIn(invite, deviceName: deviceName)
+                        signingIn = false
+                        signInError = error
+                        if let error {
+                            AccessibilityNotification.Announcement(signInErrorText(error)).post()
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        if signingIn {
+                            ProgressView().tint(Color(.systemBackground))
+                        }
+                        Text("Sign in")
+                    }
                 }
                 .buttonStyle(AccentButtonStyle())
-                .disabled(signInURL == nil || trimmedCode.isEmpty)
+                .disabled(signingIn || signInURL == nil || trimmedCode.isEmpty)
                 .padding(.top, 16)
                 .accessibilityIdentifier("invite.signIn")
+
+                if let signInError {
+                    Text(signInErrorText(signInError))
+                        .padding(.top, 8)
+                        .accessibilityIdentifier("invite.error")
+                }
             }
             .padding(24)
         }
@@ -110,6 +140,16 @@ struct EnterInviteView: View {
         let text = invite.server.absoluteString
         server = text.hasPrefix("https://") ? String(text.dropFirst("https://".count)) : text
         code = invite.code
+    }
+}
+
+func signInErrorText(_ error: AppModel.SignInError) -> String {
+    switch error {
+    case .invalidInvite: String(localized: "This invite can't be used. It may have expired or been used already. Ask for a new one.")
+    case .rateLimited: String(localized: "Too many sign-in attempts on this server. Try again in a minute.")
+    case let .unreachable(host): String(localized: "Can't reach \(host).")
+    case let .alreadySignedIn(name): String(localized: "This iPhone is already signed in as \(name). Sign out first to use this invite.")
+    case .other: String(localized: "Couldn't sign in. Try again, or ask for a new invite.")
     }
 }
 

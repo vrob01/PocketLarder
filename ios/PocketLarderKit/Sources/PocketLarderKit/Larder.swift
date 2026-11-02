@@ -18,6 +18,7 @@ import Observation
     private var running: Task<Void, Never>?
     /// Set by a `sync()` during a request. Each round clears it, and an error ends the loop without looking at it.
     private var extraRound = false
+    private var closed = false
 
     public init(files: LocalFiles, client: APIClient?) {
         self.files = files
@@ -30,6 +31,7 @@ import Observation
 
     /// Queues `ops`. The queue is on disk before anything shows, and nothing changes if that fails.
     public func perform(_ ops: [Op], now: Date = .now) throws {
+        guard !closed else { return }
         // Whole seconds, because that is all `JSON.encoder` keeps: a `PendingOp` stays equal across a relaunch.
         let at = Date(timeIntervalSince1970: now.timeIntervalSince1970.rounded(.down))
         let queue = pending + ops.map { PendingOp(op: $0, at: at) }
@@ -48,7 +50,7 @@ import Observation
 
     /// Returns when the state is settled: a call during a request asks for one more round and waits for the loop.
     public func sync() async {
-        guard let client else { return }
+        guard !closed, let client else { return }
         schedule?.cancel()
         schedule = nil
         if let running {
@@ -62,6 +64,15 @@ import Observation
         await loop.value
     }
 
+    /// Ends this `Larder` for good, without waiting for a request in flight, because a forced sign-out is for a server
+    /// that may never answer. That answer is dropped: a 200 would write the files back after the sign-out, and a late
+    /// `unauthorized` would wipe the files of the account signed in since.
+    public func close() {
+        closed = true
+        schedule?.cancel()
+        schedule = nil
+    }
+
     public func dismissNotice() {
         if !notices.isEmpty {
             notices.removeFirst()
@@ -70,11 +81,15 @@ import Observation
 
     private func runRounds(_ client: APIClient) async {
         repeat {
+            guard !closed else { break }
             extraRound = false
             let sent = pending.prefix(500).map(\.op)
             do {
-                receive(try await client.sync(sent), for: sent)
+                let response = try await client.sync(sent)
+                guard !closed else { break }
+                receive(response, for: sent)
             } catch {
+                guard !closed else { break }
                 fail(error)
                 break
             }
