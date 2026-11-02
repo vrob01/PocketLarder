@@ -50,6 +50,20 @@ final class AppModel {
         #endif
     }
 
+    /// `init` reads no account while the phone is locked, so the root asks again on becoming active. The files stay,
+    /// because they may hold unsent changes, and the root's loop does the first sync.
+    func restoreFromKeychain() {
+        guard account == nil, let restored = Keychain.load() else { return }
+        // So that an open redeem can't replace this account.
+        signInAttempts += 1
+        larder = makeLarder(restored)
+        account = restored
+        if pendingInvite != nil {
+            pendingInvite = nil
+            alreadySignedInAs = memberName
+        }
+    }
+
     func open(_ url: URL) {
         guard let invite = parseInvite(url.absoluteString) else { return }
         if account == nil {
@@ -75,8 +89,8 @@ final class AppModel {
             default: return .other
             }
         }
-        // A newer attempt took over while this request was open. This answer must not replace that account or sign the
-        // phone back in after it signed out, so the device it created stays unused on its server.
+        // A newer attempt or a restore took over while this request was open. This answer must not replace that account
+        // or sign the phone back in after it signed out, so the device it created stays unused on its server.
         guard attempt == signInAttempts else {
             return account == nil ? .other : .alreadySignedIn(name: memberName)
         }

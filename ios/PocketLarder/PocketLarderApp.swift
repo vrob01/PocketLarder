@@ -48,6 +48,7 @@ private struct RootView: View {
         }
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
+            model.restoreFromKeychain()
             while !Task.isCancelled {
                 await model.larder?.sync()
                 try? await Task.sleep(for: .seconds(60))

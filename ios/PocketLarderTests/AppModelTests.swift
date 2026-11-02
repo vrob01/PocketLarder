@@ -42,6 +42,15 @@ private func contents(_ directory: URL) throws -> [String] {
     try FileManager.default.contentsOfDirectory(atPath: directory.path)
 }
 
+/// A new directory holding what a signed-in phone leaves behind: a snapshot and 1 unsent op.
+private func seededDirectory() throws -> URL {
+    let directory = try temporaryDirectory()
+    let files = LocalFiles(directory: directory)
+    try files.save(snapshot: try JSON.decoder.decode(SyncResponse.self, from: Data(syncJSON.utf8)).snapshot)
+    try files.save(queue: [PendingOp(op: tea(), at: .now)])
+    return directory
+}
+
 /// Signed in with a new directory and an empty Keychain. `script` answers the requests after the sign-in's two.
 @MainActor private func signedIn(
     _ script: [FakeTransport.Step] = []
@@ -84,6 +93,13 @@ private func paths(_ transport: FakeTransport) async -> [String?] {
     return false
 }
 
+/// A `signIn` the test doesn't wait for yet, whose request is open on the script's first step, a `.hold`.
+@MainActor private func openSignIn(_ model: AppModel, _ transport: FakeTransport) async throws -> Task<AppModel.SignInError?, Never> {
+    let redeeming = Task { await model.signIn(invite, deviceName: "iPhone") }
+    try #require(await waitUntil { await transport.requests.count == 1 })
+    return redeeming
+}
+
 /// A sign-in still waiting for its answer, overtaken by a second one that completed. `signedOut` answers a forced
 /// sign-out, and the last step answers the sync that a late answer must not start, so a bug fails the test instead of
 /// crashing the process.
@@ -93,8 +109,7 @@ private func paths(_ transport: FakeTransport) async -> [String?] {
     let directory = try temporaryDirectory()
     let transport = FakeTransport([.hold, redeemed(token: "next-token"), synced, signedOut, synced])
     let model = AppModel(transport: transport, dataDirectory: directory)
-    let first = Task { await model.signIn(invite, deviceName: "iPhone") }
-    try #require(await waitUntil { await transport.requests.count == 1 })
+    let first = try await openSignIn(model, transport)
     try #require(await model.signIn(invite, deviceName: "iPhone") == nil)
     return (model, transport, directory, first)
 }
@@ -367,12 +382,8 @@ extension KeychainSuite {
 
     @Test @MainActor func signInIgnoresLeftoverFiles() async throws {
         defer { Keychain.delete() }
-        let directory = try temporaryDirectory()
-        let files = LocalFiles(directory: directory)
-        try files.save(snapshot: try JSON.decoder.decode(SyncResponse.self, from: Data(syncJSON.utf8)).snapshot)
-        try files.save(queue: [PendingOp(op: tea(), at: .now)])
         let transport = FakeTransport([redeemed(), synced])
-        let model = AppModel(transport: transport, dataDirectory: directory)
+        let model = AppModel(transport: transport, dataDirectory: try seededDirectory())
 
         try #require(await model.signIn(invite, deviceName: "iPhone") == nil)
 
@@ -429,6 +440,108 @@ extension KeychainSuite {
         #expect(Keychain.load() == nil)
         #expect(try contents(gone.directory) == [])
         #expect(gone.model.signedOutLostChanges == nil)
+    }
+
+    // A model built with an empty Keychain stands in for a locked launch, because `load()` returns nil in both cases
+    // and a test can't lock the simulator. `Keychain.save` after `init` stands in for the phone unlocking.
+
+    @Test @MainActor func activeRestoresLockedLaunch() async throws {
+        defer { Keychain.delete() }
+        let directory = try seededDirectory()
+        let transport = FakeTransport([unauthorized])
+        let model = AppModel(transport: transport, dataDirectory: directory)
+        #expect(model.account == nil)
+        #expect(model.larder == nil)
+        #expect(try contents(directory).sorted() == ["queue.json", "snapshot.json"])
+
+        try Keychain.save(account)
+        model.restoreFromKeychain()
+
+        #expect(model.account == account)
+        #expect(model.memberName == "Alex")
+        #expect(model.larder?.pending.count == 1)
+        #expect(try contents(directory).sorted() == ["queue.json", "snapshot.json"])
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await transport.requests.isEmpty)
+
+        await model.larder?.sync()
+        #expect(model.account == nil)
+        #expect(model.signedOutLostChanges == 1)
+
+        model.restoreFromKeychain()
+        #expect(model.account == nil)
+        #expect(model.larder == nil)
+    }
+
+    @Test @MainActor func activeWhileSignedInChangesNothing() async throws {
+        defer { Keychain.delete() }
+        let (model, transport, _) = try await signedIn()
+        let larder = try #require(model.larder)
+        let other = Account(server: server, token: "other-token", memberId: member, deviceId: device)
+        try Keychain.save(other)
+
+        model.restoreFromKeychain()
+
+        #expect(model.account == account)
+        #expect(model.larder === larder)
+        #expect(Keychain.load() == other)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await transport.requests.count == 2)
+    }
+
+    @Test @MainActor func restoredAccountBeatsOpenRedeem() async throws {
+        defer { Keychain.delete() }
+        let directory = try seededDirectory()
+        let transport = FakeTransport([.hold, synced])
+        let model = AppModel(transport: transport, dataDirectory: directory)
+        let redeeming = try await openSignIn(model, transport)
+
+        try Keychain.save(account)
+        model.restoreFromKeychain()
+        let larder = model.larder
+
+        await transport.release(status: 200, json: redeemJSON(token: "late-token"))
+
+        #expect(await redeeming.value == .alreadySignedIn(name: "Alex"))
+        #expect(model.account == account)
+        #expect(Keychain.load() == account)
+        #expect(model.larder === larder)
+        #expect(model.larder?.pending.count == 1)
+        #expect(try contents(directory).contains("queue.json"))
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await transport.requests.count == 1)
+    }
+
+    @Test @MainActor func emptyKeychainKeepsOpenRedeem() async throws {
+        defer { Keychain.delete() }
+        let transport = FakeTransport([.hold, synced])
+        let model = AppModel(transport: transport, dataDirectory: try temporaryDirectory())
+        let redeeming = try await openSignIn(model, transport)
+
+        model.restoreFromKeychain()
+        #expect(model.account == nil)
+
+        await transport.release(status: 200, json: redeemJSON(token: "test-token"))
+
+        #expect(await redeeming.value == nil)
+        #expect(model.account == account)
+        #expect(Keychain.load() == account)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await transport.requests.count == 2)
+    }
+
+    @Test @MainActor func inviteLinkBeforeRestoreIsNotKept() throws {
+        defer { Keychain.delete() }
+        let model = AppModel(transport: FakeTransport([]), dataDirectory: try temporaryDirectory())
+        model.open(try #require(URL(string: example)))
+        #expect(model.pendingInvite != nil)
+
+        try Keychain.save(account)
+        model.restoreFromKeychain()
+
+        #expect(model.pendingInvite == nil)
+        // The host, because this directory has no snapshot.
+        #expect(model.alreadySignedInAs == "lists.example.test")
     }
 }
 
