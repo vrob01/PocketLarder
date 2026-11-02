@@ -67,6 +67,10 @@ waits for the green `ios` run of the commit (`FACTORY_SKIP_CI=1` skips the wait)
 In `server/` it runs `gofmt -l`, `go vet ./...`,
 `go test ./...` and a static build (`CGO_ENABLED=0 go build ./...`).
 
+## Error messages
+
+Every error says precisely what failed, so that an admin can troubleshoot a self-hosted install from the message alone: the host or step involved, and the real cause, such as DNS, a refused connection, a timeout, a certificate problem or an HTTP status. Never merge different causes into one message, and never advise a fix the cause doesn't call for. This wins over any copy in the plan or design. Tokens, invite codes and invite URLs still never appear in messages or logs. Known gaps are in #50.
+
 ## Software factory
 
 `/factory run` builds every open GitHub issue labeled `factory` through
