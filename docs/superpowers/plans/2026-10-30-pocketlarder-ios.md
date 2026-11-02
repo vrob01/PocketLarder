@@ -516,12 +516,13 @@ func testEnterInvite()          // empty form: enter-invite-<lang>-<appearance>;
       - calls `POST /v1/signout` and wipes on success;
       - returns `.unreachable` when the server can't be reached.
 
-      `force: true` wipes everything locally without asking the server and without waiting for a request in flight.
+      `force: true` wipes everything locally without waiting for a request in flight, then tries `POST /v1/signout` once with the old token, without waiting for the answer and ignoring it. A plain `APIClient` sends it, so its answer can't reach `onSignedOut` or a later account. If it fails, the device stays on the server until an admin removes it.
 
       Every wipe, here and in `Larder.onSignedOut`, is one step on the main actor with no `await` inside: `larder?.close()`, clear `larder` and `account`, delete the Keychain item, wipe the data directory.
     - `func open(_ url: URL)`: while signed in, an invite link shows the already-signed-in message instead of the form.
+    - `func restoreFromKeychain()`: `init` reads no account while the phone is locked, so the root calls this on becoming active. While signed out, if the Keychain holds an account, it restores that account and its `Larder` and keeps the files, because they may hold unsent changes. It does nothing while signed in or when the Keychain is empty. The answer to a redeem still open at that point is dropped, so it can't replace the restored account. An invite waiting in the form is cleared, and the already-signed-in message shows instead.
   - The root shows `WelcomeView` without an account and `SignedInView` with one. `Larder.onSignedOut` wipes the Keychain and the data, and sets `signedOutLostChanges`.
-  - Sync triggers: becoming active, and every 60 seconds while active (a `.task` loop keyed on `scenePhase`).
+  - Sync triggers: becoming active, and every 60 seconds while active (a `.task` loop keyed on `scenePhase`). The loop calls `restoreFromKeychain()` once before its first sync.
 
 Copy (exact English):
 - `invalidInvite`: "This invite can't be used. It may have expired or been used already. Ask for a new one."
@@ -575,10 +576,12 @@ And in the kit's `LarderTests` (the Docker command in AGENTS.md runs them):
 - [ ] **Step 5: README.** Add "Signing in" to "The iOS app": open the invite link on the iPhone (from a message or the QR code), or enter it by hand under "Enter invite". Also say to update the server before installing the app: an older server answers a request that lost its `Authorization` header with `unauthorized`, which makes the app sign out and delete its data. Commit with the code.
 
 **On your phone:**
-- Get an invite with `pocketlarder invite <you>`, send it to yourself and tap it. The form is filled. Sign in, and it says "Signed in as <you>".
+- Get an invite with `pocketlarder invite <you>` (`pocketlarder invite --new-admin <you>` if that member doesn't exist yet), send it to yourself and tap it. The form is filled. Sign in, and it says "Signed in as <you>".
 - Try the same invite again on the other phone. It says the invite can't be used.
 - Turn on Airplane Mode, close and reopen the app. You're still signed in.
-- Sign out. You're back on the welcome screen.
+- Still in Airplane Mode, tap the circle, then Sign out. The "Can't reach your server" dialog shows over My account. Turn Airplane Mode off, wait until the connection is back, then tap Sign out anyway. You're back on the welcome screen, and the server's log shows `POST /v1/signout` with status 204, so the device is gone.
+- Switch to another app and back. You're still on the welcome screen.
+- Get a new invite and sign in again, then Sign out. You're back on the welcome screen.
 
 ---
 
