@@ -72,7 +72,8 @@ final class ScreenshotTests: XCTestCase {
             let bought = app.buttons["main.recentlyBought"]
             scrollUp(app, until: bought)
             bought.tap()
-            XCTAssertTrue(app.buttons.matching(identifier: "bought.entry").firstMatch.waitForExistence(timeout: 5))
+            // The rows open below the end of the screen.
+            scrollUp(app, until: app.buttons.matching(identifier: "bought.entry").firstMatch)
             app.swipeUp()
             attach(app, "main-bought-\(language)-\(appearance)")
             app.terminate()
@@ -111,8 +112,7 @@ final class ScreenshotTests: XCTestCase {
             field.tap()
             field.typeText("Toothpaste\n")
             let toothpaste = entry(app, layout == "rows" ? "entry.row" : "entry.tile", "Toothpaste")
-            XCTAssertTrue(toothpaste.waitForExistence(timeout: 5))
-            XCTAssertTrue(toothpaste.isHittable)
+            wait(for: [expectation(for: NSPredicate(format: "isHittable == true"), evaluatedWith: toothpaste)], timeout: 5)
             assertEmpty(field)
             XCTAssertTrue(app.keyboards.firstMatch.exists)
 
@@ -147,7 +147,7 @@ final class ScreenshotTests: XCTestCase {
             let readOnly = app.staticTexts["main.readOnly"]
             XCTAssertTrue(readOnly.waitForExistence(timeout: 10))
             XCTAssertEqual(readOnly.label, language == "en" ? "Sam's list is read-only." : "Die Liste von Sam ist schreibgeschützt.")
-            XCTAssertFalse(app.textFields["main.addField"].isEnabled)
+            XCTAssertFalse(addFieldElement(app).isEnabled)
             XCTAssertFalse(app.buttons["entry.crossOff"].exists)
             attach(app, "readonly-\(language)-\(appearance)")
 
@@ -161,10 +161,15 @@ final class ScreenshotTests: XCTestCase {
 
     /// The add field, once the first sync has enabled it.
     private func addField(_ app: XCUIApplication) -> XCUIElement {
-        let field = app.textFields["main.addField"]
+        let field = addFieldElement(app)
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         wait(for: [expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: field)], timeout: 10)
         return field
+    }
+
+    /// Any type, because a multi-line text field is a text view to XCUITest.
+    private func addFieldElement(_ app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "main.addField").firstMatch
     }
 
     private func entry(_ app: XCUIApplication, _ identifier: String, _ text: String) -> XCUIElement {
@@ -177,10 +182,12 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(value.isEmpty || value == field.placeholderValue, "The add field still holds \(value)")
     }
 
-    /// Short drags without momentum, because a swipe can carry a row past the screen, and then it's out of the query.
+    /// Short drags on the list without momentum, because a swipe can carry a row past the screen, and then it's out of
+    /// the query.
     private func scrollUp(_ app: XCUIApplication, until element: XCUIElement) {
-        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+        let list = app.collectionViews.firstMatch
+        let start = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
+        let end = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
         for _ in 0..<15 where !(element.exists && element.isHittable) {
             start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
         }

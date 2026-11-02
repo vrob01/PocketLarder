@@ -26,10 +26,12 @@ struct RecentlyBought: View {
             .buttonStyle(.plain)
             .accessibilityValue(expanded ? Text("Expanded") : Text("Collapsed"))
             .accessibilityIdentifier("main.recentlyBought")
+            .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 16))
 
             if expanded {
                 ForEach(entries) { entry in
                     row(entry)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 16))
                 }
             }
         }

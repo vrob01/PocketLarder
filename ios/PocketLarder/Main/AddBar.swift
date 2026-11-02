@@ -4,13 +4,12 @@ import SwiftUI
 struct AddBar: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @FocusState private var focused: Bool
     let view: Snapshot?
     /// Nil while the bar is disabled.
     let target: ListInfo?
     let readOnlyText: String?
     @Binding var text: String
-    let onReturn: () -> Void
+    let onReturn: (String) -> Void
 
     var body: some View {
         let layout = dynamicTypeSize.isAccessibilitySize
@@ -24,14 +23,18 @@ struct AddBar: View {
                     .accessibilityIdentifier("main.readOnly")
             }
             layout {
-                TextField("Add item…", text: $text)
-                    .focused($focused)
-                    .onSubmit {
-                        onReturn()
-                        // Return would otherwise close the keyboard, and adding several things in a row needs it.
-                        focused = true
+                // A multi-line field, because Return in a single-line one closes the keyboard, even when focus is set
+                // again at once, and adding several things in a row needs it to stay.
+                TextField("Add item…", text: $text, axis: .vertical)
+                    .lineLimit(1...3)
+                    .onChange(of: text) {
+                        guard text.contains(where: \.isNewline) else { return }
+                        let line = text.split(whereSeparator: \.isNewline).joined(separator: " ")
+                        text = line
+                        onReturn(line)
                     }
                     .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
                     .frame(minHeight: 44)
                     .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
                     .disabled(target == nil)

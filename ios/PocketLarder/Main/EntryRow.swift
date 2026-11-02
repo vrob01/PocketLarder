@@ -38,7 +38,7 @@ struct EntryRow: View {
                 .accessibilityIdentifier("entry.row")
             } else {
                 EntryLabel(entry: entry, tag: tag)
-                    .padding(.leading, 12)
+                    .padding(.leading, 16)
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("entry.readOnly")
             }

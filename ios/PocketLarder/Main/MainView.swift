@@ -21,7 +21,7 @@ struct MainView: View {
             NoticeBanner(larder: larder, saveFailure: $saveFailure)
             StoreChips(stores: larder.view.map { chipStores($0, scope: model.scope) } ?? [], filter: $filter)
             list
-            AddBar(view: larder.view, target: target, readOnlyText: readOnlyText, text: $addText, onReturn: { submit() })
+            AddBar(view: larder.view, target: target, readOnlyText: readOnlyText, text: $addText, onReturn: { submit($0) })
         }
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showingAccount) { AccountView() }
@@ -57,6 +57,7 @@ struct MainView: View {
             .accessibilityIdentifier("main.account")
         }
         .padding(.horizontal, 14)
+        .padding(.top, 4)
     }
 
     private func keepFilterValid() {
@@ -117,6 +118,7 @@ struct MainView: View {
                     Section {
                         ForEach(section.groups, id: \.category.id) { group in
                             categoryHeader(group.category.name)
+                                .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 2, trailing: 16))
                                 .listRowSeparator(.hidden)
                             ForEach(group.entries) { row($0, in: view) }
                         }
@@ -128,6 +130,7 @@ struct MainView: View {
             }
         }
         .listStyle(.plain)
+        .listSectionSpacing(0)
         .environment(\.defaultMinListRowHeight, 24)
     }
 
@@ -205,11 +208,12 @@ struct MainView: View {
         return HStack(alignment: .firstTextBaseline) {
             Text(section.store.name)
                 .font(.subheadline.bold())
-                .foregroundStyle(.primary)
+                // Colors, not `.primary` and `.secondary`, which a section header would dim one step further.
+                .foregroundStyle(Color.primary)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text("\(count) items")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.secondary)
         }
         .textCase(nil)
         .padding(.top, 8)
@@ -253,9 +257,9 @@ struct MainView: View {
         return suggestions(view, for: addText)
     }
 
-    private func submit() {
+    private func submit(_ text: String) {
         guard let view = larder.view, let target else { return }
-        finishAdding(add(text: addText, to: target.id, in: view))
+        finishAdding(add(text: text, to: target.id, in: view))
     }
 
     private func pick(_ item: Item) {
