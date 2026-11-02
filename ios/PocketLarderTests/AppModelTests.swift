@@ -543,6 +543,105 @@ extension KeychainSuite {
         // The host, because this directory has no snapshot.
         #expect(model.alreadySignedInAs == "lists.example.test")
     }
+
+    @Test @MainActor func fixtureLeavesKeychainAndFilesAlone() async throws {
+        defer { Keychain.delete() }
+        try Keychain.save(account)
+        let marker = AppModel.defaultDataDirectory.appending(path: newID())
+        try Data().write(to: marker)
+        defer { try? FileManager.default.removeItem(at: marker) }
+
+        let model = AppModel.fixture()
+        #expect(model.account?.server.absoluteString == "https://fixture.invalid")
+        #expect(model.account?.memberId == member)
+
+        #expect(await model.signOut(force: true) == .done)
+        model.restoreFromKeychain()
+
+        #expect(model.account == nil)
+        #expect(Keychain.load() == account)
+        #expect(FileManager.default.fileExists(atPath: marker.path))
+    }
+
+    @Test @MainActor func fixtureStartsFresh() async throws {
+        let first = AppModel.fixture()
+        let larder = try #require(first.larder)
+        await larder.sync()
+        let view = try #require(larder.view)
+        let list = try #require(view.myList)
+        try larder.perform([Op(.entryAdd, id: newID(), listId: list.id, text: "Only in the first")])
+        await larder.sync()
+        #expect(larder.pending.isEmpty)
+        #expect(larder.view?.entries.contains { $0.text == "Only in the first" } == true)
+
+        let second = AppModel.fixture()
+        let other = try #require(second.larder)
+        #expect(other.pending.isEmpty)
+        await other.sync()
+        #expect(other.view != nil)
+        #expect(other.view?.entries.contains { $0.text == "Only in the first" } == false)
+    }
+
+    @Test @MainActor func scopeDrivesAddTarget() throws {
+        let model = AppModel(transport: FakeTransport([]), dataDirectory: try temporaryDirectory())
+        #expect(model.scope == .myView)
+        #expect(model.addTarget == nil)
+
+        model.scope = .list("shared")
+        #expect(model.addTarget == "shared")
+
+        model.scope = .myView
+        #expect(model.addTarget == nil)
+
+        model.addTarget = "picked"
+        model.scope = .myView
+        #expect(model.addTarget == "picked")
+    }
+
+    @Test @MainActor func scopeResetsAfterFiveMinutes() throws {
+        let model = AppModel(transport: FakeTransport([]), dataDirectory: try temporaryDirectory())
+        let left = Date(timeIntervalSince1970: 1_000_000)
+
+        model.scope = .list("shared")
+        model.didEnterBackground(now: left)
+        model.didBecomeActive(now: left.addingTimeInterval(300))
+        #expect(model.scope == .list("shared"))
+        #expect(model.addTarget == "shared")
+
+        model.didEnterBackground(now: left)
+        model.didBecomeActive(now: left.addingTimeInterval(301))
+        #expect(model.scope == .myView)
+        #expect(model.addTarget == nil)
+
+        model.addTarget = "picked"
+        model.didEnterBackground(now: left)
+        model.didBecomeActive(now: left.addingTimeInterval(300))
+        #expect(model.addTarget == "picked")
+
+        model.didEnterBackground(now: left)
+        model.didBecomeActive(now: left.addingTimeInterval(301))
+        #expect(model.scope == .myView)
+        #expect(model.addTarget == nil)
+
+        // Becoming active without having left changes nothing, however late it is.
+        model.scope = .list("shared")
+        model.didBecomeActive(now: left.addingTimeInterval(1000))
+        #expect(model.scope == .list("shared"))
+    }
+
+    @Test @MainActor func wipeResetsScope() async throws {
+        defer { Keychain.delete() }
+        let (model, _, _) = try await signedIn([signedOut])
+        model.scope = .list("shared")
+        #expect(await model.signOut(force: true) == .done)
+        #expect(model.scope == .myView)
+        #expect(model.addTarget == nil)
+
+        let (picked, _, _) = try await signedIn([signedOut])
+        picked.addTarget = "picked"
+        #expect(await picked.signOut(force: true) == .done)
+        #expect(picked.addTarget == nil)
+    }
 }
 
 /// A missing catalog key would otherwise show "1 changes" with no failure.
