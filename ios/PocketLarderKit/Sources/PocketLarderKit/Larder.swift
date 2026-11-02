@@ -8,6 +8,8 @@ import Observation
     /// `snapshot` with `pending` applied.
     public private(set) var view: Snapshot?
     public private(set) var isOffline = false
+    /// Why the last sync failed. Nil after a 200 and after the `unauthorized` wipe.
+    public private(set) var lastSyncFailure: APIError?
     public private(set) var notices: [Notice] = []
     public var syncDelay: Duration = .seconds(1)
     public var onSignedOut: ((_ lostChanges: Int) -> Void)?
@@ -109,9 +111,11 @@ import Observation
         notices += PocketLarderKit.notices(before: before, after: response.snapshot, sent: sent, rejected: response.rejected)
         view = applying(pending, to: response.snapshot)
         isOffline = false
+        lastSyncFailure = nil
     }
 
     private func fail(_ error: APIError) {
+        lastSyncFailure = error
         switch error {
         case .server(code: "unauthorized"):
             let lostChanges = pending.count
@@ -121,6 +125,7 @@ import Observation
             view = nil
             notices = []
             isOffline = false
+            lastSyncFailure = nil
             schedule?.cancel()
             schedule = nil
             onSignedOut?(lostChanges)
