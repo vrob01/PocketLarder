@@ -19,10 +19,26 @@ final class AppModel {
     var alreadySignedInAs: String?
     private(set) var account: Account?
     private(set) var larder: Larder?
+    /// What the main screen shows. A different scope also sets `addTarget`, and assigning the same one changes nothing,
+    /// so that re-checking it after a sync can't drop a target the user picked.
+    var scope: Scope = .myView {
+        didSet {
+            guard scope != oldValue else { return }
+            switch scope {
+            case let .list(id): addTarget = id
+            case .myView: addTarget = nil
+            }
+        }
+    }
+    /// The list new items go to. Nil means my list.
+    var addTarget: String?
 
     private let transport: any Transport
     private let files: LocalFiles
+    /// False for a fixture run, so that it can't read, replace or delete a real account.
+    private let usesKeychain: Bool
     private var signInAttempts = 0
+    private var enteredBackground: Date?
 
     /// The member's name, or the server's host until the first snapshot arrives.
     var memberName: String {
@@ -43,6 +59,7 @@ final class AppModel {
     init(transport: any Transport = URLSessionTransport(), dataDirectory: URL = AppModel.defaultDataDirectory) {
         self.transport = transport
         files = LocalFiles(directory: dataDirectory)
+        usesKeychain = true
         account = Keychain.load()
         larder = account.map(makeLarder)
         #if DEBUG
@@ -50,10 +67,35 @@ final class AppModel {
         #endif
     }
 
+    #if DEBUG
+    /// Signed in on sample data, on a fake server and a new empty directory, so that nothing of a real account is touched.
+    static func fixture() -> AppModel {
+        let url = Bundle.main.url(forResource: "household", withExtension: "json")!
+        let snapshot = try! JSON.decoder.decode(Snapshot.self, from: Data(contentsOf: url))
+        let directory = FileManager.default.temporaryDirectory.appending(path: newID())
+        try! FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let account = Account(
+            server: URL(string: "https://fixture.invalid")!,
+            token: "fixture",
+            memberId: snapshot.me.memberId,
+            deviceId: snapshot.me.deviceId
+        )
+        return AppModel(fixture: account, transport: FixtureTransport(snapshot), dataDirectory: directory)
+    }
+
+    private init(fixture account: Account, transport: any Transport, dataDirectory: URL) {
+        self.transport = transport
+        files = LocalFiles(directory: dataDirectory)
+        usesKeychain = false
+        self.account = account
+        larder = makeLarder(account)
+    }
+    #endif
+
     /// `init` reads no account while the phone is locked, so the root asks again on becoming active. The files stay,
     /// because they may hold unsent changes, and the root's loop does the first sync.
     func restoreFromKeychain() {
-        guard account == nil, let restored = Keychain.load() else { return }
+        guard usesKeychain, account == nil, let restored = Keychain.load() else { return }
         // So that an open redeem can't replace this account.
         signInAttempts += 1
         larder = makeLarder(restored)
@@ -62,6 +104,18 @@ final class AppModel {
             pendingInvite = nil
             alreadySignedInAs = memberName
         }
+    }
+
+    func didEnterBackground(now: Date = .now) {
+        enteredBackground = now
+    }
+
+    /// More than five minutes away brings the main screen back to My view and my list.
+    func didBecomeActive(now: Date = .now) {
+        if let enteredBackground, now.timeIntervalSince(enteredBackground) > 300 {
+            resetScope()
+        }
+        enteredBackground = nil
     }
 
     func open(_ url: URL) {
@@ -96,7 +150,7 @@ final class AppModel {
         }
         let account = Account(server: invite.server, token: redemption.token, memberId: redemption.memberId, deviceId: redemption.deviceId)
         do {
-            try Keychain.save(account)
+            if usesKeychain { try Keychain.save(account) }
         } catch {
             return .other
         }
@@ -152,7 +206,13 @@ final class AppModel {
         larder?.close()
         larder = nil
         account = nil
-        Keychain.delete()
+        resetScope()
+        if usesKeychain { Keychain.delete() }
         files.wipe()
+    }
+
+    private func resetScope() {
+        scope = .myView
+        addTarget = nil
     }
 }
