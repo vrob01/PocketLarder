@@ -45,6 +45,8 @@ Xcode builds run only on GitHub: push, then wait for the `ios` run of your commi
 The screenshots of its UI tests are in the `screenshots` artifact:
 `gh run download <id> -n screenshots -D <dir>`.
 
+`-fixture household` (Debug builds only, `ios/PocketLarder/Fixtures/`) runs the app on sample data without a server, the Keychain or the real data folder, and the screenshot tests use it.
+
 ## Dev server
 
 Factory agents each start their own server on the port their prompt gives. From
