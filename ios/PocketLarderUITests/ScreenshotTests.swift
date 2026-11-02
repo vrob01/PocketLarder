@@ -65,7 +65,11 @@ final class ScreenshotTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(crossOff.frame.height, 44)
             attach(app, "main-\(language)-\(appearance)-rows")
 
-            app.buttons["chip.Market"].tap()
+            let market = app.buttons["chip.Market"]
+            market.tap()
+            wait(for: [expectation(for: NSPredicate(format: "isSelected == true"), evaluatedWith: market)], timeout: 5)
+            // The tap's highlight is still fading, and would show as a dimmed chip.
+            Thread.sleep(forTimeInterval: 0.5)
             attach(app, "main-store-\(language)-\(appearance)")
 
             app.buttons["chip.all"].tap()
