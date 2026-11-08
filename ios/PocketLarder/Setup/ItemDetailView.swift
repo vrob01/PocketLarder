@@ -35,7 +35,8 @@ struct ItemDetailView: View {
                     Button {
                         rename()
                     } label: {
-                        Text("Save").frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                        // 44 points high without making the row taller.
+                        Text("Save").contentShape(Rectangle().inset(by: -11))
                     }
                     .buttonStyle(.borderless)
                     .disabled(cleanName == nil)

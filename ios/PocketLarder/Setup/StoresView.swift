@@ -70,8 +70,8 @@ struct StoresView: View {
                     addingStore = true
                 } label: {
                     Label("Add store", systemImage: "plus")
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .contentShape(Rectangle())
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle().inset(by: -11))
                 }
                 .buttonStyle(.borderless)
                 .accessibilityIdentifier("stores.add")
@@ -102,8 +102,9 @@ private struct StoreLabel: View {
             HStack(alignment: .firstTextBaseline, spacing: 6) { content }
             VStack(alignment: .leading, spacing: 2) { content }
         }
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        .contentShape(Rectangle())
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // 44 points high without making the row taller.
+        .contentShape(Rectangle().inset(by: -11))
     }
 
     @ViewBuilder private var content: some View {

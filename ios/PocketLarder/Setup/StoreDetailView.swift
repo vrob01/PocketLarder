@@ -47,7 +47,8 @@ struct StoreDetailView: View {
                     Button {
                         rename()
                     } label: {
-                        Text("Save").frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                        // 44 points high without making the row taller, here and on the rows below.
+                        Text("Save").contentShape(Rectangle().inset(by: -11))
                     }
                     .buttonStyle(.borderless)
                     .disabled(cleanName == nil)
@@ -60,8 +61,8 @@ struct StoreDetailView: View {
                         sheet = .rename(category)
                     } label: {
                         Text(category.name)
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                            .contentShape(Rectangle())
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle().inset(by: -11))
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("store.category")
@@ -81,8 +82,8 @@ struct StoreDetailView: View {
                     sheet = .add
                 } label: {
                     Label("Add category", systemImage: "plus")
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .contentShape(Rectangle())
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle().inset(by: -11))
                 }
                 .buttonStyle(.borderless)
                 .accessibilityIdentifier("store.addCategory")
@@ -97,8 +98,8 @@ struct StoreDetailView: View {
                     deleting = true
                 } label: {
                     Text("Delete store")
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .contentShape(Rectangle())
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle().inset(by: -11))
                 }
                 .buttonStyle(.borderless)
                 .accessibilityIdentifier("store.delete")

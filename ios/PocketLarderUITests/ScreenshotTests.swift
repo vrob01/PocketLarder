@@ -336,7 +336,8 @@ final class ScreenshotTests: XCTestCase {
             }
             attach(app, "stores-\(language)-\(appearance)")
 
-            market.tap()
+            // Near the top edge, because the whole row is the target.
+            market.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
             let storeName = app.textFields["store.name"]
             XCTAssertTrue(storeName.waitForExistence(timeout: 5))
             attach(app, "store-detail-\(language)-\(appearance)")
@@ -345,7 +346,7 @@ final class ScreenshotTests: XCTestCase {
                 cancelDelete(app, "Delete Market? Its categories go too. Entries filed there move to Not filed yet.")
                 XCTAssertEqual(storeName.value as? String, "Market")
             }
-            app.navigationBars["Market"].buttons.element(boundBy: 0).tap()
+            app.buttons["BackButton"].tap()
             XCTAssertTrue(app.navigationBars["Market"].waitForNonExistence(timeout: 5))
             XCTAssertTrue(market.exists)
 
@@ -367,7 +368,7 @@ final class ScreenshotTests: XCTestCase {
                 cancelDelete(app, "Delete Apples? Entries keep their name and move to Not filed yet.")
                 XCTAssertEqual(app.textFields["item.name"].value as? String, "Apples")
             }
-            app.navigationBars["Apples"].buttons.element(boundBy: 0).tap()
+            app.buttons["BackButton"].tap()
             XCTAssertTrue(app.navigationBars["Apples"].waitForNonExistence(timeout: 5))
 
             let placed = NSPredicate(format: "identifier == 'items.item' AND label BEGINSWITH 'Apples' AND label CONTAINS %@", alsoAt[language]!)

@@ -33,10 +33,7 @@ struct ListsView: View {
                             sheet = .edit(list)
                         } label: {
                             ListLabel(list: list)
-                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                                .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
                         .accessibilityIdentifier("lists.list")
                     }
                     Button {
@@ -55,7 +52,8 @@ struct ListsView: View {
                                 Button {
                                     saveFailure = announced(larder.failureSaving([Op(.listUpdate, id: list.id, archived: false)]))
                                 } label: {
-                                    Text("Restore").frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                                    // 44 points high without making the row taller.
+                                    Text("Restore").contentShape(Rectangle().inset(by: -11))
                                 }
                                 .buttonStyle(.borderless)
                                 .accessibilityIdentifier("lists.restore")
@@ -99,7 +97,7 @@ private struct ListLabel: View {
                 .font(.caption)
                 .foregroundStyle(list.color.map { Color($0) } ?? Color.secondary)
                 .accessibilityHidden(true)
-            Text(list.name ?? "")
+            Text(list.name ?? "").foregroundStyle(Color.primary)
         }
         .accessibilityElement(children: .combine)
         .accessibilityValue(list.color.map(colorName) ?? "")
