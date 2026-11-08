@@ -481,12 +481,13 @@ final class ScreenshotTests: XCTestCase {
         for (language, appearance) in variants {
             let checks = language == "en" && appearance == "light"
             let app = launch(language, appearance, "-fixture", "household")
-            let account = openAccount(app)
-            let header = app.descendants(matching: .any).matching(identifier: "account.header").firstMatch
-            wait(for: [expectation(for: NSPredicate(format: "label CONTAINS 'Alex'"), evaluatedWith: header)], timeout: 10)
-            XCTAssertTrue(header.label.contains("Admin"), "The header reads \(header.label)")
-            XCTAssertTrue(header.label.contains("fixture.invalid"), "The header reads \(header.label)")
-            let pickers = account.segmentedControls
+            // Once the first sync is in, so that the header has the name.
+            _ = addField(app)
+            let header = openAccount(app)
+            for part in ["Alex", "Admin", "fixture.invalid"] {
+                XCTAssertTrue(header.label.contains(part), "The header reads \(header.label)")
+            }
+            let pickers = app.segmentedControls
             XCTAssertEqual(pickers.count, 2)
             for index in 0..<pickers.count {
                 let options = pickers.element(boundBy: index).buttons
@@ -499,8 +500,8 @@ final class ScreenshotTests: XCTestCase {
             attach(app, "account-\(language)-\(appearance)")
 
             if checks {
-                let open = account.buttons.matching(NSPredicate(format: "label == 'Open'")).firstMatch
-                let readOnly = account.buttons.matching(NSPredicate(format: "label == 'Read-only'")).firstMatch
+                let open = app.buttons.matching(NSPredicate(format: "label == 'Open'")).firstMatch
+                let readOnly = app.buttons.matching(NSPredicate(format: "label == 'Read-only'")).firstMatch
                 XCTAssertTrue(open.isSelected)
                 readOnly.tap()
                 wait(for: [expectation(for: NSPredicate(format: "isSelected == true"), evaluatedWith: readOnly)], timeout: 5)
@@ -508,10 +509,10 @@ final class ScreenshotTests: XCTestCase {
             }
 
             let languageRow = app.buttons["account.language"]
-            scrollUp(app, in: account, until: languageRow)
+            scrollUp(app, in: app, until: languageRow)
             XCTAssertEqual(languageRow.value as? String, language == "en" ? "English" : "Deutsch")
             let addDevice = app.buttons["account.addDevice"]
-            scrollUp(app, in: account, until: addDevice)
+            scrollUp(app, in: app, until: addDevice)
             addDevice.tap()
             let qr = app.images["addDevice.qr"]
             XCTAssertTrue(qr.waitForExistence(timeout: 10))
@@ -521,7 +522,7 @@ final class ScreenshotTests: XCTestCase {
 
             if checks {
                 let cancel = app.buttons["addDevice.cancel"]
-                scrollUp(app, in: app.collectionViews.containing(.image, identifier: "addDevice.qr").firstMatch, until: cancel)
+                scrollUp(app, in: app, until: cancel)
                 cancel.tap()
                 XCTAssertTrue(qr.waitForNonExistence(timeout: 5), "Cancel invite didn't close the sheet")
             }
@@ -532,9 +533,9 @@ final class ScreenshotTests: XCTestCase {
     /// Without a connection, Add a device says why and opens no sheet.
     func testAddDeviceOffline() {
         let app = launch("en", "light", "-fixture", "offline")
-        let account = openAccount(app)
+        _ = openAccount(app)
         let addDevice = app.buttons["account.addDevice"]
-        scrollUp(app, in: account, until: addDevice)
+        scrollUp(app, in: app, until: addDevice)
         addDevice.tap()
         let alert = app.alerts.firstMatch
         XCTAssertTrue(alert.waitForExistence(timeout: 10))
@@ -546,14 +547,14 @@ final class ScreenshotTests: XCTestCase {
 
     private let variants = [("en", "light"), ("en", "dark"), ("de", "light"), ("de", "dark")]
 
-    /// Opens My account from the circle and returns its list, not the main screen's under it.
+    /// Opens My account from the circle and returns its header.
     private func openAccount(_ app: XCUIApplication) -> XCUIElement {
         let circle = app.buttons["main.account"]
         XCTAssertTrue(circle.waitForExistence(timeout: 10))
         circle.tap()
-        let list = app.collectionViews.containing(.any, identifier: "account.header").firstMatch
-        XCTAssertTrue(list.waitForExistence(timeout: 5))
-        return list
+        let header = app.descendants(matching: .any).matching(identifier: "account.header").firstMatch
+        XCTAssertTrue(header.waitForExistence(timeout: 10))
+        return header
     }
 
     /// The ⇄ button of the entry that starts with `text`.
@@ -651,7 +652,7 @@ final class ScreenshotTests: XCTestCase {
     }
 
     /// Short drags on the list without momentum, because a swipe can carry a row past the screen, and then it's out of
-    /// the query.
+    /// the query. On a sheet, `in: app` drags on the screen, because a list found by its rows is lost once they scroll away.
     private func scrollUp(_ app: XCUIApplication, in list: XCUIElement? = nil, until element: XCUIElement) {
         let list = list ?? app.collectionViews.firstMatch
         let start = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
