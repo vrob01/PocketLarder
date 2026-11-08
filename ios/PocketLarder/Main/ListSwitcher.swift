@@ -6,6 +6,8 @@ struct ListSwitcher: View {
     @Environment(AppModel.self) private var model
     let view: Snapshot?
     let onOpen: () -> Void
+    @State private var showingLists = false
+    @State private var showingStores = false
 
     private var name: String {
         guard case let .list(id) = model.scope, let view, let list = view.list(id) else {
@@ -29,6 +31,10 @@ struct ListSwitcher: View {
                     .accessibilityLabel(list.writable ? listName(list, in: view) : String(localized: "\(listName(list, in: view)), read-only"))
                 }
             }
+            Section {
+                Button("Lists…") { showingLists = true }
+                Button("Stores & items…") { showingStores = true }
+            }
         } label: {
             HStack(spacing: 6) {
                 Text(name).font(.headline).lineLimit(2)
@@ -42,6 +48,12 @@ struct ListSwitcher: View {
             .contentShape(Rectangle())
         }
         .accessibilityIdentifier("main.switcher")
+        .sheet(isPresented: $showingLists) {
+            if let larder = model.larder { ListsView(larder: larder) }
+        }
+        .sheet(isPresented: $showingStores) {
+            if let larder = model.larder { StoresView(larder: larder) }
+        }
     }
 
     @ViewBuilder private func label(_ list: ListInfo, in view: Snapshot) -> some View {
