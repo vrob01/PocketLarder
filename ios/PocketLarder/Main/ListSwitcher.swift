@@ -5,6 +5,7 @@ import SwiftUI
 struct ListSwitcher: View {
     @Environment(AppModel.self) private var model
     let view: Snapshot?
+    let onOpen: () -> Void
 
     private var name: String {
         guard case let .list(id) = model.scope, let view, let list = view.list(id) else {
@@ -16,6 +17,8 @@ struct ListSwitcher: View {
     var body: some View {
         Menu {
             Button("My view") { model.scope = .myView }
+                // A menu passes no tap to the screen's gesture, so the screen learns of the opening from here.
+                .onAppear(perform: onOpen)
             if let view {
                 ForEach(switcherLists(view), id: \.id) { list in
                     Button {

@@ -9,7 +9,9 @@ struct AddBar: View {
     let target: ListInfo?
     let readOnlyText: String?
     @Binding var text: String
-    let onReturn: (String) -> Void
+    let focused: FocusState<Bool>.Binding
+    /// Return and the target's name both add through here.
+    let onAdd: (String) -> Void
 
     var body: some View {
         let layout = dynamicTypeSize.isAccessibilitySize
@@ -31,8 +33,9 @@ struct AddBar: View {
                         guard text.contains(where: \.isNewline) else { return }
                         let line = text.split(whereSeparator: \.isNewline).joined(separator: " ")
                         text = line
-                        onReturn(line)
+                        onAdd(line)
                     }
+                    .focused(focused)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
                     .frame(minHeight: 44)
@@ -40,7 +43,7 @@ struct AddBar: View {
                     .disabled(target == nil)
                     .accessibilityIdentifier("main.addField")
                 if readOnlyText == nil {
-                    targetMenu
+                    targetButton
                 }
             }
         }
@@ -54,31 +57,51 @@ struct AddBar: View {
         return String(localized: "My list")
     }
 
-    private var targetMenu: some View {
-        Menu {
-            if let view {
-                ForEach(addTargets(view), id: \.id) { list in
-                    Button(listName(list, in: view)) { model.addTarget = list.id }
+    /// The name adds like Return, and only the arrow opens the list picker.
+    private var targetButton: some View {
+        let accessibilitySize = dynamicTypeSize.isAccessibilitySize
+        return HStack(spacing: 0) {
+            Button {
+                onAdd(text)
+            } label: {
+                Text(targetName)
+                    .lineLimit(1)
+                    .foregroundStyle(Color(.systemBackground))
+                    .padding(.horizontal, 10)
+                    // Three to four times the arrow's width, so that it's the part a thumb finds, and the field keeps
+                    // the rest.
+                    .frame(minWidth: accessibilitySize ? nil : 132, maxWidth: accessibilitySize ? .infinity : 176, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Adds what you typed to this list.")
+            .accessibilityIdentifier("main.addToTarget")
+
+            Menu {
+                if let view {
+                    ForEach(addTargets(view), id: \.id) { list in
+                        Button(listName(list, in: view)) { model.addTarget = list.id }
+                    }
+                    // The rest of the bar keeps the keyboard up, but the list picker hides it once it opens.
+                    .onAppear { focused.wrappedValue = false }
                 }
+            } label: {
+                Text(verbatim: "▾")
+                    .foregroundStyle(Color(.systemBackground))
+                    .frame(minWidth: 44, minHeight: 44)
+                    .overlay(alignment: .leading) {
+                        Rectangle().fill(Color(.systemBackground).opacity(0.4)).frame(width: 1).padding(.vertical, 10)
+                    }
+                    .contentShape(Rectangle())
             }
-        } label: {
-            HStack(spacing: 4) {
-                Text(targetName).lineLimit(1)
-                Text(verbatim: "▾").accessibilityHidden(true)
-            }
-            .font(.footnote.weight(.semibold))
-            .foregroundStyle(Color(.systemBackground))
-            .padding(.horizontal, 10)
-            .frame(minHeight: 44)
-            // Black in light mode and white in dark mode, so that it stays visible.
-            .background(Color.primary, in: RoundedRectangle(cornerRadius: 10))
-            .contentShape(Rectangle())
-            .opacity(target == nil ? 0.4 : 1)
+            .accessibilityLabel("Choose list")
+            .accessibilityIdentifier("main.chooseTarget")
         }
-        .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? nil : 160)
-        .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: false)
+        .font(.footnote.weight(.semibold))
+        // Black in light mode and white in dark mode, so that it stays visible.
+        .background(Color.primary, in: RoundedRectangle(cornerRadius: 10))
+        .opacity(target == nil ? 0.4 : 1)
         .disabled(target == nil)
-        .accessibilityIdentifier("main.addTarget")
     }
 }
 

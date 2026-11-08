@@ -14,14 +14,27 @@ struct MainView: View {
     @State private var editing: Entry?
     @State private var highlighted: String?
     @State private var showingAccount = false
+    @FocusState private var addFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
-            topBar
-            NoticeBanner(larder: larder, saveFailure: $saveFailure)
-            StoreChips(stores: larder.view.map { chipStores($0, scope: model.scope) } ?? [], filter: $filter)
+            VStack(spacing: 0) {
+                topBar
+                NoticeBanner(larder: larder, saveFailure: $saveFailure)
+                StoreChips(stores: larder.view.map { chipStores($0, scope: model.scope) } ?? [], filter: $filter)
+            }
+            // So that the gaps between the controls take a tap too.
+            .contentShape(Rectangle())
+            .simultaneousGesture(hidesKeyboard)
             list
-            AddBar(view: larder.view, target: target, readOnlyText: readOnlyText, text: $addText, onReturn: { submit($0) })
+            AddBar(
+                view: larder.view,
+                target: target,
+                readOnlyText: readOnlyText,
+                text: $addText,
+                focused: $addFocused,
+                onAdd: { submit($0) }
+            )
         }
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showingAccount) { AccountView() }
@@ -41,7 +54,7 @@ struct MainView: View {
 
     private var topBar: some View {
         HStack(spacing: 8) {
-            ListSwitcher(view: larder.view)
+            ListSwitcher(view: larder.view, onOpen: { addFocused = false })
             Spacer(minLength: 0)
             OfflineBadge(larder: larder, host: model.account?.server.host() ?? "")
             Button {
@@ -65,6 +78,11 @@ struct MainView: View {
         if !chipStores(view, scope: model.scope).contains(where: { $0.id == id }) {
             filter = .all
         }
+    }
+
+    /// Any tap above the add bar hides the keyboard and still does what it does. The suggestions and the bar keep it.
+    private var hidesKeyboard: some Gesture {
+        TapGesture().onEnded { addFocused = false }
     }
 
     // MARK: List
@@ -96,6 +114,7 @@ struct MainView: View {
             }
         }
         .opacity(suggested.isEmpty ? 1 : 0.35)
+        .simultaneousGesture(hidesKeyboard)
         .overlay(alignment: .bottom) {
             if !suggested.isEmpty {
                 SuggestionList(suggestions: suggested, onPick: { pick($0) })
@@ -183,10 +202,11 @@ struct MainView: View {
 
     private func actions(_ entry: Entry, in view: Snapshot) -> EntryActions? {
         guard view.list(entry.listId)?.writable == true else { return nil }
+        // Here too, because swipe actions and context menu items are out of `hidesKeyboard`'s reach.
         return EntryActions(
-            crossOff: { change(Op(.entryBuy, id: entry.id)) },
-            edit: { editing = entry },
-            delete: { change(Op(.entryDelete, id: entry.id)) }
+            crossOff: { addFocused = false; change(Op(.entryBuy, id: entry.id)) },
+            edit: { addFocused = false; editing = entry },
+            delete: { addFocused = false; change(Op(.entryDelete, id: entry.id)) }
         )
     }
 
@@ -219,6 +239,7 @@ struct MainView: View {
         .padding(.top, 8)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
+        .accessibilityIdentifier("main.storeHeader")
     }
 
     private func categoryHeader(_ name: String) -> some View {
@@ -252,8 +273,9 @@ struct MainView: View {
         return validTarget(model.addTarget, in: view)
     }
 
+    /// Only while the field has focus, so that no dimmed list stays under suggestions nobody is typing into.
     private var suggested: [Suggestion] {
-        guard let view = larder.view, target != nil else { return [] }
+        guard addFocused, let view = larder.view, target != nil else { return [] }
         return suggestions(view, for: addText)
     }
 
