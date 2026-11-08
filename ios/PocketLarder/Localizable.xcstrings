@@ -1180,6 +1180,66 @@
           }
         }
       }
+    },
+    "Move %@ to another store": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ in einen anderen Laden verschieben"
+          }
+        }
+      }
+    },
+    "Move to store": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In Laden verschieben"
+          }
+        }
+      }
+    },
+    "New category…": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neue Kategorie…"
+          }
+        }
+      }
+    },
+    "Where in %@?": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wohin in %@?"
+          }
+        }
+      }
+    },
+    "Move %@ to…": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ verschieben nach…"
+          }
+        }
+      }
+    },
+    "Couldn't move %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ konnte nicht verschoben werden"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

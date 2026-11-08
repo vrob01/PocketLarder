@@ -9,6 +9,8 @@ struct EntryActions {
 }
 
 struct EntryRow: View {
+    @Environment(AppModel.self) private var model
+    @State private var movingByDialog = false
     let entry: Entry
     let tag: ListInfo?
     let actions: EntryActions?
@@ -33,9 +35,14 @@ struct EntryRow: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityHint("Edit")
-                .accessibilityAction(named: "Cross off", actions.crossOff)
-                .accessibilityAction(named: "Delete", actions.delete)
+                .accessibilityActions {
+                    Button("Cross off", action: actions.crossOff)
+                    if model.hasStores { Button("Move to store") { movingByDialog = true } }
+                    Button("Delete", action: actions.delete)
+                }
                 .accessibilityIdentifier("entry.row")
+
+                MoveMenu(entry: entry, asking: $movingByDialog)
             } else {
                 EntryLabel(entry: entry, tag: tag)
                     .padding(.leading, 16)
