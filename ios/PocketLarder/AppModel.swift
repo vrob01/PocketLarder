@@ -69,7 +69,8 @@ final class AppModel {
 
     #if DEBUG
     /// Signed in on sample data, on a fake server and a new empty directory, so that nothing of a real account is touched.
-    static func fixture() -> AppModel {
+    /// Offline, the server can't be reached, so the first sync never succeeds.
+    static func fixture(offline: Bool = false) -> AppModel {
         let url = Bundle.main.url(forResource: "household", withExtension: "json")!
         let snapshot = try! JSON.decoder.decode(Snapshot.self, from: Data(contentsOf: url))
         let directory = FileManager.default.temporaryDirectory.appending(path: newID())
@@ -80,7 +81,8 @@ final class AppModel {
             memberId: snapshot.me.memberId,
             deviceId: snapshot.me.deviceId
         )
-        return AppModel(fixture: account, transport: FixtureTransport(snapshot), dataDirectory: directory)
+        let transport: any Transport = offline ? UnreachableTransport() : FixtureTransport(snapshot)
+        return AppModel(fixture: account, transport: transport, dataDirectory: directory)
     }
 
     private init(fixture account: Account, transport: any Transport, dataDirectory: URL) {

@@ -18,13 +18,23 @@ struct OfflineBadge: View {
             .accessibilityLabel("Can't sync")
             .accessibilityIdentifier("main.offline")
             .popover(isPresented: $showingDetails) {
-                Text(offlineText(failure: failure, host: host, pending: larder.pending.count))
-                    .padding()
-                    .frame(maxWidth: 300)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .presentationCompactAdaptation(.popover)
+                let text = offlineText(failure: failure, host: host, pending: larder.pending.count)
+                // The bubble takes the text's height at this width, and scrolls only when the screen is too short for it.
+                ViewThatFits(in: .vertical) {
+                    details(text)
+                    ScrollView { details(text) }
+                }
+                .presentationCompactAdaptation(.popover)
             }
         }
+    }
+
+    private func details(_ text: String) -> some View {
+        Text(text)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(width: 280, alignment: .leading)
+            .padding()
+            .accessibilityIdentifier("main.offlineText")
     }
 }
 

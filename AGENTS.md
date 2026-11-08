@@ -45,7 +45,7 @@ Xcode builds run only on GitHub: push, then wait for the `ios` run of your commi
 The screenshots of its UI tests are in the `screenshots` artifact:
 `gh run download <id> -n screenshots -D <dir>`.
 
-`-fixture household` (Debug builds only, `ios/PocketLarder/Fixtures/`) runs the app on sample data without a server, the Keychain or the real data folder, and the screenshot tests use it.
+`-fixture household` (Debug builds only, `ios/PocketLarder/Fixtures/`) runs the app on sample data without a server, the Keychain or the real data folder, and the screenshot tests use it; `-fixture offline` is that account with every request failing as unreachable, so the app shows the offline badge and no data.
 
 ## Dev server
 

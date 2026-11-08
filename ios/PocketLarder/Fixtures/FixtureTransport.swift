@@ -32,4 +32,11 @@ actor FixtureTransport: Transport {
         HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
     }
 }
+
+/// The server behind `-fixture offline`, which can never be reached.
+struct UnreachableTransport: Transport {
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        throw URLError(.cannotConnectToHost)
+    }
+}
 #endif

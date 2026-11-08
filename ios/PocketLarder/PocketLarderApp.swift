@@ -4,7 +4,11 @@ import SwiftUI
 struct PocketLarderApp: App {
     @State private var model: AppModel = {
         #if DEBUG
-        if UserDefaults.standard.string(forKey: "fixture") == "household" { return .fixture() }
+        switch UserDefaults.standard.string(forKey: "fixture") {
+        case "household": return .fixture()
+        case "offline": return .fixture(offline: true)
+        default: break
+        }
         #endif
         return AppModel()
     }()
