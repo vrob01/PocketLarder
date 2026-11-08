@@ -439,6 +439,7 @@ final class ScreenshotTests: XCTestCase {
                 app.buttons["picker.newCategory"].tap()
                 let name = app.textFields["name.field"]
                 XCTAssertTrue(name.waitForExistence(timeout: 5))
+                name.tap()
                 name.typeText("Vegetables")
                 app.buttons["name.save"].tap()
                 XCTAssertTrue(cancel.waitForNonExistence(timeout: 5), "The picker stayed open")
