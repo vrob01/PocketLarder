@@ -475,7 +475,86 @@ final class ScreenshotTests: XCTestCase {
         }
     }
 
+    /// My account and Add a device. In English light it also sets Read-only and cancels the invite. No test taps a layout
+    /// or appearance, because the app would keep that choice for every later launch without `-layout`.
+    func testAccount() {
+        for (language, appearance) in variants {
+            let checks = language == "en" && appearance == "light"
+            let app = launch(language, appearance, "-fixture", "household")
+            let account = openAccount(app)
+            let header = app.descendants(matching: .any).matching(identifier: "account.header").firstMatch
+            wait(for: [expectation(for: NSPredicate(format: "label CONTAINS 'Alex'"), evaluatedWith: header)], timeout: 10)
+            XCTAssertTrue(header.label.contains("Admin"), "The header reads \(header.label)")
+            XCTAssertTrue(header.label.contains("fixture.invalid"), "The header reads \(header.label)")
+            let pickers = account.segmentedControls
+            XCTAssertEqual(pickers.count, 2)
+            for index in 0..<pickers.count {
+                let options = pickers.element(boundBy: index).buttons
+                for option in 0..<options.count {
+                    let frame = options.element(boundBy: option).frame
+                    XCTAssertGreaterThanOrEqual(frame.width, 44)
+                    XCTAssertGreaterThanOrEqual(frame.height, 44, "Option \(option) of picker \(index) is too low")
+                }
+            }
+            attach(app, "account-\(language)-\(appearance)")
+
+            if checks {
+                let open = account.buttons.matching(NSPredicate(format: "label == 'Open'")).firstMatch
+                let readOnly = account.buttons.matching(NSPredicate(format: "label == 'Read-only'")).firstMatch
+                XCTAssertTrue(open.isSelected)
+                readOnly.tap()
+                wait(for: [expectation(for: NSPredicate(format: "isSelected == true"), evaluatedWith: readOnly)], timeout: 5)
+                XCTAssertFalse(open.isSelected)
+            }
+
+            let languageRow = app.buttons["account.language"]
+            scrollUp(app, in: account, until: languageRow)
+            XCTAssertEqual(languageRow.value as? String, language == "en" ? "English" : "Deutsch")
+            let addDevice = app.buttons["account.addDevice"]
+            scrollUp(app, in: account, until: addDevice)
+            addDevice.tap()
+            let qr = app.images["addDevice.qr"]
+            XCTAssertTrue(qr.waitForExistence(timeout: 10))
+            // The sheet is still sliding up.
+            Thread.sleep(forTimeInterval: 1)
+            attach(app, "add-device-\(language)-\(appearance)")
+
+            if checks {
+                let cancel = app.buttons["addDevice.cancel"]
+                scrollUp(app, in: app.collectionViews.containing(.image, identifier: "addDevice.qr").firstMatch, until: cancel)
+                cancel.tap()
+                XCTAssertTrue(qr.waitForNonExistence(timeout: 5), "Cancel invite didn't close the sheet")
+            }
+            app.terminate()
+        }
+    }
+
+    /// Without a connection, Add a device says why and opens no sheet.
+    func testAddDeviceOffline() {
+        let app = launch("en", "light", "-fixture", "offline")
+        let account = openAccount(app)
+        let addDevice = app.buttons["account.addDevice"]
+        scrollUp(app, in: account, until: addDevice)
+        addDevice.tap()
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 10))
+        XCTAssertTrue(alert.staticTexts["Couldn't create an invite."].exists)
+        XCTAssertTrue(alert.staticTexts["Needs a connection to your server. Can't reach fixture.invalid."].exists)
+        XCTAssertFalse(app.images["addDevice.qr"].exists)
+        app.terminate()
+    }
+
     private let variants = [("en", "light"), ("en", "dark"), ("de", "light"), ("de", "dark")]
+
+    /// Opens My account from the circle and returns its list, not the main screen's under it.
+    private func openAccount(_ app: XCUIApplication) -> XCUIElement {
+        let circle = app.buttons["main.account"]
+        XCTAssertTrue(circle.waitForExistence(timeout: 10))
+        circle.tap()
+        let list = app.collectionViews.containing(.any, identifier: "account.header").firstMatch
+        XCTAssertTrue(list.waitForExistence(timeout: 5))
+        return list
+    }
 
     /// The ⇄ button of the entry that starts with `text`.
     private func moveButton(_ app: XCUIApplication, _ text: String) -> XCUIElement {
@@ -573,8 +652,8 @@ final class ScreenshotTests: XCTestCase {
 
     /// Short drags on the list without momentum, because a swipe can carry a row past the screen, and then it's out of
     /// the query.
-    private func scrollUp(_ app: XCUIApplication, until element: XCUIElement) {
-        let list = app.collectionViews.firstMatch
+    private func scrollUp(_ app: XCUIApplication, in list: XCUIElement? = nil, until element: XCUIElement) {
+        let list = list ?? app.collectionViews.firstMatch
         let start = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
         let end = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
         for _ in 0..<15 where !(element.exists && element.isHittable) {

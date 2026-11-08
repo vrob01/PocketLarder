@@ -1240,6 +1240,276 @@
           }
         }
       }
+    },
+    "Admin": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Admin"
+          }
+        }
+      }
+    },
+    "List layout": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listendarstellung"
+          }
+        }
+      }
+    },
+    "Rows": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zeilen"
+          }
+        }
+      }
+    },
+    "Tiles": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kacheln"
+          }
+        }
+      }
+    },
+    "Appearance": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erscheinungsbild"
+          }
+        }
+      }
+    },
+    "System": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System"
+          }
+        }
+      }
+    },
+    "Light": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hell"
+          }
+        }
+      }
+    },
+    "Dark": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dunkel"
+          }
+        }
+      }
+    },
+    "Who can see my list": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wer meine Liste sehen kann"
+          }
+        }
+      }
+    },
+    "Open": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Offen"
+          }
+        }
+      }
+    },
+    "Read-only": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schreibgeschützt"
+          }
+        }
+      }
+    },
+    "Hidden": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ausgeblendet"
+          }
+        }
+      }
+    },
+    "Hidden isn't encryption: whoever runs your server can read every list. Filing an entry puts its name in the shared catalog, where others see it in suggestions. Leave it unfiled to keep it private.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ausgeblendet heißt nicht verschlüsselt: Wer deinen Server betreibt, kann jede Liste lesen. Wenn du einen Eintrag einsortierst, landet sein Name im gemeinsamen Katalog, wo andere ihn in Vorschlägen sehen. Sortier ihn nicht ein, damit er privat bleibt."
+          }
+        }
+      }
+    },
+    "This iPhone": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses iPhone"
+          }
+        }
+      }
+    },
+    "Add a device…": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gerät hinzufügen…"
+          }
+        }
+      }
+    },
+    "Language": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sprache"
+          }
+        }
+      }
+    },
+    "Couldn't create an invite.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Einladung konnte nicht erstellt werden."
+          }
+        }
+      }
+    },
+    "Needs a connection to your server.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dafür ist eine Verbindung zu deinem Server nötig."
+          }
+        }
+      }
+    },
+    "Add a device": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gerät hinzufügen"
+          }
+        }
+      }
+    },
+    "Scan with the new iPhone's Camera": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit der Kamera des neuen iPhones scannen"
+          }
+        }
+      }
+    },
+    "QR code of the invite": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "QR-Code der Einladung"
+          }
+        }
+      }
+    },
+    "Signs in as %@ · one use · valid until %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meldet als %1$@ an · einmal nutzbar · gültig bis %2$@"
+          }
+        }
+      }
+    },
+    "Share invite…": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einladung teilen…"
+          }
+        }
+      }
+    },
+    "Copy invite": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einladung kopieren"
+          }
+        }
+      }
+    },
+    "Anyone with this invite can sign in as you until it's used or expires. Only send it to yourself.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wer diese Einladung hat, kann sich mit deinem Konto anmelden, bis sie benutzt wurde oder abläuft. Schick sie nur an dich selbst."
+          }
+        }
+      }
+    },
+    "Cancel invite": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einladung widerrufen"
+          }
+        }
+      }
+    },
+    "Couldn't cancel the invite. It still works until it's used or expires.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Einladung konnte nicht widerrufen werden. Sie gilt weiter, bis sie benutzt wurde oder abläuft."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

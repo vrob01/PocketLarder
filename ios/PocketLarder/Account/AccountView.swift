@@ -1,27 +1,84 @@
+import PocketLarderKit
 import SwiftUI
 
 struct AccountView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+    @AppStorage("layout") private var layout = "rows"
+    @AppStorage("appearance") private var appearance = "system"
     @State private var signingOut = false
     @State private var question: String?
+    @State private var creatingInvite = false
+    @State private var invite: CreatedInvite?
+    @State private var inviteFailure: String?
+    @State private var saveFailure: String?
 
     var body: some View {
         NavigationStack {
             List {
-                Button(role: .destructive) {
-                    signOut(force: false)
-                } label: {
-                    HStack {
-                        Text("Sign out")
-                        if signingOut {
-                            Spacer()
-                            ProgressView()
+                header
+                Section("List layout") {
+                    Picker("List layout", selection: $layout) {
+                        Text("Rows").tag("rows")
+                        Text("Tiles").tag("tiles")
+                    }
+                    .segmentedRow()
+                    .accessibilityIdentifier("account.layout")
+                }
+                Section("Appearance") {
+                    Picker("Appearance", selection: $appearance) {
+                        Text("System").tag("system")
+                        Text("Light").tag("light")
+                        Text("Dark").tag("dark")
+                    }
+                    .segmentedRow()
+                    .accessibilityIdentifier("account.appearance")
+                }
+                privacy
+                Section("This iPhone") {
+                    Button {
+                        addDevice()
+                    } label: {
+                        HStack {
+                            Text("Add a device…")
+                            if creatingInvite {
+                                Spacer()
+                                ProgressView()
+                            }
                         }
                     }
+                    .disabled(creatingInvite || signingOut)
+                    .accessibilityIdentifier("account.addDevice")
+                    Button {
+                        openURL(URL(string: UIApplication.openSettingsURLString)!)
+                    } label: {
+                        HStack {
+                            Text("Language").foregroundStyle(Color.primary)
+                            Spacer()
+                            Text(languageName).foregroundStyle(.secondary)
+                            Image(systemName: "chevron.forward")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .accessibilityLabel("Language")
+                    .accessibilityValue(languageName)
+                    .accessibilityIdentifier("account.language")
+                    Button(role: .destructive) {
+                        signOut(force: false)
+                    } label: {
+                        HStack {
+                            Text("Sign out")
+                            if signingOut {
+                                Spacer()
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(creatingInvite || signingOut)
+                    .accessibilityIdentifier("account.signOut")
                 }
-                .disabled(signingOut)
-                .accessibilityIdentifier("account.signOut")
             }
             .navigationTitle("My account")
             .navigationBarTitleDisplayMode(.inline)
@@ -30,6 +87,20 @@ struct AccountView: View {
                     Button("Done") { dismiss() }
                         .disabled(signingOut)
                 }
+            }
+            .sheet(isPresented: Binding(get: { invite != nil }, set: { if !$0 { invite = nil } })) {
+                if let invite {
+                    AddDeviceSheet(invite: invite, memberName: model.memberName)
+                }
+            }
+            .alert(
+                "Couldn't create an invite.",
+                isPresented: Binding(get: { inviteFailure != nil }, set: { if !$0 { inviteFailure = nil } }),
+                presenting: inviteFailure
+            ) { _ in
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text($0)
             }
         }
         .interactiveDismissDisabled(signingOut)
@@ -42,6 +113,88 @@ struct AccountView: View {
         ) {
             Button("Sign out anyway", role: .destructive) { signOut(force: true) }
             Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    /// The initial, the name, an Admin badge and the server, which VoiceOver reads as one element.
+    private var header: some View {
+        HStack(spacing: 12) {
+            Text(verbatim: model.memberName.prefix(1).uppercased())
+                .font(.headline)
+                .foregroundStyle(Color(.systemBackground))
+                .frame(width: 44, height: 44)
+                .background(Color.accentColor, in: Circle())
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(verbatim: model.memberName).font(.headline)
+                    if model.larder?.view?.me.isAdmin == true {
+                        Text("Admin")
+                            .font(.caption2)
+                            .foregroundStyle(Color(ListColor.teal))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(Color(ListColor.teal).opacity(0.15), in: Capsule())
+                    }
+                }
+                Text(verbatim: model.account?.server.host() ?? "")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("account.header")
+    }
+
+    /// Left out until the first snapshot, because until then the current setting is unknown.
+    @ViewBuilder private var privacy: some View {
+        if let larder = model.larder, let me = larder.view?.member(model.account?.memberId) {
+            Section {
+                Picker("Who can see my list", selection: Binding(
+                    get: { me.privacy },
+                    set: { choice in
+                        guard choice != me.privacy else { return }
+                        saveFailure = announced(larder.failureSaving([Op(.memberSetPrivacy, privacy: choice)]))
+                    }
+                )) {
+                    Text("Open").tag(Privacy.open)
+                    Text("Read-only").tag(Privacy.readonly)
+                    Text("Hidden").tag(Privacy.hidden)
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            } header: {
+                Text("Who can see my list")
+            } footer: {
+                Text("Hidden isn't encryption: whoever runs your server can read every list. Filing an entry puts its name in the shared catalog, where others see it in suggestions. Leave it unfiled to keep it private.")
+            }
+            if let saveFailure {
+                Section {
+                    Text(saveFailure).accessibilityIdentifier("account.saveFailure")
+                }
+            }
+        }
+    }
+
+    /// The language the app shows, named in that language: "English", "Deutsch".
+    private var languageName: String {
+        let code = Bundle.main.preferredLocalizations.first ?? ""
+        let locale = Locale(identifier: code)
+        let name = locale.localizedString(forLanguageCode: code) ?? code
+        return name.prefix(1).uppercased(with: locale) + name.dropFirst()
+    }
+
+    private func addDevice() {
+        guard let client = model.client else { return }
+        let host = model.account?.server.host() ?? ""
+        creatingInvite = true
+        Task {
+            do {
+                invite = try await client.createInvite()
+            } catch {
+                inviteFailure = connectionFailureText(error, host: host)
+            }
+            creatingInvite = false
         }
     }
 
@@ -58,6 +211,23 @@ struct AccountView: View {
     }
 }
 
+private extension View {
+    /// A segmented control on the list's background, as in the mockup, with options at least 44 points high.
+    func segmentedRow() -> some View {
+        pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.large)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets())
+    }
+}
+
 func unsentChangesText(_ count: Int) -> String {
     String(localized: "\(count) changes haven't been sent yet. Sign out and lose them?")
+}
+
+/// Why a request to `host` failed. Only a failed connection says that the action needs one: otherwise the server answered.
+func connectionFailureText(_ failure: APIError, host: String) -> String {
+    let cause = failureText(failure, host: host)
+    return failure == .offline ? String(localized: "Needs a connection to your server.") + " " + cause : cause
 }
