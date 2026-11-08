@@ -118,7 +118,7 @@ struct AddDeviceSheet: View {
         let me = model.account?.memberId
         cancelling = true
         Task {
-            do {
+            do throws(APIError) {
                 _ = try await client.revokeInvites(memberId: invite.memberId == me ? nil : invite.memberId)
                 dismiss()
             } catch {

@@ -189,7 +189,7 @@ struct AccountView: View {
         let host = model.account?.server.host() ?? ""
         creatingInvite = true
         Task {
-            do {
+            do throws(APIError) {
                 invite = try await client.createInvite()
             } catch {
                 inviteFailure = connectionFailureText(error, host: host)
