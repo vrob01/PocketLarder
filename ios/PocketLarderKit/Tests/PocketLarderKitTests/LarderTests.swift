@@ -467,3 +467,28 @@ private func sentOpIds(_ request: URLRequest) throws -> [String] {
 
     #expect(await transport.requests.isEmpty)
 }
+
+@Test @MainActor func lastSyncFailureNamesTheCause() async throws {
+    let (larder, _, _, _) = try makeLarder([
+        offline,
+        .answer(status: 502, json: "Bad Gateway"),
+        .answer(status: 500, json: #"{"error":"internal"}"#),
+        .answer(status: 401, json: #"{"error":"missing_token"}"#),
+        try synced(),
+        .answer(status: 401, json: unauthorized),
+    ])
+    #expect(larder.lastSyncFailure == nil)
+
+    await larder.sync()
+    #expect(larder.lastSyncFailure == .offline)
+    await larder.sync()
+    #expect(larder.lastSyncFailure == .unexpected(status: 502))
+    await larder.sync()
+    #expect(larder.lastSyncFailure == .server(code: "internal"))
+    await larder.sync()
+    #expect(larder.lastSyncFailure == .server(code: "missing_token"))
+    await larder.sync()
+    #expect(larder.lastSyncFailure == nil)
+    await larder.sync()
+    #expect(larder.lastSyncFailure == nil)
+}

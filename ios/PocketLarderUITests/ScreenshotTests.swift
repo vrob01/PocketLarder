@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 private let example = "pocketlarder://invite?server=https%3A%2F%2Flists.example.com&code=fdd4efb3-cf5b-44e7-bec4-94df8e478f5f.ArBLMeKiOpJu5jbcasIRDr8-zlqlbdWCoIfZ9EsLPio"
@@ -56,7 +57,291 @@ final class ScreenshotTests: XCTestCase {
         }
     }
 
+    func testMain() {
+        for (language, appearance) in variants {
+            let app = launch(language, appearance, "-fixture", "household", "-layout", "rows")
+            let crossOff = app.buttons.matching(identifier: "entry.crossOff").firstMatch
+            XCTAssertTrue(crossOff.waitForExistence(timeout: 10))
+            XCTAssertGreaterThanOrEqual(crossOff.frame.width, 44)
+            XCTAssertGreaterThanOrEqual(crossOff.frame.height, 44)
+            attach(app, "main-\(language)-\(appearance)-rows")
+
+            let market = app.buttons["chip.Market"]
+            market.tap()
+            wait(for: [expectation(for: NSPredicate(format: "isSelected == true"), evaluatedWith: market)], timeout: 5)
+            // The tap's highlight is still fading, and would show as a dimmed chip.
+            Thread.sleep(forTimeInterval: 0.5)
+            attach(app, "main-store-\(language)-\(appearance)")
+
+            app.buttons["chip.all"].tap()
+            let bought = app.buttons["main.recentlyBought"]
+            scrollUp(app, until: bought)
+            bought.tap()
+            // The rows open below the end of the screen.
+            scrollUp(app, until: app.buttons.matching(identifier: "bought.entry").firstMatch)
+            app.swipeUp()
+            attach(app, "main-bought-\(language)-\(appearance)")
+            app.terminate()
+
+            let tiles = launch(language, appearance, "-fixture", "household", "-layout", "tiles")
+            XCTAssertTrue(tiles.buttons.matching(identifier: "entry.tile").firstMatch.waitForExistence(timeout: 10))
+            attach(tiles, "main-\(language)-\(appearance)-tiles")
+            tiles.terminate()
+        }
+    }
+
+    func testAdding() {
+        for (language, appearance) in variants {
+            let app = launch(language, appearance, "-fixture", "household")
+            let field = addField(app)
+            field.tap()
+            field.typeText("mi")
+            let suggestions = app.buttons.matching(identifier: "main.suggestion")
+            XCTAssertTrue(suggestions.firstMatch.waitForExistence(timeout: 5))
+            XCTAssertGreaterThanOrEqual(suggestions.count, 2)
+            attach(app, "add-suggestions-\(language)-\(appearance)")
+
+            suggestions.matching(NSPredicate(format: "label BEGINSWITH 'Milk'")).firstMatch.tap()
+            assertEmpty(field)
+            XCTAssertTrue(app.keyboards.firstMatch.exists)
+            scrollUp(app, until: entry(app, "entry.row", "Milk"))
+            app.terminate()
+        }
+    }
+
+    /// Return on a name that's on the list clears the field and scrolls to the entry, in both layouts.
+    func testAddingExisting() {
+        for layout in ["rows", "tiles"] {
+            let app = launch("en", "light", "-fixture", "household", "-layout", layout)
+            let field = addField(app)
+            field.tap()
+            field.typeText("Toothpaste\n")
+            let toothpaste = entry(app, layout == "rows" ? "entry.row" : "entry.tile", "Toothpaste")
+            wait(for: [expectation(for: NSPredicate(format: "isHittable == true"), evaluatedWith: toothpaste)], timeout: 5)
+            assertEmpty(field)
+            XCTAssertTrue(app.keyboards.firstMatch.exists)
+
+            field.typeText("Birthday hats\n")
+            assertEmpty(field)
+            XCTAssertTrue(app.keyboards.firstMatch.exists)
+            app.terminate()
+        }
+    }
+
+    func testEditAndReadOnly() {
+        for (language, appearance) in variants {
+            let app = launch(language, appearance, "-fixture", "household")
+            let row = app.buttons.matching(identifier: "entry.row").firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: 10))
+            row.tap()
+            let save = app.buttons["entry.save"]
+            XCTAssertTrue(save.waitForExistence(timeout: 10))
+            XCTAssertTrue(app.textFields["entry.quantity"].exists)
+            XCTAssertTrue(app.textFields["entry.note"].exists)
+            XCTAssertTrue(app.buttons["entry.delete"].exists)
+            attach(app, "edit-entry-\(language)-\(appearance)")
+            app.buttons["entry.cancel"].tap()
+
+            let switcher = app.buttons["main.switcher"]
+            XCTAssertTrue(switcher.waitForExistence(timeout: 10))
+            switcher.tap()
+            let samsList = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Sam'")).firstMatch
+            XCTAssertTrue(samsList.waitForExistence(timeout: 10))
+            samsList.tap()
+
+            let readOnly = app.staticTexts["main.readOnly"]
+            XCTAssertTrue(readOnly.waitForExistence(timeout: 10))
+            XCTAssertEqual(readOnly.label, language == "en" ? "Sam's list is read-only." : "Die Liste von Sam ist schreibgeschützt.")
+            XCTAssertFalse(addFieldElement(app).isEnabled)
+            XCTAssertFalse(app.buttons["entry.crossOff"].exists)
+            attach(app, "readonly-\(language)-\(appearance)")
+
+            app.descendants(matching: .any).matching(identifier: "entry.readOnly").firstMatch.tap()
+            XCTAssertFalse(save.waitForExistence(timeout: 2))
+            app.terminate()
+        }
+    }
+
+    /// Every tap above the add bar hides the keyboard and still does its job.
+    func testKeyboardHides() {
+        // Each step stands alone, so that one failure doesn't hide the others.
+        continueAfterFailure = true
+        let app = launch("en", "light", "-fixture", "household", "-layout", "rows")
+        let field = addField(app)
+
+        let market = app.buttons["chip.Market"]
+        hidesKeyboard(app, field, "the Market chip") { market.tap() }
+        wait(for: [expectation(for: NSPredicate(format: "isSelected == true"), evaluatedWith: market)], timeout: 5)
+        app.buttons["chip.all"].tap()
+
+        hidesKeyboard(app, field, "the top bar") { topBarMiddle(app).tap() }
+        hidesKeyboard(app, field, "a store header") {
+            app.descendants(matching: .any).matching(identifier: "main.storeHeader").firstMatch.tap()
+        }
+
+        let crossOff = app.buttons.matching(identifier: "entry.crossOff").firstMatch
+        let crossedOff = crossOff.value as? String ?? ""
+        hidesKeyboard(app, field, "a cross-off circle") { crossOff.tap() }
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier == 'entry.crossOff' AND value == %@", crossedOff))
+            .firstMatch.waitForNonExistence(timeout: 5), "\(crossedOff) is still open")
+
+        let save = app.buttons["entry.save"]
+        hidesKeyboard(app, field, "a row") { app.buttons.matching(identifier: "entry.row").firstMatch.tap() }
+        XCTAssertTrue(save.waitForExistence(timeout: 5), "The row opened no sheet")
+        app.buttons["entry.cancel"].tap()
+        XCTAssertTrue(save.waitForNonExistence(timeout: 5))
+
+        hidesKeyboard(app, field, "the switcher") { app.buttons["main.switcher"].tap() }
+        let myView = app.buttons.matching(NSPredicate(format: "label == 'My view' AND identifier != 'main.switcher'")).firstMatch
+        XCTAssertTrue(myView.waitForExistence(timeout: 5), "The switcher's menu didn't open")
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        myView.tap()
+        XCTAssertTrue(myView.waitForNonExistence(timeout: 5))
+
+        hidesKeyboard(app, field, "the list picker") { app.buttons["main.chooseTarget"].tap() }
+        let shared = app.buttons["Shared"]
+        XCTAssertTrue(shared.waitForExistence(timeout: 5), "The list picker didn't open")
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        app.buttons.matching(NSPredicate(format: "label == 'My list' AND identifier != 'main.addToTarget'")).firstMatch.tap()
+        XCTAssertTrue(shared.waitForNonExistence(timeout: 5))
+
+        // The text stays, and the suggestions go and come back with the keyboard.
+        let suggestion = app.buttons.matching(identifier: "main.suggestion").firstMatch
+        field.tap()
+        field.typeText("mi")
+        XCTAssertTrue(suggestion.waitForExistence(timeout: 5))
+        topBarMiddle(app).tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "The keyboard stayed up with text typed")
+        XCTAssertEqual(field.value as? String, "mi")
+        XCTAssertTrue(suggestion.waitForNonExistence(timeout: 5))
+        field.tap()
+        XCTAssertTrue(suggestion.waitForExistence(timeout: 5))
+        app.terminate()
+
+        let tiles = launch("en", "light", "-fixture", "household", "-layout", "tiles")
+        let tilesField = addField(tiles)
+        let tile = tiles.buttons.matching(identifier: "entry.tile").firstMatch
+        XCTAssertTrue(tile.waitForExistence(timeout: 10))
+        let tileLabel = tile.label
+        hidesKeyboard(tiles, tilesField, "a tile") { tile.tap() }
+        XCTAssertTrue(tiles.buttons.matching(NSPredicate(format: "identifier == 'entry.tile' AND label == %@", tileLabel))
+            .firstMatch.waitForNonExistence(timeout: 5), "\(tileLabel) is still open")
+        tiles.terminate()
+    }
+
+    /// The list's name adds like Return, and only the arrow opens the list picker.
+    func testSplitAddButton() {
+        let app = launch("en", "light", "-fixture", "household", "-layout", "rows")
+        let field = addField(app)
+        let add = app.buttons["main.addToTarget"]
+        let choose = app.buttons["main.chooseTarget"]
+        XCTAssertGreaterThanOrEqual(choose.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(choose.frame.height, 44)
+        XCTAssertGreaterThanOrEqual(add.frame.height, 44)
+        XCTAssertGreaterThanOrEqual(add.frame.width, 3 * choose.frame.width)
+        XCTAssertEqual(add.label, "My list")
+
+        field.tap()
+        field.typeText("Birthday hats")
+        add.tap()
+        assertEmpty(field)
+        XCTAssertTrue(app.keyboards.firstMatch.exists)
+        XCTAssertTrue(entry(app, "entry.row", "Birthday hats").waitForExistence(timeout: 5))
+
+        choose.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        let shared = app.buttons["Shared"]
+        XCTAssertTrue(shared.waitForExistence(timeout: 5))
+        shared.tap()
+        wait(for: [expectation(for: NSPredicate(format: "label == 'Shared'"), evaluatedWith: add)], timeout: 5)
+
+        field.tap()
+        field.typeText("Party cups")
+        add.tap()
+        let onShared = NSPredicate(format: "identifier == 'entry.row' AND label BEGINSWITH 'Party cups' AND label CONTAINS 'Shared'")
+        XCTAssertTrue(app.buttons.matching(onShared).firstMatch.waitForExistence(timeout: 5))
+        app.terminate()
+    }
+
+    /// The bubble shows the whole text, also in German at a large text size.
+    func testOfflinePopover() {
+        for (language, appearance) in variants {
+            offlinePopover(launch(language, appearance, "-fixture", "offline"), language, "offline-\(language)-\(appearance)")
+        }
+        let large = launch(
+            "de", "light", "-fixture", "offline",
+            "-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityMedium.rawValue
+        )
+        offlinePopover(large, "de", "offline-de-light-large")
+    }
+
     private let variants = [("en", "light"), ("en", "dark"), ("de", "light"), ("de", "dark")]
+
+    /// Gives the add field focus, taps, and expects the keyboard gone.
+    private func hidesKeyboard(_ app: XCUIApplication, _ field: XCUIElement, _ name: String, by tap: () -> Void) {
+        field.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "No keyboard before tapping \(name)")
+        tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "The keyboard stayed up after tapping \(name)")
+    }
+
+    /// The empty middle of the top bar, between the capsule and the account circle.
+    private func topBarMiddle(_ app: XCUIApplication) -> XCUICoordinate {
+        let switcher = app.buttons["main.switcher"].frame
+        let account = app.buttons["main.account"].frame
+        return app.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: (switcher.maxX + account.minX) / 2, dy: account.midY))
+    }
+
+    private func offlinePopover(_ app: XCUIApplication, _ language: String, _ name: String) {
+        let badge = app.buttons["main.offline"]
+        XCTAssertTrue(badge.waitForExistence(timeout: 10))
+        badge.tap()
+        let text = app.staticTexts["main.offlineText"]
+        XCTAssertTrue(text.waitForExistence(timeout: 5))
+        XCTAssertEqual(text.label, language == "en"
+            ? "Can't reach fixture.invalid. No changes are waiting to be sent."
+            : "fixture.invalid ist nicht erreichbar. Es warten keine Änderungen darauf, gesendet zu werden.")
+        // The bubble is still growing.
+        Thread.sleep(forTimeInterval: 0.5)
+        attach(app, name)
+        app.terminate()
+    }
+
+    /// The add field, once the first sync has enabled it.
+    private func addField(_ app: XCUIApplication) -> XCUIElement {
+        let field = addFieldElement(app)
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        wait(for: [expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: field)], timeout: 10)
+        return field
+    }
+
+    /// Any type, because a multi-line text field is a text view to XCUITest.
+    private func addFieldElement(_ app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "main.addField").firstMatch
+    }
+
+    private func entry(_ app: XCUIApplication, _ identifier: String, _ text: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "identifier == %@ AND label BEGINSWITH %@", identifier, text)).firstMatch
+    }
+
+    /// An empty field reports its placeholder as its value.
+    private func assertEmpty(_ field: XCUIElement) {
+        let value = field.value as? String ?? ""
+        XCTAssertTrue(value.isEmpty || value == field.placeholderValue, "The add field still holds \(value)")
+    }
+
+    /// Short drags on the list without momentum, because a swipe can carry a row past the screen, and then it's out of
+    /// the query.
+    private func scrollUp(_ app: XCUIApplication, until element: XCUIElement) {
+        let list = app.collectionViews.firstMatch
+        let start = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
+        let end = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
+        for _ in 0..<15 where !(element.exists && element.isHittable) {
+            start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
+        }
+        XCTAssertTrue(element.exists && element.isHittable)
+    }
 
     private func launch(_ language: String, _ appearance: String, _ extra: String...) -> XCUIApplication {
         let app = XCUIApplication()

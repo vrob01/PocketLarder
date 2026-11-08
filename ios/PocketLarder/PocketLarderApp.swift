@@ -2,7 +2,16 @@ import SwiftUI
 
 @main
 struct PocketLarderApp: App {
-    @State private var model = AppModel()
+    @State private var model: AppModel = {
+        #if DEBUG
+        switch UserDefaults.standard.string(forKey: "fixture") {
+        case "household": return .fixture()
+        case "offline": return .fixture(offline: true)
+        default: break
+        }
+        #endif
+        return AppModel()
+    }()
     @AppStorage("appearance") private var appearance = "system"
 
     private var colorScheme: ColorScheme? {
@@ -28,10 +37,10 @@ private struct RootView: View {
 
     var body: some View {
         NavigationStack {
-            if model.account == nil {
-                WelcomeView()
+            if let larder = model.larder {
+                MainView(larder: larder)
             } else {
-                SignedInView()
+                WelcomeView()
             }
         }
         // A new stack, so that a pushed `EnterInviteView` can't survive signing in.
@@ -45,6 +54,13 @@ private struct RootView: View {
             )
         ) {
             Button("OK", role: .cancel) {}
+        }
+        .onChange(of: scenePhase) {
+            switch scenePhase {
+            case .background: model.didEnterBackground()
+            case .active: model.didBecomeActive()
+            default: break
+            }
         }
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
