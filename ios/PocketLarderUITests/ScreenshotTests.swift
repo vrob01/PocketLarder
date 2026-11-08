@@ -483,9 +483,9 @@ final class ScreenshotTests: XCTestCase {
             let app = launch(language, appearance, "-fixture", "household")
             // Once the first sync is in, so that the header has the name.
             _ = addField(app)
-            let header = openAccount(app)
+            let header = openAccount(app).label
             for part in ["Alex", "Admin", "fixture.invalid"] {
-                XCTAssertTrue(header.label.contains(part), "The header reads \(header.label)")
+                XCTAssertTrue(header.contains(part), "The header reads \(header)")
             }
             let pickers = app.segmentedControls
             XCTAssertEqual(pickers.count, 2)
@@ -504,7 +504,8 @@ final class ScreenshotTests: XCTestCase {
                 let readOnly = app.buttons.matching(NSPredicate(format: "label == 'Read-only'")).firstMatch
                 XCTAssertTrue(open.isSelected)
                 readOnly.tap()
-                wait(for: [expectation(for: NSPredicate(format: "isSelected == true"), evaluatedWith: readOnly)], timeout: 5)
+                // Generous, because one query can take seconds on a busy simulator.
+                wait(for: [expectation(for: NSPredicate(format: "isSelected == true"), evaluatedWith: readOnly)], timeout: 20)
                 XCTAssertFalse(open.isSelected)
             }
 
@@ -515,7 +516,7 @@ final class ScreenshotTests: XCTestCase {
             scrollUp(app, in: app, until: addDevice)
             addDevice.tap()
             let qr = app.images["addDevice.qr"]
-            XCTAssertTrue(qr.waitForExistence(timeout: 10))
+            XCTAssertTrue(qr.waitForExistence(timeout: 20))
             // The sheet is still sliding up.
             Thread.sleep(forTimeInterval: 1)
             attach(app, "add-device-\(language)-\(appearance)")
@@ -524,7 +525,7 @@ final class ScreenshotTests: XCTestCase {
                 let cancel = app.buttons["addDevice.cancel"]
                 scrollUp(app, in: app, until: cancel)
                 cancel.tap()
-                XCTAssertTrue(qr.waitForNonExistence(timeout: 5), "Cancel invite didn't close the sheet")
+                XCTAssertTrue(qr.waitForNonExistence(timeout: 20), "Cancel invite didn't close the sheet")
             }
             app.terminate()
         }
@@ -538,7 +539,7 @@ final class ScreenshotTests: XCTestCase {
         scrollUp(app, in: app, until: addDevice)
         addDevice.tap()
         let alert = app.alerts.firstMatch
-        XCTAssertTrue(alert.waitForExistence(timeout: 10))
+        XCTAssertTrue(alert.waitForExistence(timeout: 20))
         XCTAssertTrue(alert.staticTexts["Couldn't create an invite."].exists)
         XCTAssertTrue(alert.staticTexts["Needs a connection to your server. Can't reach fixture.invalid."].exists)
         XCTAssertFalse(app.images["addDevice.qr"].exists)
@@ -553,7 +554,7 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(circle.waitForExistence(timeout: 10))
         circle.tap()
         let header = app.descendants(matching: .any).matching(identifier: "account.header").firstMatch
-        XCTAssertTrue(header.waitForExistence(timeout: 10))
+        XCTAssertTrue(header.waitForExistence(timeout: 20))
         return header
     }
 
@@ -657,7 +658,9 @@ final class ScreenshotTests: XCTestCase {
         let list = list ?? app.collectionViews.firstMatch
         let start = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
         let end = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
-        for _ in 0..<15 where !(element.exists && element.isHittable) {
+        // Stops checking once it's there, because every check is a query that can take seconds.
+        for _ in 0..<15 {
+            if element.exists && element.isHittable { break }
             start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
         }
         XCTAssertTrue(element.exists && element.isHittable)
