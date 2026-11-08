@@ -79,11 +79,13 @@ The iPhone app lives in `ios/`. It needs a PocketLarder server (see Self-hosting
 
 With a free Apple ID, the app stops opening after 7 days: install it again from Xcode.
 
-To use PocketLarder in another language than your iPhone's, open Settings > Apps > PocketLarder > Language.
+To use PocketLarder in another language than your iPhone's, open Settings > Apps > PocketLarder > Language. My account > Language opens that page.
 
 ### Signing in
 
 Open the invite link on the iPhone, from a message or the QR code, or enter it by hand under "Enter invite".
+
+To sign in another iPhone of yours, open My account > Add a device… and scan the QR code with the new iPhone's Camera.
 
 Update the server before installing the app. An older server answers a request that lost its `Authorization` header with `unauthorized`, which makes the app sign out and delete its data.
 
