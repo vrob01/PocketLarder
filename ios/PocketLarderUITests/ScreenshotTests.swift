@@ -444,13 +444,16 @@ final class ScreenshotTests: XCTestCase {
                 app.buttons["name.save"].tap()
                 XCTAssertTrue(cancel.waitForNonExistence(timeout: 5), "The picker stayed open")
                 XCTAssertTrue(name.waitForNonExistence(timeout: 5), "The form stayed open")
-                scrollUp(app, until: peppers)
+                // Drugstore is far down the list, so its chip brings Bell peppers to the top.
+                app.buttons["chip.Drugstore"].tap()
+                XCTAssertTrue(peppers.waitForExistence(timeout: 5))
                 assertUnder(app, peppers, "Vegetables", before: nil)
 
                 moveButton(app, "Bell peppers").tap()
                 storeItem(app, "Market").tap()
                 XCTAssertFalse(cancel.waitForExistence(timeout: 2), "Market has a placement, so nothing is asked")
-                scrollUp(app, until: peppers)
+                app.buttons["chip.Market"].tap()
+                XCTAssertTrue(peppers.waitForExistence(timeout: 5))
                 assertUnder(app, peppers, "Produce", before: "Dairy")
                 XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label ==[c] 'Vegetables'")).firstMatch.waitForNonExistence(timeout: 5))
             }
