@@ -1701,6 +1701,16 @@
         }
       }
     },
+    "Couldn't cancel your pending invites, so this iPhone is still signed in.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deine offenen Einladungen konnten nicht widerrufen werden, daher ist dieses iPhone noch angemeldet."
+          }
+        }
+      }
+    },
     "Couldn't remove %@.": {
       "localizations": {
         "de": {
