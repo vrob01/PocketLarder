@@ -13,9 +13,15 @@ struct AccountView: View {
     @State private var invite: CreatedInvite?
     @State private var inviteFailure: String?
     @State private var saveFailure: String?
+    /// A path, so that losing one's own admin rights can go back to My account from any page under it.
+    @State private var path: [Page] = []
+
+    private enum Page {
+        case members
+    }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 header
                 Section("List layout") {
@@ -79,6 +85,15 @@ struct AccountView: View {
                     .disabled(creatingInvite || signingOut)
                     .accessibilityIdentifier("account.signOut")
                 }
+                if model.larder?.view?.me.isAdmin == true {
+                    Section("Household") {
+                        NavigationLink("Members & devices", value: Page.members)
+                            .accessibilityIdentifier("account.members")
+                    }
+                }
+            }
+            .navigationDestination(for: Page.self) { _ in
+                MembersView(model: model) { path = [] }
             }
             .navigationTitle("My account")
             .navigationBarTitleDisplayMode(.inline)
@@ -129,12 +144,7 @@ struct AccountView: View {
                 HStack(spacing: 6) {
                     Text(verbatim: model.memberName).font(.headline)
                     if model.larder?.view?.me.isAdmin == true {
-                        Text("Admin")
-                            .font(.caption2)
-                            .foregroundStyle(Color(ListColor.teal))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 1)
-                            .background(Color(ListColor.teal).opacity(0.15), in: Capsule())
+                        AdminBadge()
                     }
                 }
                 Text(verbatim: model.account?.server.host() ?? "")
@@ -208,6 +218,18 @@ struct AccountView: View {
             }
             signingOut = false
         }
+    }
+}
+
+/// The tag after an admin's name, in the header and the members list.
+struct AdminBadge: View {
+    var body: some View {
+        Text("Admin")
+            .font(.caption2)
+            .foregroundStyle(Color(ListColor.teal))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(Color(ListColor.teal).opacity(0.15), in: Capsule())
     }
 }
 

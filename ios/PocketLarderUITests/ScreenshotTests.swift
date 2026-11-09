@@ -343,7 +343,7 @@ final class ScreenshotTests: XCTestCase {
             attach(app, "store-detail-\(language)-\(appearance)")
             if checks {
                 app.buttons["store.delete"].tap()
-                cancelDelete(app, "Delete Market? Its categories go too. Entries filed there move to Not filed yet.")
+                answer(app, "Delete Market? Its categories go too. Entries filed there move to Not filed yet.", with: "Cancel")
                 XCTAssertEqual(storeName.value as? String, "Market")
             }
             app.buttons["BackButton"].tap()
@@ -365,7 +365,7 @@ final class ScreenshotTests: XCTestCase {
             attach(app, "item-detail-\(language)-\(appearance)")
             if checks {
                 app.buttons["item.delete"].tap()
-                cancelDelete(app, "Delete Apples? Entries keep their name and move to Not filed yet.")
+                answer(app, "Delete Apples? Entries keep their name and move to Not filed yet.", with: "Cancel")
                 XCTAssertEqual(app.textFields["item.name"].value as? String, "Apples")
             }
             app.buttons["BackButton"].tap()
@@ -546,6 +546,84 @@ final class ScreenshotTests: XCTestCase {
         app.terminate()
     }
 
+    /// Members & devices, with Robin invited through the form. In English light it also signs out Sam's iPhone, removes
+    /// Robin, and checks the refusals of a taken name and of the only admin's rights.
+    func testMembers() {
+        let invited = ["en": "Invited, not signed in yet", "de": "Eingeladen, noch nicht angemeldet"]
+        for (language, appearance) in variants {
+            let app = launch(language, appearance, "-fixture", "household")
+            // Once the first sync is in, so that My account knows that Alex is an admin.
+            _ = addField(app)
+            _ = openAccount(app)
+            let membersRow = withID(app.buttons, "account.members")
+            scrollUp(app, in: app, until: membersRow)
+            membersRow.tap()
+
+            let inviteRow = withID(app.buttons, "members.invite")
+            XCTAssertTrue(inviteRow.waitForExistence(timeout: 20))
+            inviteRow.tap()
+            let name = withID(app.textFields, "inviteMember.name")
+            XCTAssertTrue(name.waitForExistence(timeout: 10))
+            name.tap()
+            name.typeText("Robin")
+            attach(app, "invite-member-\(language)-\(appearance)")
+
+            withID(app.buttons, "inviteMember.invite").tap()
+            let qr = withID(app.images, "addDevice.qr")
+            XCTAssertTrue(qr.waitForExistence(timeout: 20))
+            withID(app.buttons, "addDevice.done").tap()
+            XCTAssertTrue(qr.waitForNonExistence(timeout: 20), "Done didn't close the sheet")
+            let robin = app.buttons.matching(NSPredicate(
+                format: "identifier == 'members.member' AND label BEGINSWITH 'Robin' AND label CONTAINS %@", invited[language]!
+            )).firstMatch
+            XCTAssertTrue(robin.waitForExistence(timeout: 20))
+            // The sheet is still sliding down.
+            Thread.sleep(forTimeInterval: 1)
+            attach(app, "members-\(language)-\(appearance)")
+
+            entry(app, "members.member", "Sam").tap()
+            let remove = withID(app.buttons, "member.remove")
+            XCTAssertTrue(remove.waitForExistence(timeout: 10))
+            let admin = withID(app.switches, "member.admin")
+            XCTAssertEqual(admin.value as? String, "0")
+            attach(app, "member-detail-\(language)-\(appearance)")
+
+            if language == "en" && appearance == "light" {
+                let signOut = withID(app.buttons, "member.signOut")
+                XCTAssertEqual(signOut.label, "Sign out iPhone")
+                signOut.tap()
+                answer(app, "Sign out iPhone? Their pending invites are cancelled too.", with: "Sign out")
+                XCTAssertTrue(signOut.waitForNonExistence(timeout: 20), "Sam still has a device")
+                goBack(app)
+
+                entry(app, "members.member", "Alex").tap()
+                XCTAssertTrue(admin.waitForExistence(timeout: 10))
+                XCTAssertEqual(admin.value as? String, "1")
+                // The row's middle is the label, which doesn't flip the switch.
+                admin.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+                answer(app, "The household needs at least one admin.", with: "OK")
+                wait(for: [expectation(for: NSPredicate(format: "value == '1'"), evaluatedWith: admin)], timeout: 10)
+                goBack(app)
+
+                robin.tap()
+                XCTAssertTrue(remove.waitForExistence(timeout: 10))
+                remove.tap()
+                answer(app, "Remove Robin? All their devices are signed out and their list is deleted.", with: "Remove")
+                XCTAssertTrue(remove.waitForNonExistence(timeout: 20), "Removing didn't go back to the members")
+                XCTAssertTrue(entry(app, "members.member", "Robin").waitForNonExistence(timeout: 20), "Robin is still listed")
+
+                inviteRow.tap()
+                XCTAssertTrue(name.waitForExistence(timeout: 10))
+                name.tap()
+                name.typeText("sam")
+                withID(app.buttons, "inviteMember.invite").tap()
+                answer(app, "Someone in the household already has that name.", with: "OK")
+                XCTAssertEqual(name.value as? String, "sam")
+            }
+            app.terminate()
+        }
+    }
+
     private let variants = [("en", "light"), ("en", "dark"), ("de", "light"), ("de", "dark")]
 
     /// Opens My account from the circle and returns its header.
@@ -595,13 +673,20 @@ final class ScreenshotTests: XCTestCase {
         item.tap()
     }
 
-    /// Expects the delete question with exactly `text`, and cancels it.
-    private func cancelDelete(_ app: XCUIApplication, _ text: String) {
+    /// Expects an alert with exactly `text`, and taps `button`. It may follow a request to the fixture.
+    private func answer(_ app: XCUIApplication, _ text: String, with button: String) {
         let alert = app.alerts.firstMatch
-        XCTAssertTrue(alert.waitForExistence(timeout: 5))
+        XCTAssertTrue(alert.waitForExistence(timeout: 20))
         XCTAssertTrue(alert.staticTexts[text].exists, "No alert reads \(text)")
-        alert.buttons["Cancel"].tap()
+        alert.buttons[button].tap()
         XCTAssertTrue(alert.waitForNonExistence(timeout: 5))
+    }
+
+    /// A member's page hides its back button while a request is open.
+    private func goBack(_ app: XCUIApplication) {
+        let back = app.buttons["BackButton"]
+        XCTAssertTrue(back.waitForExistence(timeout: 20))
+        back.tap()
     }
 
     /// Gives the add field focus, taps, and expects the keyboard gone.
