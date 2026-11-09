@@ -106,23 +106,24 @@ class ScreenshotTestCase: XCTestCase {
             XCUIDevice.shared.appearance = appearance
             let deadline = Date().addingTimeInterval(10)
             while isDark(app) != (appearance == .dark) && Date() < deadline { Thread.sleep(forTimeInterval: 0.2) }
+            if isDark(app) != (appearance == .dark) { attach(app, "stuck-\(label)") }
             XCTAssertEqual(isDark(app), appearance == .dark, "The app didn't turn \(label)")
             reopen?()
             attach(app, name(label))
         }
     }
 
-    /// Dark screens have a mean brightness of at most 0.2, light ones of at least 0.9.
+    /// Whether the screen's left edge, halfway down, is dark. The page behind the rows is black or white.
     private func isDark(_ app: XCUIApplication) -> Bool {
-        guard let image = app.screenshot().image.cgImage else { return false }
+        guard let image = app.screenshot().image.cgImage,
+              let edge = image.cropping(to: CGRect(x: 2, y: image.height / 2, width: 1, height: 1)) else { return false }
         var pixel = [UInt8](repeating: 0, count: 4)
         pixel.withUnsafeMutableBytes { buffer in
             let context = CGContext(
                 data: buffer.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
                 space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
             )
-            context?.interpolationQuality = .high
-            context?.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+            context?.draw(edge, in: CGRect(x: 0, y: 0, width: 1, height: 1))
         }
         return pixel.prefix(3).map { Int($0) }.reduce(0, +) < 3 * 128
     }
