@@ -187,3 +187,11 @@ public struct APIClient: Sendable {
         return (data, response.statusCode)
     }
 }
+
+extension APIClient {
+    /// Signing a device out leaves its member's invites working, so an admin's sign-out revokes them too.
+    public func removeDevice(_ deviceId: String, revokingInvitesOf memberId: String) async throws(APIError) {
+        try await removeDevice(deviceId)
+        _ = try await revokeInvites(memberId: memberId)
+    }
+}
