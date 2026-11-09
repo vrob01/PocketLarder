@@ -40,13 +40,17 @@ struct OfflineBadge: View {
 
 /// What failed and how many changes are waiting. It advises no fix, because the failure doesn't say which one applies.
 func offlineText(failure: APIError, host: String, pending: Int) -> String {
-    let cause = switch failure {
+    let waiting = pending == 0
+        ? String(localized: "No changes are waiting to be sent.")
+        : String(localized: "\(pending) changes are waiting to be sent.")
+    return failureText(failure, host: host) + " " + waiting
+}
+
+/// What failed when the app asked `host` for something.
+func failureText(_ failure: APIError, host: String) -> String {
+    switch failure {
     case .offline: String(localized: "Can't reach \(host).")
     case let .server(code): String(localized: "\(host) answered with error code \(code).")
     case let .unexpected(status): String(localized: "\(host) answered with HTTP status \(status).")
     }
-    let waiting = pending == 0
-        ? String(localized: "No changes are waiting to be sent.")
-        : String(localized: "\(pending) changes are waiting to be sent.")
-    return cause + " " + waiting
 }

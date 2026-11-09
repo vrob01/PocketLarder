@@ -46,6 +46,11 @@ final class AppModel {
         return larder?.view?.member(account.memberId)?.name ?? account.server.host() ?? ""
     }
 
+    /// For requests a screen sends itself, on the same transport as the sync. Nil when signed out.
+    var client: APIClient? {
+        account.map { APIClient(server: $0.server, token: $0.token, transport: transport) }
+    }
+
     nonisolated static var defaultDataDirectory: URL {
         var directory = URL.applicationSupportDirectory.appending(path: "Larder")
         // `LocalFiles` never creates it, and iOS doesn't create Application Support itself.

@@ -18,6 +18,13 @@ import Testing
     #expect(offlineText(failure: .server(code: "missing_token"), host: host, pending: 0) == "lists.example.test answered with error code missing_token. No changes are waiting to be sent.")
 }
 
+@Test func connectionFailureTexts() {
+    let host = "lists.example.test"
+    #expect(connectionFailureText(.offline, host: host) == "Needs a connection to your server. Can't reach lists.example.test.")
+    #expect(connectionFailureText(.server(code: "internal"), host: host) == "lists.example.test answered with error code internal.")
+    #expect(connectionFailureText(.unexpected(status: 502), host: host) == "lists.example.test answered with HTTP status 502.")
+}
+
 @Test func saveFailedTexts() {
     #expect(saveFailedText(CocoaError(.fileWriteOutOfSpace)).hasPrefix("Couldn't save this change on this iPhone: "))
 }

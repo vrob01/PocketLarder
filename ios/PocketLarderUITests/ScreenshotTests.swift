@@ -475,7 +475,94 @@ final class ScreenshotTests: XCTestCase {
         }
     }
 
+    /// My account and Add a device. In English light it also sets Read-only and cancels the invite. No test taps a layout
+    /// or appearance, because the app would keep that choice for every later launch without `-layout`.
+    func testAccount() {
+        for (language, appearance) in variants {
+            let checks = language == "en" && appearance == "light"
+            let app = launch(language, appearance, "-fixture", "household")
+            // Once the first sync is in, so that the header has the name.
+            _ = addField(app)
+            let header = openAccount(app).label
+            for part in ["Alex", "Admin", "fixture.invalid"] {
+                XCTAssertTrue(header.contains(part), "The header reads \(header)")
+            }
+            let pickers = app.segmentedControls
+            XCTAssertEqual(pickers.count, 2)
+            for index in 0..<pickers.count {
+                let options = pickers.element(boundBy: index).buttons
+                for option in 0..<options.count {
+                    let frame = options.element(boundBy: option).frame
+                    XCTAssertGreaterThanOrEqual(frame.width, 44)
+                    XCTAssertGreaterThanOrEqual(frame.height, 44, "Option \(option) of picker \(index) is too low")
+                }
+            }
+            attach(app, "account-\(language)-\(appearance)")
+
+            if checks {
+                let open = app.buttons.matching(NSPredicate(format: "label == 'Open'")).firstMatch
+                let readOnly = app.buttons.matching(NSPredicate(format: "label == 'Read-only'")).firstMatch
+                XCTAssertTrue(open.isSelected)
+                readOnly.tap()
+                // Generous, because one query can take seconds on a busy simulator.
+                wait(for: [expectation(for: NSPredicate(format: "isSelected == true"), evaluatedWith: readOnly)], timeout: 20)
+                XCTAssertFalse(open.isSelected)
+            }
+
+            let languageRow = withID(app.buttons, "account.language")
+            scrollUp(app, in: app, until: languageRow)
+            XCTAssertEqual(languageRow.value as? String, language == "en" ? "English" : "Deutsch")
+            let addDevice = withID(app.buttons, "account.addDevice")
+            scrollUp(app, in: app, until: addDevice)
+            addDevice.tap()
+            let qr = withID(app.images, "addDevice.qr")
+            XCTAssertTrue(qr.waitForExistence(timeout: 20))
+            // The sheet is still sliding up.
+            Thread.sleep(forTimeInterval: 1)
+            attach(app, "add-device-\(language)-\(appearance)")
+
+            if checks {
+                let cancel = withID(app.buttons, "addDevice.cancel")
+                scrollUp(app, in: app, until: cancel)
+                cancel.tap()
+                XCTAssertTrue(qr.waitForNonExistence(timeout: 20), "Cancel invite didn't close the sheet")
+            }
+            app.terminate()
+        }
+    }
+
+    /// Without a connection, Add a device says why and opens no sheet.
+    func testAddDeviceOffline() {
+        let app = launch("en", "light", "-fixture", "offline")
+        _ = openAccount(app)
+        let addDevice = withID(app.buttons, "account.addDevice")
+        scrollUp(app, in: app, until: addDevice)
+        addDevice.tap()
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 20))
+        XCTAssertTrue(alert.staticTexts["Couldn't create an invite."].exists)
+        XCTAssertTrue(alert.staticTexts["Needs a connection to your server. Can't reach fixture.invalid."].exists)
+        XCTAssertFalse(withID(app.images, "addDevice.qr").exists)
+        app.terminate()
+    }
+
     private let variants = [("en", "light"), ("en", "dark"), ("de", "light"), ("de", "dark")]
+
+    /// Opens My account from the circle and returns its header.
+    private func openAccount(_ app: XCUIApplication) -> XCUIElement {
+        let circle = app.buttons["main.account"]
+        XCTAssertTrue(circle.waitForExistence(timeout: 10))
+        circle.tap()
+        let header = withID(app.staticTexts, "account.header")
+        XCTAssertTrue(header.waitForExistence(timeout: 20))
+        return header
+    }
+
+    /// The first element whose identifier is `identifier`. A subscript also compares its label, title, value and
+    /// placeholder, and each of those is one more request to the app for every element in the query.
+    private func withID(_ query: XCUIElementQuery, _ identifier: String) -> XCUIElement {
+        query.matching(NSPredicate(format: "identifier == %@", identifier)).firstMatch
+    }
 
     /// The ⇄ button of the entry that starts with `text`.
     private func moveButton(_ app: XCUIApplication, _ text: String) -> XCUIElement {
@@ -572,12 +659,14 @@ final class ScreenshotTests: XCTestCase {
     }
 
     /// Short drags on the list without momentum, because a swipe can carry a row past the screen, and then it's out of
-    /// the query.
-    private func scrollUp(_ app: XCUIApplication, until element: XCUIElement) {
-        let list = app.collectionViews.firstMatch
+    /// the query. On a sheet, `in: app` drags on the screen, because a list found by its rows is lost once they scroll away.
+    private func scrollUp(_ app: XCUIApplication, in list: XCUIElement? = nil, until element: XCUIElement) {
+        let list = list ?? app.collectionViews.firstMatch
         let start = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
         let end = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
-        for _ in 0..<15 where !(element.exists && element.isHittable) {
+        // Stops checking once it's there, because every check is a query that can take seconds.
+        for _ in 0..<15 {
+            if element.exists && element.isHittable { break }
             start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
         }
         XCTAssertTrue(element.exists && element.isHittable)
