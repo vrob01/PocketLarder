@@ -1510,6 +1510,206 @@
           }
         }
       }
+    },
+    "Household": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Haushalt"
+          }
+        }
+      }
+    },
+    "Members & devices": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mitglieder & Geräte"
+          }
+        }
+      }
+    },
+    "Members": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mitglieder"
+          }
+        }
+      }
+    },
+    "Invited, not signed in yet": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eingeladen, noch nicht angemeldet"
+          }
+        }
+      }
+    },
+    "Invite a new member…": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neues Mitglied einladen…"
+          }
+        }
+      }
+    },
+    "Couldn't load the members.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Mitglieder konnten nicht geladen werden."
+          }
+        }
+      }
+    },
+    "Someone in the household already has that name.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jemand im Haushalt hat schon diesen Namen."
+          }
+        }
+      }
+    },
+    "The household needs at least one admin.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Haushalt braucht mindestens einen Admin."
+          }
+        }
+      }
+    },
+    "Invite a new member": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neues Mitglied einladen"
+          }
+        }
+      }
+    },
+    "Invite": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einladen"
+          }
+        }
+      }
+    },
+    "Sign out %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ abmelden"
+          }
+        }
+      }
+    },
+    "Add a device for %@…": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gerät für %@ hinzufügen…"
+          }
+        }
+      }
+    },
+    "Remove %@…": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ entfernen…"
+          }
+        }
+      }
+    },
+    "Sign out %@? Their pending invites are cancelled too.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ abmelden? Die offenen Einladungen dieses Mitglieds werden auch widerrufen."
+          }
+        }
+      }
+    },
+    "Remove %@? All their devices are signed out and their list is deleted.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ entfernen? Alle Geräte dieses Mitglieds werden abgemeldet und seine Liste wird gelöscht."
+          }
+        }
+      }
+    },
+    "Remove": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entfernen"
+          }
+        }
+      }
+    },
+    "Couldn't change %@'s admin rights.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Admin-Rechte von %@ konnten nicht geändert werden."
+          }
+        }
+      }
+    },
+    "Signed out %@, but couldn't cancel their pending invites.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ wurde abgemeldet, aber die offenen Einladungen dieses Mitglieds konnten nicht widerrufen werden."
+          }
+        }
+      }
+    },
+    "Couldn't sign out %@.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ konnte nicht abgemeldet werden."
+          }
+        }
+      }
+    },
+    "Couldn't remove %@.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ konnte nicht entfernt werden."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
