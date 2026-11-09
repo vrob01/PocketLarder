@@ -509,20 +509,20 @@ final class ScreenshotTests: XCTestCase {
                 XCTAssertFalse(open.isSelected)
             }
 
-            let languageRow = app.buttons["account.language"]
+            let languageRow = withID(app.buttons, "account.language")
             scrollUp(app, in: app, until: languageRow)
             XCTAssertEqual(languageRow.value as? String, language == "en" ? "English" : "Deutsch")
-            let addDevice = app.buttons["account.addDevice"]
+            let addDevice = withID(app.buttons, "account.addDevice")
             scrollUp(app, in: app, until: addDevice)
             addDevice.tap()
-            let qr = app.images["addDevice.qr"]
+            let qr = withID(app.images, "addDevice.qr")
             XCTAssertTrue(qr.waitForExistence(timeout: 20))
             // The sheet is still sliding up.
             Thread.sleep(forTimeInterval: 1)
             attach(app, "add-device-\(language)-\(appearance)")
 
             if checks {
-                let cancel = app.buttons["addDevice.cancel"]
+                let cancel = withID(app.buttons, "addDevice.cancel")
                 scrollUp(app, in: app, until: cancel)
                 cancel.tap()
                 XCTAssertTrue(qr.waitForNonExistence(timeout: 20), "Cancel invite didn't close the sheet")
@@ -535,14 +535,14 @@ final class ScreenshotTests: XCTestCase {
     func testAddDeviceOffline() {
         let app = launch("en", "light", "-fixture", "offline")
         _ = openAccount(app)
-        let addDevice = app.buttons["account.addDevice"]
+        let addDevice = withID(app.buttons, "account.addDevice")
         scrollUp(app, in: app, until: addDevice)
         addDevice.tap()
         let alert = app.alerts.firstMatch
         XCTAssertTrue(alert.waitForExistence(timeout: 20))
         XCTAssertTrue(alert.staticTexts["Couldn't create an invite."].exists)
         XCTAssertTrue(alert.staticTexts["Needs a connection to your server. Can't reach fixture.invalid."].exists)
-        XCTAssertFalse(app.images["addDevice.qr"].exists)
+        XCTAssertFalse(withID(app.images, "addDevice.qr").exists)
         app.terminate()
     }
 
@@ -553,9 +553,15 @@ final class ScreenshotTests: XCTestCase {
         let circle = app.buttons["main.account"]
         XCTAssertTrue(circle.waitForExistence(timeout: 10))
         circle.tap()
-        let header = app.descendants(matching: .any).matching(identifier: "account.header").firstMatch
+        let header = withID(app.staticTexts, "account.header")
         XCTAssertTrue(header.waitForExistence(timeout: 20))
         return header
+    }
+
+    /// The first element whose identifier is `identifier`. A subscript also compares its label, title, value and
+    /// placeholder, and each of those is one more request to the app for every element in the query.
+    private func withID(_ query: XCUIElementQuery, _ identifier: String) -> XCUIElement {
+        query.matching(NSPredicate(format: "identifier == %@", identifier)).firstMatch
     }
 
     /// The ⇄ button of the entry that starts with `text`.
