@@ -592,7 +592,7 @@ final class ScreenshotTests: XCTestCase {
                 let signOut = withID(app.buttons, "member.signOut")
                 XCTAssertEqual(signOut.label, "Sign out iPhone")
                 signOut.tap()
-                answer(app, "Sign out iPhone? Their pending invites are cancelled too.", with: "Sign out")
+                answer(app, "Sign out iPhone? Invites created on it are cancelled too.", with: "Sign out")
                 XCTAssertTrue(signOut.waitForNonExistence(timeout: 20), "Sam still has a device")
                 goBack(app)
 

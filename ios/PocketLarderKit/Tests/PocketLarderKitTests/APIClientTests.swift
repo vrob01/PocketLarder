@@ -69,16 +69,6 @@ private func expectRequest(
     }
 }
 
-@Test func removingDeviceAlsoRevokesInvites() async throws {
-    let transport = FakeTransport([.answer(status: 204, json: ""), .answer(status: 200, json: #"{"revoked":1}"#)])
-    let client = APIClient(server: URL(string: server)!, token: "t", transport: transport)
-    try await client.removeDevice("d", revokingInvitesOf: "m")
-    let requests = await transport.requests
-    #expect(requests.map(\.httpMethod) == ["DELETE", "POST"])
-    #expect(requests.map(\.url?.absoluteString) == [server + "/v1/admin/devices/d", server + "/v1/invites/revoke"])
-    #expect(requests.map { $0.httpBody.map { String(decoding: $0, as: UTF8.self) } } == [nil, #"{"member_id":"m"}"#])
-}
-
 @Test func errorsMapToCodes() async {
     let cases: [(FakeTransport.Step, APIError)] = [
         (.answer(status: 401, json: #"{"error":"unauthorized"}"#), .server(code: "unauthorized")),
