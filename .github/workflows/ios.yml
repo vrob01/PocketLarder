@@ -52,6 +52,12 @@ jobs:
       # UI tests stall on a simulator that is still booting.
       - name: Boot the simulator
         run: xcrun simctl bootstatus "${{ steps.simulator.outputs.id }}" -b
+      # Reuses the last run's build folder, so Xcode rebuilds less.
+      - uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: deriveddata-${{ github.sha }}
+          restore-keys: deriveddata-
       - name: Build and test the app
         run: |
           xcodebuild test -project ios/PocketLarder.xcodeproj -scheme PocketLarder \
