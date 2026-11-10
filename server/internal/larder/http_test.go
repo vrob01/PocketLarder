@@ -26,7 +26,7 @@ type testEnv struct {
 
 func newTestEnv(t *testing.T) *testEnv {
 	e := &testEnv{t: t, db: testDB(t), now: testNow, logs: &bytes.Buffer{}}
-	e.srv = newServer(e.db, "https://lists.example.test", slog.New(slog.NewTextHandler(e.logs, nil)))
+	e.srv = newServer(e.db, "https://lists.example.test", false, slog.New(slog.NewTextHandler(e.logs, nil)))
 	e.srv.now = func() time.Time { return e.now }
 	e.h = e.srv.routes()
 	return e
@@ -229,6 +229,130 @@ func TestRedeemRateLimited(t *testing.T) {
 	e.now = e.now.Add(time.Minute)
 	e.wantError(e.call("POST", "/v1/invites/redeem", "", bogus), http.StatusUnauthorized, "invalid_invite")
 	e.wantStatus(e.call("POST", "/v1/invites/redeem", "", redeemBody(code)), http.StatusOK)
+}
+
+// redeemFrom sends a redeem request from remote with the given X-Forwarded-For lines.
+func (e *testEnv) redeemFrom(remote string, code string, xff ...string) *httptest.ResponseRecorder {
+	e.t.Helper()
+	var b bytes.Buffer
+	if err := json.NewEncoder(&b).Encode(redeemBody(code)); err != nil {
+		e.t.Fatal(err)
+	}
+	r := httptest.NewRequest("POST", "/v1/invites/redeem", &b)
+	r.RemoteAddr = remote
+	for _, v := range xff {
+		r.Header.Add("X-Forwarded-For", v)
+	}
+	w := httptest.NewRecorder()
+	e.h.ServeHTTP(w, r)
+	return w
+}
+
+// exhaust spends the 10 attempts of the client behind remote.
+func (e *testEnv) exhaust(remote string, xff ...string) {
+	e.t.Helper()
+	for range 10 {
+		e.wantError(e.redeemFrom(remote, newID()+".bogus", xff...), http.StatusUnauthorized, "invalid_invite")
+	}
+}
+
+func (e *testEnv) limited(remote string, xff ...string) bool {
+	e.t.Helper()
+	return e.redeemFrom(remote, newID()+".bogus", xff...).Code == http.StatusTooManyRequests
+}
+
+func TestRedeemRateLimitPerClient(t *testing.T) {
+	e := newTestEnv(t)
+	var code string
+	err := withTx(e.db, func(tx *sql.Tx) error {
+		code = mustCreateInvite(t, tx, mustCreateMember(t, tx, "Alex", true))
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.exhaust("192.0.2.1:1234")
+	e.wantError(e.redeemFrom("192.0.2.1:1234", newID()+".bogus"), http.StatusTooManyRequests, "rate_limited")
+	w := e.redeemFrom("192.0.2.2:1234", code)
+	e.wantStatus(w, http.StatusOK)
+	if !strings.Contains(w.Body.String(), "token") {
+		t.Errorf("body %q has no token", w.Body.String())
+	}
+}
+
+func TestRedeemRateLimitIPv6(t *testing.T) {
+	e := newTestEnv(t)
+	e.exhaust("[2001:db8:1:2::1]:1234")
+	if !e.limited("[2001:db8:1:2:ffff::2]:1234") {
+		t.Error("same /64 not limited")
+	}
+	if e.limited("[2001:db8:1:3::1]:1234") {
+		t.Error("other /64 limited")
+	}
+	e.exhaust("192.0.2.1:1234")
+	if !e.limited("[::ffff:192.0.2.1]:1234") {
+		t.Error("mapped address does not share its IPv4 budget")
+	}
+}
+
+func TestRedeemRateLimitTrustProxyOff(t *testing.T) {
+	e := newTestEnv(t)
+	e.exhaust("192.0.2.1:1234", "198.51.100.1")
+	if !e.limited("192.0.2.1:1234", "198.51.100.2") {
+		t.Error("X-Forwarded-For changed the client with the switch off")
+	}
+}
+
+func TestRedeemRateLimitTrustProxyOn(t *testing.T) {
+	e := newTestEnv(t)
+	e.srv.trustProxy = true
+	e.exhaust("192.0.2.1:1234", "203.0.113.9, 198.51.100.1")
+	for name, xff := range map[string][]string{
+		"forged earlier entry": {"203.0.113.77, 198.51.100.1"},
+		"earlier line":         {"203.0.113.78", "198.51.100.1"},
+		"padding":              {"198.51.100.1 \t"},
+	} {
+		if !e.limited("192.0.2.9:1234", xff...) {
+			t.Errorf("%s: not limited", name)
+		}
+	}
+	if e.limited("192.0.2.1:1234", "198.51.100.2") {
+		t.Error("another last entry shares the budget")
+	}
+	if e.limited("192.0.2.1:1234", "198.51.100.3, 198.51.100.1", "198.51.100.4") {
+		t.Error("earlier line used")
+	}
+}
+
+func TestRedeemRateLimitTrustProxyFallback(t *testing.T) {
+	e := newTestEnv(t)
+	e.srv.trustProxy = true
+	e.exhaust("192.0.2.1:1234")
+	for _, xff := range [][]string{nil, {"unknown"}, {"198.51.100.7:443"}, {""}, {"198.51.100.1,"}, {"[2001:db8::1]"}, {"example.test"}} {
+		if !e.limited("192.0.2.1:1234", xff...) {
+			t.Errorf("xff %q: not counted as the connection", xff)
+		}
+	}
+}
+
+func TestClientKeyUnparsableRemoteAddr(t *testing.T) {
+	r := httptest.NewRequest("GET", "/", nil)
+	r.RemoteAddr = "not-an-address"
+	if got := clientKey(r, true); got != "not-an-address" {
+		t.Errorf("key = %q", got)
+	}
+}
+
+func TestRedeemLimiterDropsExpired(t *testing.T) {
+	e := newTestEnv(t)
+	for _, a := range []string{"192.0.2.1:1", "192.0.2.2:1", "192.0.2.3:1"} {
+		e.redeemFrom(a, newID()+".bogus")
+	}
+	e.now = e.now.Add(time.Minute)
+	e.redeemFrom("192.0.2.4:1", newID()+".bogus")
+	if n := len(e.srv.redeemLimit.n); n != 1 {
+		t.Errorf("limiter holds %d entries, want 1", n)
+	}
 }
 
 func TestInvitePermissions(t *testing.T) {

@@ -49,6 +49,18 @@ func Run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		}
 	}
 
+	trustProxy := false
+	if cmd == "serve" {
+		switch v := getenv("POCKETLARDER_TRUST_PROXY"); v {
+		case "", "false":
+		case "true":
+			trustProxy = true
+		default:
+			fmt.Fprintf(stderr, "pocketlarder: POCKETLARDER_TRUST_PROXY must be \"true\", \"false\" or empty, not %q\n", v)
+			return 1
+		}
+	}
+
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		fmt.Fprintln(stderr, "pocketlarder:", err)
 		return 1
@@ -74,7 +86,7 @@ func Run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		if listen == "" {
 			listen = ":8080"
 		}
-		return serve(ctx, db, publicURL, listen, stdout, stderr)
+		return serve(ctx, db, publicURL, trustProxy, listen, stdout, stderr)
 	case "backup":
 		return backup(db, arg, stderr)
 	}
@@ -111,10 +123,10 @@ func checkPublicURL(s string) (string, bool) {
 	return u.Scheme + "://" + u.Host, true
 }
 
-func serve(ctx context.Context, db *sql.DB, publicURL, listen string, stdout, stderr io.Writer) int {
+func serve(ctx context.Context, db *sql.DB, publicURL string, trustProxy bool, listen string, stdout, stderr io.Writer) int {
 	srv := &http.Server{
 		Addr:              listen,
-		Handler:           newServer(db, publicURL, slog.New(slog.NewJSONHandler(stdout, nil))).routes(),
+		Handler:           newServer(db, publicURL, trustProxy, slog.New(slog.NewJSONHandler(stdout, nil))).routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
