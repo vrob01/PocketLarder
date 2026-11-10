@@ -7,8 +7,8 @@ final class MembersTests: ScreenshotTestCase {
     /// Robin, and checks the refusals of a taken name and of the only admin's rights.
     func testMembers() {
         let invited = ["en": "Invited, not signed in yet", "de": "Eingeladen, noch nicht angemeldet"]
-        for language in languages {
-            let app = launch(language, "-fixture", "household")
+        for (language, appearance) in variants {
+            let app = launch(language, appearance, "-fixture", "household")
             // Once the first sync is in, so that My account knows that Alex is an admin.
             _ = addField(app)
             _ = openAccount(app)
@@ -23,7 +23,7 @@ final class MembersTests: ScreenshotTestCase {
             XCTAssertTrue(name.waitForExistence(timeout: 10))
             name.tap()
             name.typeText("Robin")
-            attachBoth(app) { "invite-member-\(language)-\($0)" }
+            attach(app, "invite-member-\(language)-\(appearance)")
 
             withID(app.buttons, "inviteMember.invite").tap()
             let qr = withID(app.images, "addDevice.qr")
@@ -36,16 +36,16 @@ final class MembersTests: ScreenshotTestCase {
             XCTAssertTrue(robin.waitForExistence(timeout: 20))
             // The sheet is still sliding down.
             Thread.sleep(forTimeInterval: 1)
-            attachBoth(app) { "members-\(language)-\($0)" }
+            attach(app, "members-\(language)-\(appearance)")
 
             entry(app, "members.member", "Sam").tap()
             let remove = withID(app.buttons, "member.remove")
             XCTAssertTrue(remove.waitForExistence(timeout: 10))
             let admin = withID(app.switches, "member.admin")
             XCTAssertEqual(admin.value as? String, "0")
-            attachBoth(app) { "member-detail-\(language)-\($0)" }
+            attach(app, "member-detail-\(language)-\(appearance)")
 
-            if language == "en" {
+            if language == "en" && appearance == "light" {
                 let signOut = withID(app.buttons, "member.signOut")
                 XCTAssertEqual(signOut.label, "Sign out iPhone")
                 signOut.tap()
@@ -79,12 +79,5 @@ final class MembersTests: ScreenshotTestCase {
             }
             app.terminate()
         }
-    }
-
-    /// A member's page hides its back button while a request is open.
-    private func goBack(_ app: XCUIApplication) {
-        let back = app.buttons["BackButton"]
-        XCTAssertTrue(back.waitForExistence(timeout: 20))
-        back.tap()
     }
 }

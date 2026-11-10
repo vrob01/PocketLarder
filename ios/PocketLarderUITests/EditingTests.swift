@@ -4,8 +4,8 @@ import XCTest
 @MainActor
 final class EditingTests: ScreenshotTestCase {
     func testEditAndReadOnly() {
-        for language in languages {
-            let app = launch(language, "-fixture", "household")
+        for (language, appearance) in variants {
+            let app = launch(language, appearance, "-fixture", "household")
             let row = app.buttons.matching(identifier: "entry.row").firstMatch
             XCTAssertTrue(row.waitForExistence(timeout: 10))
             row.tap()
@@ -14,7 +14,7 @@ final class EditingTests: ScreenshotTestCase {
             XCTAssertTrue(app.textFields["entry.quantity"].exists)
             XCTAssertTrue(app.textFields["entry.note"].exists)
             XCTAssertTrue(app.buttons["entry.delete"].exists)
-            attachBoth(app) { "edit-entry-\(language)-\($0)" }
+            attach(app, "edit-entry-\(language)-\(appearance)")
             app.buttons["entry.cancel"].tap()
 
             let switcher = app.buttons["main.switcher"]
@@ -29,7 +29,7 @@ final class EditingTests: ScreenshotTestCase {
             XCTAssertEqual(readOnly.label, language == "en" ? "Sam's list is read-only." : "Die Liste von Sam ist schreibgeschützt.")
             XCTAssertFalse(addFieldElement(app).isEnabled)
             XCTAssertFalse(app.buttons["entry.crossOff"].exists)
-            attachBoth(app) { "readonly-\(language)-\($0)" }
+            attach(app, "readonly-\(language)-\(appearance)")
 
             app.descendants(matching: .any).matching(identifier: "entry.readOnly").firstMatch.tap()
             XCTAssertFalse(save.waitForExistence(timeout: 2))
@@ -41,7 +41,7 @@ final class EditingTests: ScreenshotTestCase {
     func testKeyboardHides() {
         // Each step stands alone, so that one failure doesn't hide the others.
         continueAfterFailure = true
-        let app = launch("en", "-fixture", "household", "-layout", "rows")
+        let app = launch("en", "light", "-fixture", "household", "-layout", "rows")
         let field = addField(app)
 
         let market = app.buttons["chip.Market"]
@@ -93,7 +93,7 @@ final class EditingTests: ScreenshotTestCase {
         XCTAssertTrue(suggestion.waitForExistence(timeout: 5))
         app.terminate()
 
-        let tiles = launch("en", "-fixture", "household", "-layout", "tiles")
+        let tiles = launch("en", "light", "-fixture", "household", "-layout", "tiles")
         let tilesField = addField(tiles)
         let tile = tiles.buttons.matching(identifier: "entry.tile").firstMatch
         XCTAssertTrue(tile.waitForExistence(timeout: 10))
@@ -106,7 +106,7 @@ final class EditingTests: ScreenshotTestCase {
 
     /// The list's name adds like Return, and only the arrow opens the list picker.
     func testSplitAddButton() {
-        let app = launch("en", "-fixture", "household", "-layout", "rows")
+        let app = launch("en", "light", "-fixture", "household", "-layout", "rows")
         let field = addField(app)
         let add = app.buttons["main.addToTarget"]
         let choose = app.buttons["main.chooseTarget"]
@@ -136,21 +136,5 @@ final class EditingTests: ScreenshotTestCase {
         let onShared = NSPredicate(format: "identifier == 'entry.row' AND label BEGINSWITH 'Party cups' AND label CONTAINS 'Shared'")
         XCTAssertTrue(app.buttons.matching(onShared).firstMatch.waitForExistence(timeout: 5))
         app.terminate()
-    }
-
-    /// Gives the add field focus, taps, and expects the keyboard gone.
-    private func hidesKeyboard(_ app: XCUIApplication, _ field: XCUIElement, _ name: String, by tap: () -> Void) {
-        field.tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "No keyboard before tapping \(name)")
-        tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "The keyboard stayed up after tapping \(name)")
-    }
-
-    /// The empty middle of the top bar, between the capsule and the account circle.
-    private func topBarMiddle(_ app: XCUIApplication) -> XCUICoordinate {
-        let switcher = app.buttons["main.switcher"].frame
-        let account = app.buttons["main.account"].frame
-        return app.coordinate(withNormalizedOffset: .zero)
-            .withOffset(CGVector(dx: (switcher.maxX + account.minX) / 2, dy: account.midY))
     }
 }

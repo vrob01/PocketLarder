@@ -6,9 +6,9 @@ final class AccountTests: ScreenshotTestCase {
     /// My account and Add a device. In English light it also sets Read-only and cancels the invite. No test taps a layout
     /// or appearance, because the app would keep that choice for every later launch without `-layout`.
     func testAccount() {
-        for language in languages {
-            let checks = language == "en"
-            let app = launch(language, "-fixture", "household")
+        for (language, appearance) in variants {
+            let checks = language == "en" && appearance == "light"
+            let app = launch(language, appearance, "-fixture", "household")
             // Once the first sync is in, so that the header has the name.
             _ = addField(app)
             let header = openAccount(app).label
@@ -25,7 +25,7 @@ final class AccountTests: ScreenshotTestCase {
                     XCTAssertGreaterThanOrEqual(frame.height, 44, "Option \(option) of picker \(index) is too low")
                 }
             }
-            attachBoth(app) { "account-\(language)-\($0)" }
+            attach(app, "account-\(language)-\(appearance)")
 
             if checks {
                 let open = app.buttons.matching(NSPredicate(format: "label == 'Open'")).firstMatch
@@ -47,7 +47,7 @@ final class AccountTests: ScreenshotTestCase {
             XCTAssertTrue(qr.waitForExistence(timeout: 20))
             // The sheet is still sliding up.
             Thread.sleep(forTimeInterval: 1)
-            attachBoth(app) { "add-device-\(language)-\($0)" }
+            attach(app, "add-device-\(language)-\(appearance)")
 
             if checks {
                 let cancel = withID(app.buttons, "addDevice.cancel")
@@ -61,7 +61,7 @@ final class AccountTests: ScreenshotTestCase {
 
     /// Without a connection, Add a device says why and opens no sheet.
     func testAddDeviceOffline() {
-        let app = launch("en", "-fixture", "offline")
+        let app = launch("en", "light", "-fixture", "offline")
         _ = openAccount(app)
         let addDevice = withID(app.buttons, "account.addDevice")
         scrollUp(app, in: app, until: addDevice)
