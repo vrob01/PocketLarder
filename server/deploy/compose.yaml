@@ -8,6 +8,7 @@ services:
     security_opt: ["no-new-privileges:true"]
     environment:
       POCKETLARDER_PUBLIC_URL: ${POCKETLARDER_PUBLIC_URL:?set it in server/deploy/.env}
+      POCKETLARDER_TRUST_PROXY: "true"
     volumes:
       - ${POCKETLARDER_HOST_DATA_DIR:?set it in server/deploy/.env}:/data
     # No published port: only containers on the proxy network, i.e. the reverse proxy, reach it.

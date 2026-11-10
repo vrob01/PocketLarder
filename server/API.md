@@ -84,10 +84,14 @@ member: redeeming it adds a device for that member.
   expires 24 hours after it was created.
 - **One answer for every bad code.** An unknown, used, expired or revoked code
   and a code with the wrong secret all give the same 401 `invalid_invite`.
-- **Rate limit.** The whole server accepts 10 redemption attempts per minute,
-  counted in fixed one-minute windows. Every attempt counts, successful ones
-  included. Further attempts get 429 `rate_limited`. The limit is checked
-  before the request is read, so a 429 says nothing about the code.
+- **Rate limit.** Each client gets 10 redemption attempts per minute, counted
+  in fixed one-minute windows. Every attempt counts, successful ones included.
+  Further attempts get 429 `rate_limited`. The limit is checked before the
+  request is read, so a 429 says nothing about the code. A client is an IPv4
+  address or an IPv6 /64; an IPv4-mapped IPv6 address counts as its IPv4
+  address. The address is the connection's or, with
+  `POCKETLARDER_TRUST_PROXY=true`, the last `X-Forwarded-For` entry (see the
+  hosting notes in the [README](../README.md)).
 - **Device names.** The client names the device when it redeems an invite, and
   the name never makes redemption fail. The server cleans it:
   - Invisible and control characters are dropped.
@@ -103,10 +107,6 @@ member: redeeming it adds a device for that member.
 
 Version 1 accepts these. Each has an issue for a later fix.
 
-- **Anyone can hold up pairing.** The redemption limit is one budget for the
-  whole server. A client sending 10 bogus codes a minute makes every real
-  redemption get 429 `rate_limited`
-  ([#13](https://github.com/vrob01/PocketLarder/issues/13)).
 - **Signed-in requests aren't rate-limited.** Only `POST /v1/invites/redeem`
   is. A paired device, or anyone holding its token, can call every other
   endpoint as fast as the server answers

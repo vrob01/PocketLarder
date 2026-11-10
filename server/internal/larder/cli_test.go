@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -270,6 +272,88 @@ func TestServe(t *testing.T) {
 	}
 	if !strings.Contains(logs.String(), `"pattern":"POST /v1/sync","status":401`) {
 		t.Fatalf("log %q", logs.String())
+	}
+}
+
+func TestCLITrustProxyRejectsBadValue(t *testing.T) {
+	for _, v := range []string{"yes", "TRUE", "1", " true"} {
+		env := cliEnv(t)
+		dir := filepath.Join(env["POCKETLARDER_DATA_DIR"], "data")
+		env["POCKETLARDER_DATA_DIR"] = dir
+		env["POCKETLARDER_TRUST_PROXY"] = v
+		code, _, stderr := runCLI(t, env, "serve")
+		want := fmt.Sprintf("pocketlarder: POCKETLARDER_TRUST_PROXY must be \"true\", \"false\" or empty, not %q\n", v)
+		if code != 1 || stderr != want {
+			t.Errorf("%q: exit %d, stderr %q", v, code, stderr)
+		}
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Errorf("%q: created anyway (%v)", v, err)
+		}
+	}
+}
+
+// invite and backup don't read the setting.
+func TestCLITrustProxyIgnoredOutsideServe(t *testing.T) {
+	env := cliEnv(t)
+	env["POCKETLARDER_TRUST_PROXY"] = "yes"
+	if code, _, stderr := runCLI(t, env, "invite", "--new-admin", "Alex"); code != 0 {
+		t.Fatalf("exit %d, stderr %q", code, stderr)
+	}
+}
+
+func TestServeTrustProxyWiring(t *testing.T) {
+	for _, v := range []string{"", "false", "true"} {
+		t.Run("setting="+v, func(t *testing.T) {
+			l, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			addr := l.Addr().String()
+			l.Close()
+			env := cliEnv(t)
+			env["POCKETLARDER_LISTEN"] = addr
+			env["POCKETLARDER_TRUST_PROXY"] = v
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan int, 1)
+			var logs, stderr bytes.Buffer
+			go func() { done <- Run(ctx, []string{"serve"}, func(k string) string { return env[k] }, &logs, &stderr) }()
+			defer func() {
+				cancel()
+				select {
+				case <-done:
+				case <-time.After(5 * time.Second):
+					t.Error("serve did not stop within 5s")
+				}
+			}()
+
+			redeem := func(xff string) (int, string) {
+				req, _ := http.NewRequest("POST", "http://"+addr+"/v1/invites/redeem", strings.NewReader(`{"code":"x.bogus","device_name":"d"}`))
+				req.Header.Set("X-Forwarded-For", xff)
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					return 0, ""
+				}
+				defer resp.Body.Close()
+				b, _ := io.ReadAll(resp.Body)
+				return resp.StatusCode, string(b)
+			}
+			for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+				if c, _ := redeem("198.51.100.1"); c != 0 {
+					break // the first attempt is counted
+				}
+			}
+			for range 9 {
+				redeem("198.51.100.1")
+			}
+			want, wantErr := http.StatusTooManyRequests, "rate_limited"
+			if v == "true" {
+				want, wantErr = http.StatusUnauthorized, "invalid_invite"
+			}
+			code, body := redeem("198.51.100.2")
+			if code != want || !strings.Contains(body, wantErr) {
+				t.Errorf("got %d %s, want %d %s", code, body, want, wantErr)
+			}
+		})
 	}
 }
 

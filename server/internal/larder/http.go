@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -23,33 +25,59 @@ type server struct {
 	now         func() time.Time
 	log         *slog.Logger
 	redeemLimit *windowLimiter
+	trustProxy  bool
 }
 
-func newServer(db *sql.DB, publicURL string, log *slog.Logger) *server {
-	return &server{db: db, publicURL: publicURL, now: time.Now, log: log,
+func newServer(db *sql.DB, publicURL string, trustProxy bool, log *slog.Logger) *server {
+	return &server{db: db, publicURL: publicURL, now: time.Now, log: log, trustProxy: trustProxy,
 		redeemLimit: &windowLimiter{max: 10, window: time.Minute}}
 }
 
-// shortcut: one server-wide window, not per client IP, because codes are 256-bit; go per-IP if lockouts annoy
+// All clients share one window start, so a new window drops every count and the map holds only this minute's clients.
 type windowLimiter struct {
 	max    int
 	window time.Duration
 	start  time.Time
-	n      int
+	n      map[string]int
 	mu     sync.Mutex
 }
 
-func (l *windowLimiter) allow(now time.Time) bool {
+func (l *windowLimiter) allow(key string, now time.Time) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if now.Sub(l.start) >= l.window {
-		l.start, l.n = now, 0
+		l.start, l.n = now, map[string]int{}
 	}
-	if l.n >= l.max {
+	if l.n[key] >= l.max {
 		return false
 	}
-	l.n++
+	l.n[key]++
 	return true
+}
+
+// clientKey is the client's IPv4 address or IPv6 /64. With trustProxy it is the last X-Forwarded-For entry when that parses.
+func clientKey(r *http.Request, trustProxy bool) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	addr, err := netip.ParseAddr(host)
+	if trustProxy {
+		if v := r.Header.Values("X-Forwarded-For"); len(v) > 0 {
+			last := v[len(v)-1]
+			if fwd, e := netip.ParseAddr(strings.Trim(last[strings.LastIndex(last, ",")+1:], " \t")); e == nil {
+				addr, err = fwd, nil
+			}
+		}
+	}
+	if err != nil {
+		return r.RemoteAddr
+	}
+	addr = addr.Unmap()
+	if addr.Is6() {
+		return netip.PrefixFrom(addr.WithZone(""), 64).Masked().String()
+	}
+	return addr.String()
 }
 
 // readJSON never logs or echoes the decoder's error, because it can quote the body.
@@ -173,7 +201,7 @@ func (w *statusWriter) WriteHeader(status int) {
 
 func (s *server) redeem(w http.ResponseWriter, r *http.Request) {
 	// Before anything else, so a 429 says nothing about the code.
-	if !s.redeemLimit.allow(s.now()) {
+	if !s.redeemLimit.allow(clientKey(r, s.trustProxy), s.now()) {
 		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate_limited"})
 		return
 	}
