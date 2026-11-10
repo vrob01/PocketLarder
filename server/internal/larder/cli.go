@@ -168,7 +168,7 @@ func invite(db *sql.DB, cmd, name, publicURL string, stdout, stderr io.Writer) i
 		if cmd == "--revoke" {
 			revoked, err = revokeInvites(tx, id)
 		} else {
-			code, expires, err = createInvite(tx, id, now)
+			code, expires, err = createInvite(tx, id, nil, now)
 		}
 		if err != nil {
 			return err

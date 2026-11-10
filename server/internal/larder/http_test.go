@@ -57,7 +57,7 @@ func (e *testEnv) member(name string, admin bool) (memberID, token string) {
 		if memberID, err = createMember(tx, name, admin, e.now); err != nil {
 			return err
 		}
-		code, _, err = createInvite(tx, memberID, e.now)
+		code, _, err = createInvite(tx, memberID, nil, e.now)
 		return err
 	})
 	if err != nil {
@@ -428,7 +428,7 @@ func TestAdminMembers(t *testing.T) {
 	alex, admin := e.member("Alex", true)
 	sam, user := e.member("Sam", false) // one redeemed invite
 	err := withTx(e.db, func(tx *sql.Tx) error {
-		_, _, err := createInvite(tx, sam, e.now.Add(-25*time.Hour)) // one expired an hour ago
+		_, _, err := createInvite(tx, sam, nil, e.now.Add(-25*time.Hour)) // one expired an hour ago
 		return err
 	})
 	if err != nil {
@@ -555,6 +555,56 @@ func TestRevokeDevice(t *testing.T) {
 	e.wantError(e.call("POST", "/v1/invites/revoke", user, map[string]any{}), http.StatusUnauthorized, "unauthorized")
 	e.wantError(e.call("DELETE", "/v1/admin/devices/"+device, admin, nil), http.StatusNotFound, "not_found")
 	e.wantError(e.call("DELETE", "/v1/admin/devices/not-a-uuid", admin, nil), http.StatusNotFound, "not_found")
+}
+
+// A signed-out device takes the invites it made with it, but not its member's other invites.
+func TestSignOutCancelsDeviceInvites(t *testing.T) {
+	for _, route := range []string{"POST /v1/signout", "DELETE /v1/admin/devices/{id}"} {
+		t.Run(route, func(t *testing.T) {
+			e := newTestEnv(t)
+			_, admin := e.member("Alex", true)
+			signOut := func(token string) {
+				t.Helper()
+				if route == "POST /v1/signout" {
+					e.wantStatus(e.call("POST", "/v1/signout", token, nil), http.StatusNoContent)
+					return
+				}
+				device, _, _ := strings.Cut(token, ".")
+				e.wantStatus(e.call("DELETE", "/v1/admin/devices/"+device, admin, nil), http.StatusNoContent)
+			}
+			redeem := func(code string) *httptest.ResponseRecorder {
+				return e.call("POST", "/v1/invites/redeem", "", redeemBody(code))
+			}
+
+			kim, a := e.member("Kim", false)
+			_, pair := e.invite(a, map[string]any{})
+			var b struct {
+				Token string `json:"token"`
+			}
+			e.decode(redeem(pair), http.StatusOK, &b)
+			_, fromA := e.invite(a, map[string]any{})
+			_, fromB := e.invite(b.Token, map[string]any{})
+			var fromCLI string
+			err := withTx(e.db, func(tx *sql.Tx) error {
+				fromCLI = mustCreateInvite(t, tx, kim)
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			signOut(a)
+			e.wantError(redeem(fromA), http.StatusUnauthorized, "invalid_invite")
+			e.wantStatus(redeem(fromB), http.StatusOK)
+			e.wantStatus(redeem(fromCLI), http.StatusOK)
+
+			// An admin's device also takes the invites it made for other members.
+			_, forKim := e.invite(admin, map[string]string{"member_id": kim})
+			_, forSam := e.invite(admin, map[string]string{"new_member_name": "Sam"})
+			signOut(admin)
+			e.wantError(redeem(forKim), http.StatusUnauthorized, "invalid_invite")
+			e.wantError(redeem(forSam), http.StatusUnauthorized, "invalid_invite")
+		})
+	}
 }
 
 func TestSecretsNeverLogged(t *testing.T) {

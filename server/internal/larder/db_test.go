@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestOpenDBMigratesOnce(t *testing.T) {
@@ -54,6 +55,54 @@ func TestOpenDBRefusesNewerSchema(t *testing.T) {
 	}
 	if v != newer {
 		t.Fatalf("user_version = %d after the refused open, want %d", v, newer)
+	}
+}
+
+func TestMigration2KeepsPendingInvites(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "p.db")
+	raw, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invite := newID()
+	secret, hash := newSecret()
+	for _, q := range []struct {
+		sql  string
+		args []any
+	}{
+		{migrations[0], nil},
+		{"PRAGMA user_version = 1", nil},
+		{"INSERT INTO members (id, name, name_key, created_at) VALUES ('m', 'Alex', 'alex', 0)", nil},
+		{"INSERT INTO invites (id, member_id, secret_hash, expires_at) VALUES (?, 'm', ?, ?)", []any{invite, hash, testNow.Add(time.Hour).Unix()}},
+	} {
+		if _, err := raw.Exec(q.sql, q.args...); err != nil {
+			t.Fatalf("%.60s: %v", q.sql, err)
+		}
+	}
+	raw.Close()
+
+	db, err := openDB(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var v int
+	if err := db.QueryRow("PRAGMA user_version").Scan(&v); err != nil || v != len(migrations) {
+		t.Fatalf("user_version = %d, %v; want %d", v, err, len(migrations))
+	}
+	var createdBy *string
+	if err := db.QueryRow("SELECT created_by FROM invites WHERE id = ?", invite).Scan(&createdBy); err != nil {
+		t.Fatal(err)
+	}
+	if createdBy != nil {
+		t.Errorf("created_by = %q, want NULL", *createdBy)
+	}
+	err = withTx(db, func(tx *sql.Tx) error {
+		_, _, err := redeemInvite(tx, invite+"."+secret, "Phone", testNow)
+		return err
+	})
+	if err != nil {
+		t.Errorf("redeeming the pending invite after migration 2: %v", err)
 	}
 }
 

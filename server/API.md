@@ -111,11 +111,6 @@ Version 1 accepts these. Each has an issue for a later fix.
   is. A paired device, or anyone holding its token, can call every other
   endpoint as fast as the server answers
   ([#14](https://github.com/vrob01/PocketLarder/issues/14)).
-- **Signing a device out doesn't revoke invites.** Unredeemed invites stay
-  valid until they expire, including any the device created before it was
-  signed out. When signing out a lost or stolen device, an admin also calls
-  `POST /v1/invites/revoke` with that device's `member_id`
-  ([#15](https://github.com/vrob01/PocketLarder/issues/15)).
 
 ## Endpoints
 
@@ -196,6 +191,12 @@ Content-Type: application/json
 `url` is the invite URL to show as a QR code and as text. `member_id` is the
 member the invite signs in.
 
+The invite belongs to the device that created it. Signing that device out, with
+`POST /v1/signout` or `DELETE /v1/admin/devices/{id}`, cancels the invite if it
+is still unredeemed. That includes the invites an admin's device made for
+another member or a new member. Invites from `pocketlarder invite` belong to no
+device, so a sign-out never cancels them.
+
 Errors: 400 `invalid`, 401 `unauthorized`, 403 `forbidden`, 404 `not_found`
 (no member with that `member_id`), 409 `conflict`, 413 `too_large`.
 
@@ -229,7 +230,9 @@ Errors: 400 `invalid`, 401 `unauthorized`, 403 `forbidden`, 404 `not_found`,
 ### POST /v1/signout
 
 Signs this device out: the server deletes it, and its token stops working.
-There is no request body.
+The unredeemed invites this device created are cancelled too, including those
+it made for other members. Other invites of the member stay valid. There is no
+request body.
 
 ```http
 POST /v1/signout
@@ -325,8 +328,10 @@ remove their own admin rights), 413 `too_large`.
 ### DELETE /v1/admin/members/{id}
 
 Removes a member. Admins only. Their devices are signed out, and their
-invites, personal list and its entries are deleted. An admin may remove
-themselves when another admin is left.
+invites, personal list and its entries are deleted. Because their devices are
+signed out, the unredeemed invites those devices created are cancelled too,
+including ones made for other members. An admin may remove themselves when
+another admin is left.
 
 ```http
 DELETE /v1/admin/members/850c282d-bf55-4b61-acbe-afcce2a7a6c4
@@ -343,7 +348,9 @@ Errors: 401 `unauthorized`, 403 `forbidden`, 404 `not_found`, 409 `last_admin`
 ### DELETE /v1/admin/devices/{id}
 
 Signs a device out by deleting it. Its token stops working. Admins only. This
-works for any device, the caller's own included.
+works for any device, the caller's own included. The unredeemed invites the
+device created are cancelled too, including those it made for other members.
+Other invites of the member stay valid.
 
 ```http
 DELETE /v1/admin/devices/902ce6e8-8fd1-4c91-80f4-de517bc0699f

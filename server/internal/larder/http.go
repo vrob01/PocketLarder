@@ -258,7 +258,7 @@ func (s *server) invite(w http.ResponseWriter, r *http.Request, d device) {
 				return err
 			}
 		}
-		code, expires, err = createInvite(tx, memberID, now)
+		code, expires, err = createInvite(tx, memberID, &d.ID, now)
 		return err
 	})
 	if err != nil {
