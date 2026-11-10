@@ -56,6 +56,7 @@ jobs:
         run: |
           xcodebuild test -project ios/PocketLarder.xcodeproj -scheme PocketLarder \
             -destination "id=${{ steps.simulator.outputs.id }}" \
+            -parallel-testing-enabled YES -parallel-testing-worker-count 3 \
             -resultBundlePath "$RUNNER_TEMP/Tests.xcresult"
       - name: Export the screenshots
         if: always() && hashFiles('ios/PocketLarder.xcodeproj/project.pbxproj') != ''
