@@ -37,6 +37,8 @@ final class AppModel {
     private let files: LocalFiles
     /// False for a fixture run, so that it can't read, replace or delete a real account.
     private let usesKeychain: Bool
+    /// `Keychain.save`, except in a test that makes it fail.
+    private let saveAccount: (Account) throws -> Void
     private var signInAttempts = 0
     private var enteredBackground: Date?
 
@@ -61,10 +63,15 @@ final class AppModel {
         return directory
     }
 
-    init(transport: any Transport = URLSessionTransport(), dataDirectory: URL = AppModel.defaultDataDirectory) {
+    init(
+        transport: any Transport = URLSessionTransport(),
+        dataDirectory: URL = AppModel.defaultDataDirectory,
+        saveAccount: @escaping (Account) throws -> Void = Keychain.save
+    ) {
         self.transport = transport
         files = LocalFiles(directory: dataDirectory)
         usesKeychain = true
+        self.saveAccount = saveAccount
         account = Keychain.load()
         larder = account.map(makeLarder)
         #if DEBUG
@@ -94,6 +101,7 @@ final class AppModel {
         self.transport = transport
         files = LocalFiles(directory: dataDirectory)
         usesKeychain = false
+        saveAccount = Keychain.save
         self.account = account
         larder = makeLarder(account)
     }
@@ -151,14 +159,20 @@ final class AppModel {
             }
         }
         // A newer attempt or a restore took over while this request was open. This answer must not replace that account
-        // or sign the phone back in after it signed out, so the device it created stays unused on its server.
+        // or sign the phone back in after it signed out. The device it created is signed out once, best effort, by a
+        // plain client that holds no `self`, so that the answer can't reach the current account.
         guard attempt == signInAttempts else {
+            let client = APIClient(server: invite.server, token: redemption.token, transport: transport)
+            Task { try? await client.signOut() }
             return account == nil ? .other : .alreadySignedIn(name: memberName)
         }
         let account = Account(server: invite.server, token: redemption.token, memberId: redemption.memberId, deviceId: redemption.deviceId)
         do {
-            if usesKeychain { try Keychain.save(account) }
+            if usesKeychain { try saveAccount(account) }
         } catch {
+            // Nothing holds the token now, so its device is signed out the same way as above.
+            let client = APIClient(server: invite.server, token: redemption.token, transport: transport)
+            Task { try? await client.signOut() }
             return .other
         }
         // Files left by a failed wipe must never reach the new account.
