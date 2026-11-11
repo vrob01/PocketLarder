@@ -72,6 +72,13 @@ private func paths(_ transport: FakeTransport) async -> [String?] {
     await waitUntil { await paths(transport).contains("/v1/signout") }
 }
 
+/// Every request sent with `token`, as its method, host and path.
+private func sent(_ transport: FakeTransport, token: String) async -> [String] {
+    await transport.requests
+        .filter { $0.value(forHTTPHeaderField: "Authorization") == "Bearer \(token)" }
+        .map { "\($0.httpMethod ?? "") \($0.url?.host() ?? "")\($0.url?.path ?? "")" }
+}
+
 /// A `sync()` the test doesn't wait for. It runs up to its first suspension before the initializer returns.
 @MainActor private final class SyncCall {
     private(set) var returned = false
@@ -100,14 +107,16 @@ private func paths(_ transport: FakeTransport) async -> [String?] {
     return redeeming
 }
 
-/// A sign-in still waiting for its answer, overtaken by a second one that completed. `signedOut` answers a forced
-/// sign-out, and the last step answers the sync that a late answer must not start, so a bug fails the test instead of
-/// crashing the process.
-@MainActor private func overtakenSignIn() async throws -> (
+/// A sign-in still waiting for its answer, overtaken by a second one that completed, with an empty Keychain before.
+/// `script` answers the requests after those three. By default `signedOut` answers the late answer's revoke and a
+/// forced sign-out, and the last step answers a request a correct run never sends, such as the sync that a late answer
+/// must not start, so a bug fails the test instead of crashing the process.
+@MainActor private func overtakenSignIn(_ script: [FakeTransport.Step] = [signedOut, signedOut, synced]) async throws -> (
     model: AppModel, transport: FakeTransport, directory: URL, first: Task<AppModel.SignInError?, Never>
 ) {
+    Keychain.delete()
     let directory = try temporaryDirectory()
-    let transport = FakeTransport([.hold, redeemed(token: "next-token"), synced, signedOut, synced])
+    let transport = FakeTransport([.hold, redeemed(token: "next-token"), synced] + script)
     let model = AppModel(transport: transport, dataDirectory: directory)
     let first = try await openSignIn(model, transport)
     try #require(await model.signIn(invite, deviceName: "iPhone") == nil)
@@ -121,6 +130,8 @@ private struct RedeemBody: Decodable {
 private struct SyncBody: Decodable {
     let ops: [Op]
 }
+
+private struct SaveFailed: Error {}
 
 extension KeychainSuite {
     @Test @MainActor func openingInviteLinkSetsPendingInvite() throws {
@@ -282,8 +293,55 @@ extension KeychainSuite {
         #expect(Keychain.load() == next)
         #expect(model.larder === larder)
         #expect(try contents(directory).contains("snapshot.json"))
+        #expect(await revokeShows(transport))
         try await Task.sleep(for: .milliseconds(50))
-        #expect(await transport.requests.count == 3)
+        #expect(await transport.requests.count == 4)
+        #expect(await sent(transport, token: "late-token") == ["POST lists.example.test/v1/signout"])
+    }
+
+    @Test @MainActor func lateRedeemIgnoresRevokeAnswer() async throws {
+        defer { Keychain.delete() }
+        for answer in [unauthorized, .answer(status: 500, json: #"{"error":"internal"}"#), offline] {
+            let (model, transport, directory, first) = try await overtakenSignIn([answer, synced])
+            let next = try #require(model.account)
+            let larder = try #require(model.larder)
+
+            await transport.release(status: 200, json: redeemJSON(token: "late-token"))
+
+            #expect(await first.value == .alreadySignedIn(name: "Alex"))
+            #expect(await revokeShows(transport))
+            try await Task.sleep(for: .milliseconds(50))
+            #expect(model.account == next)
+            #expect(Keychain.load() == next)
+            #expect(model.larder === larder)
+            #expect(try contents(directory).contains("snapshot.json"))
+            #expect(model.signedOutLostChanges == nil)
+            #expect(await transport.requests.count == 4)
+        }
+    }
+
+    @Test @MainActor func heldLateRevokeSparesSignedInAccount() async throws {
+        defer { Keychain.delete() }
+        let (model, transport, directory, first) = try await overtakenSignIn([.hold, synced])
+        let next = try #require(model.account)
+        let larder = try #require(model.larder)
+        await transport.release(status: 200, json: redeemJSON(token: "late-token"))
+
+        var dropped: AppModel.SignInError?
+        Task { dropped = await first.value }
+        #expect(await waitUntil { dropped != nil })
+        #expect(dropped == .alreadySignedIn(name: "Alex"))
+        try #require(await revokeShows(transport))
+
+        await transport.release(status: 401, json: #"{"error":"unauthorized"}"#)
+
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(model.account == next)
+        #expect(Keychain.load() == next)
+        #expect(model.larder === larder)
+        #expect(try contents(directory).contains("snapshot.json"))
+        #expect(model.signedOutLostChanges == nil)
+        #expect(await transport.requests.count == 4)
     }
 
     @Test @MainActor func lateRedeemAfterSignOutStaysSignedOut() async throws {
@@ -299,8 +357,10 @@ extension KeychainSuite {
         #expect(model.account == nil)
         #expect(model.larder == nil)
         #expect(Keychain.load() == nil)
+        #expect(await waitUntil { await transport.requests.count == 5 })
         try await Task.sleep(for: .milliseconds(50))
-        #expect(await transport.requests.count == 4)
+        #expect(await transport.requests.count == 5)
+        #expect(await sent(transport, token: "late-token") == ["POST lists.example.test/v1/signout"])
     }
 
     @Test @MainActor func forcedSignOutRevokesDevice() async throws {
@@ -378,6 +438,62 @@ extension KeychainSuite {
         #expect(try contents(directory).contains("snapshot.json"))
         #expect(model.signedOutLostChanges == nil)
         #expect(await transport.requests.count == 5)
+    }
+
+    @Test @MainActor func failedSaveRevokesDevice() async throws {
+        defer { Keychain.delete() }
+        for answer in [unauthorized, .answer(status: 500, json: #"{"error":"internal"}"#), offline] {
+            let directory = try seededDirectory()
+            let transport = FakeTransport([redeemed(), answer, synced])
+            let model = AppModel(transport: transport, dataDirectory: directory, saveAccount: { _ in throw SaveFailed() })
+
+            #expect(await model.signIn(invite, deviceName: "iPhone") == .other)
+
+            #expect(await revokeShows(transport))
+            try await Task.sleep(for: .milliseconds(50))
+            #expect(await sent(transport, token: "test-token") == ["POST lists.example.test/v1/signout"])
+            #expect(model.account == nil)
+            #expect(model.larder == nil)
+            #expect(Keychain.load() == nil)
+            #expect(try contents(directory).sorted() == ["queue.json", "snapshot.json"])
+            #expect(model.signedOutLostChanges == nil)
+            #expect(await transport.requests.count == 2)
+        }
+    }
+
+    @Test @MainActor func heldFailedSaveRevokeSparesNextAccount() async throws {
+        defer { Keychain.delete() }
+        let directory = try temporaryDirectory()
+        let transport = FakeTransport([redeemed(), .hold, redeemed(token: "next-token"), synced, synced])
+        var failsOnce = true
+        let model = AppModel(transport: transport, dataDirectory: directory, saveAccount: {
+            if failsOnce {
+                failsOnce = false
+                throw SaveFailed()
+            }
+            try Keychain.save($0)
+        })
+        var dropped: AppModel.SignInError?
+        Task { dropped = await model.signIn(invite, deviceName: "iPhone") }
+        #expect(await waitUntil { dropped != nil })
+        #expect(dropped == .other)
+        // If it never shows, the next `signIn` would wait on the `.hold` itself, and nothing is held to release.
+        try #require(await revokeShows(transport))
+        #expect(await model.signIn(invite, deviceName: "iPhone") == nil)
+        let next = try #require(model.account)
+        let larder = try #require(model.larder)
+        #expect(next.token == "next-token")
+
+        await transport.release(status: 401, json: #"{"error":"unauthorized"}"#)
+
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(model.account == next)
+        #expect(Keychain.load() == next)
+        #expect(model.larder === larder)
+        #expect(try contents(directory).contains("snapshot.json"))
+        #expect(model.signedOutLostChanges == nil)
+        #expect(await transport.requests.count == 4)
+        #expect(await sent(transport, token: "test-token") == ["POST lists.example.test/v1/signout"])
     }
 
     @Test @MainActor func signInIgnoresLeftoverFiles() async throws {
@@ -492,9 +608,12 @@ extension KeychainSuite {
     @Test @MainActor func restoredAccountBeatsOpenRedeem() async throws {
         defer { Keychain.delete() }
         let directory = try seededDirectory()
-        let transport = FakeTransport([.hold, synced])
+        let transport = FakeTransport([.hold, signedOut, synced])
         let model = AppModel(transport: transport, dataDirectory: directory)
-        let redeeming = try await openSignIn(model, transport)
+        // On another server than the restored account, so that the revoke shows which server it goes to.
+        let dropped = Invite(server: try #require(URL(string: "https://other.example.test")), code: "code")
+        let redeeming = Task { await model.signIn(dropped, deviceName: "iPhone") }
+        try #require(await waitUntil { await transport.requests.count == 1 })
 
         try Keychain.save(account)
         model.restoreFromKeychain()
@@ -508,8 +627,10 @@ extension KeychainSuite {
         #expect(model.larder === larder)
         #expect(model.larder?.pending.count == 1)
         #expect(try contents(directory).contains("queue.json"))
+        #expect(await revokeShows(transport))
         try await Task.sleep(for: .milliseconds(50))
-        #expect(await transport.requests.count == 1)
+        #expect(await transport.requests.count == 2)
+        #expect(await sent(transport, token: "late-token") == ["POST other.example.test/v1/signout"])
     }
 
     @Test @MainActor func emptyKeychainKeepsOpenRedeem() async throws {
