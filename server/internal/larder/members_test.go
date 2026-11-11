@@ -35,7 +35,7 @@ func mustCreateMember(t *testing.T, tx *sql.Tx, name string, admin bool) string 
 
 func mustCreateInvite(t *testing.T, tx *sql.Tx, memberID string) string {
 	t.Helper()
-	code, expires, err := createInvite(tx, memberID, testNow)
+	code, expires, err := createInvite(tx, memberID, nil, testNow)
 	if err != nil {
 		t.Fatalf("createInvite: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestInviteRedeemsOnceAndStoresOnlyHash(t *testing.T) {
 		}
 	}
 
-	if _, _, err := createInvite(tx, newID(), testNow); err != errNotFound {
+	if _, _, err := createInvite(tx, newID(), nil, testNow); err != errNotFound {
 		t.Errorf("createInvite for an unknown member: %v, want errNotFound", err)
 	}
 	want := "pocketlarder://invite?server=https%3A%2F%2Flists.example.test&code=" + code

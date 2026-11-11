@@ -65,13 +65,14 @@ func memberByName(tx *sql.Tx, name string) (string, error) {
 	return id, err
 }
 
-func createInvite(tx *sql.Tx, memberID string, now time.Time) (code string, expires time.Time, err error) {
+// createInvite's invite is deleted with createdBy, the device that made it; nil (the CLI) means no device.
+func createInvite(tx *sql.Tx, memberID string, createdBy *string, now time.Time) (code string, expires time.Time, err error) {
 	id := newID()
 	secret, hash := newSecret()
 	expires = now.Add(24 * time.Hour)
 	// Selecting from members inserts nothing for an unknown member.
-	n, err := rowsChanged(tx.Exec("INSERT INTO invites (id, member_id, secret_hash, expires_at) SELECT ?, id, ?, ? FROM members WHERE id = ?",
-		id, hash, expires.Unix(), memberID))
+	n, err := rowsChanged(tx.Exec("INSERT INTO invites (id, member_id, secret_hash, expires_at, created_by) SELECT ?, id, ?, ?, ? FROM members WHERE id = ?",
+		id, hash, expires.Unix(), createdBy, memberID))
 	if err != nil {
 		return "", time.Time{}, err
 	}

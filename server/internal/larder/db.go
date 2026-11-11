@@ -73,6 +73,7 @@ CREATE TABLE entries (
 CREATE INDEX entries_by_list ON entries(list_id, bought_at);
 CREATE TABLE applied_ops (op_id TEXT PRIMARY KEY, applied_at INTEGER NOT NULL);
 `,
+	`ALTER TABLE invites ADD COLUMN created_by TEXT REFERENCES devices(id) ON DELETE CASCADE`,
 }
 
 func openDB(path string) (*sql.DB, error) {

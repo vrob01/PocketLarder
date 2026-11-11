@@ -61,7 +61,7 @@ struct MemberDetailView: View {
             }
         }
         .alert(
-            Text("Sign out \(signingOut?.name ?? "")? Their pending invites are cancelled too."),
+            Text("Sign out \(signingOut?.name ?? "")? Invites created on it are cancelled too."),
             isPresented: Binding(get: { signingOut != nil }, set: { if !$0 { signingOut = nil } }),
             presenting: signingOut
         ) { device in
@@ -119,40 +119,16 @@ struct MemberDetailView: View {
     private func signOut(_ device: AdminDevice) {
         guard let client = model.client else { return }
         busy = true
-        let thisDevice = device.id == model.account?.deviceId
         Task {
             var failure: APIError?
-            var revokeFailed = false
-            if thisDevice {
-                do throws(ThisDeviceSignOutFailure) {
-                    try await signOutThisDevice(device.id, client: client)
-                } catch {
-                    switch error {
-                    case let .revoke(revokeFailure): (failure, revokeFailed) = (revokeFailure, true)
-                    case let .signOut(signOutFailure): failure = signOutFailure
-                    }
-                }
-            } else {
-                do throws(APIError) {
-                    try await client.removeDevice(device.id, revokingInvitesOf: member.id)
-                } catch {
-                    failure = error
-                }
+            do throws(APIError) {
+                try await client.removeDevice(device.id)
+            } catch {
+                failure = error
             }
             let shown = await household.refresh(after: failure)
             busy = false
-            // Gone after the reload means only the revoke failed. `not_found` comes from the sign-out itself, for a
-            // device that was gone already.
-            let signedOut = !thisDevice && failure != .server(code: "not_found")
-                && household.member(member.id)?.devices.contains(where: { $0.id == device.id }) == false
-            let title = if revokeFailed {
-                String(localized: "Couldn't cancel your pending invites, so this iPhone is still signed in.")
-            } else if signedOut {
-                String(localized: "Signed out \(device.name), but couldn't cancel their pending invites.")
-            } else {
-                String(localized: "Couldn't sign out \(device.name).")
-            }
-            show(title, shown)
+            show(String(localized: "Couldn't sign out \(device.name)."), shown)
         }
     }
 
@@ -198,26 +174,5 @@ struct MemberDetailView: View {
 
     private func show(_ title: String, _ message: String?) {
         if let message { actionFailure = (title, message) }
-    }
-}
-
-/// Which step of signing out this iPhone's own device failed.
-enum ThisDeviceSignOutFailure: Error, Equatable {
-    case revoke(APIError)
-    case signOut(APIError)
-}
-
-/// Signs out this iPhone's own device and cancels its member's pending invites.
-func signOutThisDevice(_ deviceId: String, client: APIClient) async throws(ThisDeviceSignOutFailure) {
-    // The revoke goes first, because the sign-out ends the token it needs.
-    do throws(APIError) {
-        _ = try await client.revokeInvites()
-    } catch {
-        throw .revoke(error)
-    }
-    do throws(APIError) {
-        try await client.removeDevice(deviceId)
-    } catch {
-        throw .signOut(error)
     }
 }

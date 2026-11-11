@@ -1641,12 +1641,12 @@
         }
       }
     },
-    "Sign out %@? Their pending invites are cancelled too.": {
+    "Sign out %@? Invites created on it are cancelled too.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ abmelden? Die offenen Einladungen dieses Mitglieds werden auch widerrufen."
+            "value": "%@ abmelden? Auf diesem Gerät erstellte Einladungen werden auch widerrufen."
           }
         }
       }
@@ -1681,32 +1681,12 @@
         }
       }
     },
-    "Signed out %@, but couldn't cancel their pending invites.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ wurde abgemeldet, aber die offenen Einladungen dieses Mitglieds konnten nicht widerrufen werden."
-          }
-        }
-      }
-    },
     "Couldn't sign out %@.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
             "value": "%@ konnte nicht abgemeldet werden."
-          }
-        }
-      }
-    },
-    "Couldn't cancel your pending invites, so this iPhone is still signed in.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Deine offenen Einladungen konnten nicht widerrufen werden, daher ist dieses iPhone noch angemeldet."
           }
         }
       }
