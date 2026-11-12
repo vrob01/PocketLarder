@@ -70,12 +70,9 @@ func memberByName(tx *sql.Tx, name string) (string, error) {
 }
 
 // createInvite's invite is deleted with createdBy, the device that made it; nil (the CLI) means no device.
-// It first deletes every member's expired, unredeemed invites. The API is capped at maxOpenInvites open
-// invites per member, counting every device's and the CLI's; the CLI (nil) isn't capped.
+// The API is capped at maxOpenInvites open invites per member, counting every device's and the CLI's;
+// the CLI (nil) isn't capped.
 func createInvite(tx *sql.Tx, memberID string, createdBy *string, now time.Time) (code string, expires time.Time, err error) {
-	if _, err := tx.Exec("DELETE FROM invites WHERE used_at IS NULL AND expires_at <= ?", now.Unix()); err != nil {
-		return "", time.Time{}, err
-	}
 	if createdBy != nil {
 		var open int
 		if err := tx.QueryRow("SELECT count(*) FROM invites WHERE member_id = ? AND used_at IS NULL AND expires_at > ?",

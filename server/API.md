@@ -92,9 +92,6 @@ member: redeeming it adds a device for that member.
   as they are. An invite stops counting once it is redeemed, revoked
   (`POST /v1/invites/revoke`, or signing out the device that made it) or
   expired. `pocketlarder invite` itself is not capped.
-- **Expired invites are deleted.** Creating an invite, with `POST /v1/invites`
-  or `pocketlarder invite`, first deletes every member's expired, unredeemed
-  invites. Redeemed invites are kept. A refused request deletes nothing.
 - **One answer for every bad code.** An unknown, used, expired or revoked code
   and a code with the wrong secret all give the same 401 `invalid_invite`.
 - **Rate limit.** Each client gets 10 redemption attempts per minute, counted
@@ -247,8 +244,7 @@ Content-Type: application/json
 {"revoked": 1}
 ```
 
-`revoked` is how many invites were deleted, including expired ones that
-creating an invite hasn't deleted yet.
+`revoked` is how many invites were deleted, expired ones included.
 
 Errors: 400 `invalid`, 401 `unauthorized`, 403 `forbidden`, 404 `not_found`,
 413 `too_large`, 429 `rate_limited`.

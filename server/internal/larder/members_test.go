@@ -174,42 +174,6 @@ func TestRevokeInvites(t *testing.T) {
 	}
 }
 
-func TestCreateInviteDeletesExpired(t *testing.T) {
-	tx := testTx(t)
-	alex := mustCreateMember(t, tx, "Alex", true)
-	sam := mustCreateMember(t, tx, "Sam", false)
-	used := mustCreateInvite(t, tx, alex)
-	mustRedeemInvite(t, tx, used, testNow)
-	expired := mustCreateInvite(t, tx, alex)
-	samCode, _, err := createInvite(tx, sam, nil, testNow.Add(time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	stored := func(code string) bool {
-		t.Helper()
-		id, _, _ := strings.Cut(code, ".")
-		var n int
-		if err := tx.QueryRow("SELECT count(*) FROM invites WHERE id = ?", id).Scan(&n); err != nil {
-			t.Fatal(err)
-		}
-		return n == 1
-	}
-
-	if _, _, err := createInvite(tx, alex, nil, testNow.Add(24*time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	if stored(expired) || !stored(used) || !stored(samCode) {
-		t.Errorf("at 24h: expired kept %v, redeemed kept %v, Sam's kept %v; want false, true, true", stored(expired), stored(used), stored(samCode))
-	}
-	// The cleanup covers every member, not just the one invited.
-	if _, _, err := createInvite(tx, alex, nil, testNow.Add(25*time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	if stored(samCode) || !stored(used) {
-		t.Errorf("at 25h: Sam's kept %v, redeemed kept %v; want false, true", stored(samCode), stored(used))
-	}
-}
-
 func TestAuthenticate(t *testing.T) {
 	tx := testTx(t)
 	alex := mustCreateMember(t, tx, "Alex", true)
