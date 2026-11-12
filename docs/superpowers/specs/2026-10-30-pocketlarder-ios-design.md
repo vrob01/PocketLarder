@@ -287,6 +287,10 @@ mockup's "Items tab, for comparison" and "+2" were mockup notes.
   a connection to your server" instead of failing silently.
 - Error copy for admin actions: `conflict` "Someone in the household already
   has that name.", `last_admin` "The household needs at least one admin."
+- When the server refuses an invite with `too_many_invites`, Add a device and
+  "Add a device for Sam…" show "This member already has the most open invites
+  <host> allows. An invite stops counting once it's used, cancelled or 24 hours
+  old."
 
 ## Language
 

@@ -804,6 +804,7 @@ Behavior, from `settings.html` cards 1–2:
   - The warning "Anyone with this invite can sign in as you until it's used or expires. Only send it to yourself."
   - "Cancel invite" (`revokeInvites()`), which closes the sheet.
 - **Offline:** each network action shows "Needs a connection to your server".
+- **`too_many_invites`:** Add a device shows "This member already has the most open invites <host> allows. An invite stops counting once it's used, cancelled or 24 hours old.", through `failureText`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -851,6 +852,7 @@ Behavior, from `settings.html` card 4 and the design:
   - `conflict`: "Someone in the household already has that name."
   - `last_admin`: "The household needs at least one admin."
   - Offline: "Needs a connection to your server".
+  - `too_many_invites`: "This member already has the most open invites <host> allows. An invite stops counting once it's used, cancelled or 24 hours old."
 
 - [ ] **Step 1: Write the failing kit test**
 

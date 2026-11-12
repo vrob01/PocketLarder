@@ -56,6 +56,7 @@ anything else:
 | 404 | `not_found` | The member or device doesn't exist, or the id isn't a lowercase UUID. |
 | 409 | `conflict` | Another member already has that name. |
 | 409 | `last_admin` | The request would leave the household without an admin. |
+| 409 | `too_many_invites` | The member the invite is for already has 10 open invites, the most the server allows. |
 | 413 | `too_large` | The body is over 64 KiB, or over 1 MiB for `POST /v1/sync`. |
 | 429 | `rate_limited` | Too many redemption attempts from this client, or too many signed-in requests from this device, in the current one-minute window. |
 | 500 | `internal` | The server failed. Nothing about the cause is sent. |
@@ -83,6 +84,17 @@ member: redeeming it adds a device for that member.
   full stop or a closing bracket.
 - **Single-use and short-lived.** An invite can be redeemed once, and it
   expires 24 hours after it was created.
+- **At most 10 open invites per member.** Open means neither redeemed nor
+  expired, as `pending_invites` in `GET /v1/admin/members` counts them. They are
+  counted for the member the invite is for, whichever device made them,
+  invites from `pocketlarder invite` included. Over the cap, `POST /v1/invites`
+  gets 409 `too_many_invites`, creates nothing and leaves the member's invites
+  as they are. An invite stops counting once it is redeemed, revoked
+  (`POST /v1/invites/revoke`, or signing out the device that made it) or
+  expired. `pocketlarder invite` itself is not capped.
+- **Expired invites are deleted.** Creating an invite, with `POST /v1/invites`
+  or `pocketlarder invite`, first deletes every member's expired, unredeemed
+  invites. Redeemed invites are kept. A refused request deletes nothing.
 - **One answer for every bad code.** An unknown, used, expired or revoked code
   and a code with the wrong secret all give the same 401 `invalid_invite`.
 - **Rate limit.** Each client gets 10 redemption attempts per minute, counted
@@ -206,9 +218,12 @@ is still unredeemed. That includes the invites an admin's device made for
 another member or a new member. Invites from `pocketlarder invite` belong to no
 device, so a sign-out never cancels them.
 
+When the member the invite is for already has 10 open invites, the request
+gets 409 `too_many_invites` and creates nothing. A new member starts with none.
+
 Errors: 400 `invalid`, 401 `unauthorized`, 403 `forbidden`, 404 `not_found`
-(no member with that `member_id`), 409 `conflict`, 413 `too_large`,
-429 `rate_limited`.
+(no member with that `member_id`), 409 `conflict`, 409 `too_many_invites`,
+413 `too_large`, 429 `rate_limited`.
 
 ### POST /v1/invites/revoke
 
@@ -232,7 +247,8 @@ Content-Type: application/json
 {"revoked": 1}
 ```
 
-`revoked` is how many invites were deleted, expired ones included.
+`revoked` is how many invites were deleted, including expired ones that
+creating an invite hasn't deleted yet.
 
 Errors: 400 `invalid`, 401 `unauthorized`, 403 `forbidden`, 404 `not_found`,
 413 `too_large`, 429 `rate_limited`.
