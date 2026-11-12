@@ -105,6 +105,22 @@ func TestCLIInviteRevoke(t *testing.T) {
 	}
 }
 
+func TestCLIInviteNotCapped(t *testing.T) {
+	env := cliEnv(t)
+	if code, _, stderr := runCLI(t, env, "invite", "--new-admin", "Alex"); code != 0 {
+		t.Fatalf("new admin: exit %d, stderr %q", code, stderr)
+	}
+	for i := range maxOpenInvites + 1 {
+		if code, _, stderr := runCLI(t, env, "invite", "Alex"); code != 0 {
+			t.Fatalf("invite %d: exit %d, stderr %q", i+1, code, stderr)
+		}
+	}
+	var pending int
+	if err := cliDB(t, env).QueryRow("SELECT count(*) FROM invites i JOIN members m ON m.id = i.member_id WHERE m.name = 'Alex' AND i.used_at IS NULL").Scan(&pending); err != nil || pending != maxOpenInvites+2 {
+		t.Fatalf("pending invites = %d, %v; want %d", pending, err, maxOpenInvites+2)
+	}
+}
+
 func TestCLIPublicURL(t *testing.T) {
 	for _, tc := range []struct {
 		url  string

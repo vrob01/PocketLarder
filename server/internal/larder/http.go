@@ -108,13 +108,14 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 // errStatus maps each sentinel error to its status; the error's message is its code.
 var errStatus = map[error]int{
-	errInvalid:      http.StatusBadRequest,
-	errUnauthorized: http.StatusUnauthorized,
-	errBadInvite:    http.StatusUnauthorized,
-	errForbidden:    http.StatusForbidden,
-	errNotFound:     http.StatusNotFound,
-	errConflict:     http.StatusConflict,
-	errLastAdmin:    http.StatusConflict,
+	errInvalid:        http.StatusBadRequest,
+	errUnauthorized:   http.StatusUnauthorized,
+	errBadInvite:      http.StatusUnauthorized,
+	errForbidden:      http.StatusForbidden,
+	errNotFound:       http.StatusNotFound,
+	errConflict:       http.StatusConflict,
+	errLastAdmin:      http.StatusConflict,
+	errTooManyInvites: http.StatusConflict,
 }
 
 func (s *server) fail(w http.ResponseWriter, err error) {
