@@ -9,7 +9,7 @@ final class AppModel {
     }
 
     enum SignOutResult: Equatable {
-        case done, unsentChanges(Int), unreachable
+        case done, unsentChanges(Int), unreachable, rateLimited
     }
 
     var pendingInvite: Invite?
@@ -198,6 +198,7 @@ final class AppModel {
         await larder.sync()
         // A 401 or a forced sign-out during the wait has wiped already, and a new account may have signed in since.
         guard self.larder === larder else { return .done }
+        if larder.lastSyncFailure == .server(code: "rate_limited") { return .rateLimited }
         if larder.isOffline { return .unreachable }
         if !larder.pending.isEmpty { return .unsentChanges(larder.pending.count) }
         var failure: APIError?
@@ -207,6 +208,7 @@ final class AppModel {
             failure = error
         }
         guard self.larder === larder else { return .done }
+        if failure == .server(code: "rate_limited") { return .rateLimited }
         // `unauthorized` means the server already treats this device as signed out.
         if let failure, failure != .server(code: "unauthorized") { return .unreachable }
         wipe()

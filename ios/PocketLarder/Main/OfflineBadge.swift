@@ -50,6 +50,7 @@ func offlineText(failure: APIError, host: String, pending: Int) -> String {
 func failureText(_ failure: APIError, host: String) -> String {
     switch failure {
     case .offline: String(localized: "Can't reach \(host).")
+    case .server(code: "rate_limited"): String(localized: "\(host) limited this iPhone's requests: too many in the past minute.")
     case let .server(code): String(localized: "\(host) answered with error code \(code).")
     case let .unexpected(status): String(localized: "\(host) answered with HTTP status \(status).")
     }
