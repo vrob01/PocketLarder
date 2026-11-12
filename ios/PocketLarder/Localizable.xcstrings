@@ -631,12 +631,12 @@
         }
       }
     },
-    "This member already has the most open invites %@ allows. An invite stops counting once it's used, cancelled or 24 hours old.": {
+    "This member already has the most open invites %@ allows.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dieses Mitglied hat schon so viele offene Einladungen, wie %@ erlaubt. Eine Einladung zählt nicht mehr, sobald sie benutzt, widerrufen oder 24 Stunden alt ist."
+            "value": "Dieses Mitglied hat schon so viele offene Einladungen, wie %@ erlaubt."
           }
         }
       }
