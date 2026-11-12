@@ -224,8 +224,9 @@ owner asked for.
   - An item rename refused `conflict`: "Couldn't rename "Milk" to "Bread": that
     item already exists."
   - Refusals for things already deleted elsewhere (`not_found`) stay silent.
-- **Offline:** while the last sync attempt failed for lack of a connection or a
-  server error, a small crossed-out cloud sits next to the account circle.
+- **Offline:** while the last sync attempt failed for lack of a connection, a
+  server error or because the server limited this iPhone's requests, a small
+  crossed-out cloud sits next to the account circle.
   Tapping it says "Not connected. 3 changes will be sent when your server is
   reachable." Otherwise there's nothing to see, and the app works the same
   online or off.
@@ -253,8 +254,9 @@ mockup's "Items tab, for comparison" and "+2" were mockup notes.
 - **Sign out** first tries to send the queue. If changes are still unsent, it
   asks before discarding them. If the server can't be reached, it offers "Sign
   out anyway", which deletes everything locally and says an admin should remove
-  the device from the household's list **[Claude's call]**. After either
-  question, "Sign out anyway" also tries once to tell the server to remove the
+  the device from the household's list **[Claude's call]**. When the server
+  limited this iPhone's requests, it says so and offers "Sign out anyway" the
+  same way. After any of these questions, "Sign out anyway" also tries once to tell the server to remove the
   device, without waiting for the answer, so that no device is left for an admin
   to remove when the server can be reached. If that fails, the device stays on
   the list until an admin removes it.

@@ -22,9 +22,10 @@ the admin area.
   No such header, or one without the `Bearer ` prefix, gives 401
   `missing_token`. A malformed, unknown or revoked token gives 401
   `unauthorized`. The `Errors:` list of each endpoint doesn't repeat
-  `missing_token`. The token is checked before anything else about the request,
-  and on admin endpoints admin rights (403 `forbidden`) are checked next,
-  before the path and the body.
+  `missing_token`. The token is checked before anything else about the request.
+  Next comes the device's rate limit (429 `rate_limited`, see
+  [Rate limits](#rate-limits)), then on admin endpoints admin rights (403
+  `forbidden`), and only then the path and the body.
 - **Body size.** A request body may be at most 64 KiB, or 1 MiB for
   `POST /v1/sync`. A larger one gives 413 `too_large`. A body that isn't valid
   JSON, has a field of the wrong type, has a field the endpoint doesn't know,
@@ -56,7 +57,7 @@ anything else:
 | 409 | `conflict` | Another member already has that name. |
 | 409 | `last_admin` | The request would leave the household without an admin. |
 | 413 | `too_large` | The body is over 64 KiB, or over 1 MiB for `POST /v1/sync`. |
-| 429 | `rate_limited` | Too many redemption attempts. Try again in a minute. |
+| 429 | `rate_limited` | Too many redemption attempts from this client, or too many signed-in requests from this device, in the current one-minute window. |
 | 500 | `internal` | The server failed. Nothing about the cause is sent. |
 
 A path or method the API doesn't have gets a plain-text 404 or 405, not a JSON
@@ -103,28 +104,36 @@ member: redeeming it adds a device for that member.
   deletes invites that haven't been redeemed. Devices that already paired stay
   signed in. To sign one out, an admin uses `DELETE /v1/admin/devices/{id}`.
 
-## Known limits
+## Rate limits
 
-Version 1 accepts these. Each has an issue for a later fix.
-
-- **Signed-in requests aren't rate-limited.** Only `POST /v1/invites/redeem`
-  is. A paired device, or anyone holding its token, can call every other
-  endpoint as fast as the server answers
-  ([#14](https://github.com/vrob01/PocketLarder/issues/14)).
+- **Redemption.** Each client gets 10 attempts per minute, as described under
+  Rate limit in [Invites](#invites).
+- **Signed-in requests** are counted per device, after the token is checked. A
+  request with a missing or bad token is never counted, so nobody can use up a
+  device's budget without its token. A request refused with 403 `forbidden`
+  counts.
+- **`POST /v1/sync`** gets 120 requests per device per minute. That lets a
+  queue of up to 60,000 ops (120 requests of 500 ops) through in one window.
+- **Every other signed-in endpoint** shares one budget of 60 requests per
+  device per minute.
+- **Fixed windows.** Counts are kept in fixed one-minute windows.
+- **Over budget** gives 429 `rate_limited`. It comes before the body is read,
+  and nothing in the request is applied.
+- **Restarts.** Counts live in memory and start over when the server restarts.
 
 ## Endpoints
 
-| Method and path | Auth |
-|---|---|
-| `POST /v1/invites/redeem` | none, rate-limited |
-| `POST /v1/invites` | member |
-| `POST /v1/invites/revoke` | member |
-| `POST /v1/signout` | member |
-| `POST /v1/sync` | member |
-| `GET /v1/admin/members` | admin |
-| `PATCH /v1/admin/members/{id}` | admin |
-| `DELETE /v1/admin/members/{id}` | admin |
-| `DELETE /v1/admin/devices/{id}` | admin |
+| Method and path | Auth | Rate limit |
+|---|---|---|
+| `POST /v1/invites/redeem` | none | 10 per minute per client |
+| `POST /v1/invites` | member | 60 per minute per device, shared |
+| `POST /v1/invites/revoke` | member | 60 per minute per device, shared |
+| `POST /v1/signout` | member | 60 per minute per device, shared |
+| `POST /v1/sync` | member | 120 per minute per device |
+| `GET /v1/admin/members` | admin | 60 per minute per device, shared |
+| `PATCH /v1/admin/members/{id}` | admin | 60 per minute per device, shared |
+| `DELETE /v1/admin/members/{id}` | admin | 60 per minute per device, shared |
+| `DELETE /v1/admin/devices/{id}` | admin | 60 per minute per device, shared |
 
 ### POST /v1/invites/redeem
 
@@ -198,7 +207,8 @@ another member or a new member. Invites from `pocketlarder invite` belong to no
 device, so a sign-out never cancels them.
 
 Errors: 400 `invalid`, 401 `unauthorized`, 403 `forbidden`, 404 `not_found`
-(no member with that `member_id`), 409 `conflict`, 413 `too_large`.
+(no member with that `member_id`), 409 `conflict`, 413 `too_large`,
+429 `rate_limited`.
 
 ### POST /v1/invites/revoke
 
@@ -225,7 +235,7 @@ Content-Type: application/json
 `revoked` is how many invites were deleted, expired ones included.
 
 Errors: 400 `invalid`, 401 `unauthorized`, 403 `forbidden`, 404 `not_found`,
-413 `too_large`.
+413 `too_large`, 429 `rate_limited`.
 
 ### POST /v1/signout
 
@@ -243,7 +253,7 @@ Authorization: Bearer <token>
 HTTP/1.1 204 No Content
 ```
 
-Errors: 401 `unauthorized`.
+Errors: 401 `unauthorized`, 429 `rate_limited`.
 
 ### GET /v1/admin/members
 
@@ -301,7 +311,7 @@ Content-Type: application/json
   can be removed like any other member.
 - `last_seen_at` is the time of the device's last authenticated request.
 
-Errors: 401 `unauthorized`, 403 `forbidden`.
+Errors: 401 `unauthorized`, 403 `forbidden`, 429 `rate_limited`.
 
 ### PATCH /v1/admin/members/{id}
 
@@ -323,7 +333,7 @@ HTTP/1.1 204 No Content
 
 Errors: 400 `invalid` (no `is_admin`, or not a boolean), 401 `unauthorized`,
 403 `forbidden`, 404 `not_found`, 409 `last_admin` (the only admin can't
-remove their own admin rights), 413 `too_large`.
+remove their own admin rights), 413 `too_large`, 429 `rate_limited`.
 
 ### DELETE /v1/admin/members/{id}
 
@@ -343,7 +353,7 @@ HTTP/1.1 204 No Content
 ```
 
 Errors: 401 `unauthorized`, 403 `forbidden`, 404 `not_found`, 409 `last_admin`
-(the only admin can't be removed).
+(the only admin can't be removed), 429 `rate_limited`.
 
 ### DELETE /v1/admin/devices/{id}
 
@@ -361,7 +371,8 @@ Authorization: Bearer <token>
 HTTP/1.1 204 No Content
 ```
 
-Errors: 401 `unauthorized`, 403 `forbidden`, 404 `not_found`.
+Errors: 401 `unauthorized`, 403 `forbidden`, 404 `not_found`,
+429 `rate_limited`.
 
 ## Sync
 
@@ -436,8 +447,8 @@ Content-Type: application/json
 every op applied.
 
 Errors: 400 `invalid` (a malformed body or more than 500 ops),
-401 `unauthorized`, 413 `too_large` (over 1 MiB). On any error nothing in the
-request was applied.
+401 `unauthorized`, 413 `too_large` (over 1 MiB), 429 `rate_limited`. On any
+error nothing in the request was applied.
 
 ### The snapshot
 
