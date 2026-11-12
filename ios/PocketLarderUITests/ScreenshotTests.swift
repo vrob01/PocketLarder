@@ -546,6 +546,68 @@ final class ScreenshotTests: XCTestCase {
         app.terminate()
     }
 
+    /// My account > Invites with one invite of each state. In English light it also cancels the open one, clears the
+    /// others, and then opens Sam's invites from his page.
+    func testInvites() {
+        for (language, appearance) in variants {
+            let app = launch(language, appearance, "-fixture", "household")
+            // Once the first sync is in, so that My account knows that Alex is an admin.
+            _ = addField(app)
+            _ = openAccount(app)
+            let invitesRow = withID(app.buttons, "account.invites")
+            scrollUp(app, in: app, until: invitesRow)
+            invitesRow.tap()
+            let rows = app.staticTexts.matching(NSPredicate(format: "identifier == 'invites.invite'"))
+            XCTAssertTrue(rows.element(boundBy: 2).waitForExistence(timeout: 20))
+            attach(app, "invites-\(language)-\(appearance)")
+
+            if language == "en" && appearance == "light" {
+                XCTAssertEqual(rows.count, 3)
+                let cancel = withID(app.buttons, "invites.cancel")
+                XCTAssertTrue(cancel.label.hasPrefix("Cancel invite, expiry: "), "The cancel button reads \(cancel.label)")
+                cancel.tap()
+                XCTAssertTrue(cancel.waitForNonExistence(timeout: 20), "The open invite is still listed")
+                XCTAssertTrue(invite(app, "Used").exists, "The used invite is gone")
+                XCTAssertTrue(invite(app, "Expired").exists, "The expired invite is gone")
+                XCTAssertEqual(rows.count, 2)
+
+                let clear = withID(app.buttons, "invites.clear")
+                clear.tap()
+                XCTAssertTrue(withID(app.staticTexts, "invites.empty").waitForExistence(timeout: 20))
+                XCTAssertEqual(rows.count, 0)
+                wait(for: [expectation(for: NSPredicate(format: "isEnabled == false"), evaluatedWith: clear)], timeout: 10)
+
+                goBack(app)
+                let membersRow = withID(app.buttons, "account.members")
+                scrollUp(app, in: app, until: membersRow)
+                membersRow.tap()
+                let sam = entry(app, "members.member", "Sam")
+                XCTAssertTrue(sam.waitForExistence(timeout: 20))
+                sam.tap()
+                let samInvites = withID(app.buttons, "member.invites")
+                XCTAssertTrue(samInvites.waitForExistence(timeout: 10))
+                samInvites.tap()
+                XCTAssertTrue(invite(app, "Open").waitForExistence(timeout: 20))
+                XCTAssertEqual(rows.count, 1)
+            }
+            app.terminate()
+        }
+    }
+
+    /// Without a connection, Invites says why and shows no rows.
+    func testInvitesOffline() {
+        let app = launch("en", "light", "-fixture", "offline")
+        _ = openAccount(app)
+        let invitesRow = withID(app.buttons, "account.invites")
+        scrollUp(app, in: app, until: invitesRow)
+        invitesRow.tap()
+        let failure = withID(app.staticTexts, "invites.loadFailure")
+        XCTAssertTrue(failure.waitForExistence(timeout: 20))
+        XCTAssertEqual(failure.label, "Couldn't load the invites. Needs a connection to your server. Can't reach fixture.invalid.")
+        XCTAssertFalse(withID(app.staticTexts, "invites.empty").exists)
+        app.terminate()
+    }
+
     /// Members & devices, with Robin invited through the form. In English light it also signs out Sam's iPhone, removes
     /// Robin, and checks the refusals of a taken name and of the only admin's rights.
     func testMembers() {
@@ -731,6 +793,11 @@ final class ScreenshotTests: XCTestCase {
     /// Any type, because a multi-line text field is a text view to XCUITest.
     private func addFieldElement(_ app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: "main.addField").firstMatch
+    }
+
+    /// The invite row whose state reads `state`.
+    private func invite(_ app: XCUIApplication, _ state: String) -> XCUIElement {
+        app.staticTexts.matching(NSPredicate(format: "identifier == 'invites.invite' AND label BEGINSWITH %@", state)).firstMatch
     }
 
     private func entry(_ app: XCUIApplication, _ identifier: String, _ text: String) -> XCUIElement {
