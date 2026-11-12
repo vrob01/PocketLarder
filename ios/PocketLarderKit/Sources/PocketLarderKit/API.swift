@@ -83,6 +83,17 @@ public struct AdminDevice: Decodable, Equatable, Sendable {
     public var createdAt, lastSeenAt: Date
 }
 
+/// The server decides it when it lists the invite, so the phone's clock never does.
+public enum InviteState: String, Decodable, Equatable, Sendable {
+    case open, redeemed, expired
+}
+
+public struct ListedInvite: Decodable, Equatable, Sendable {
+    public var id: String
+    public var state: InviteState
+    public var expiresAt: Date
+}
+
 /// Every request body. Nil fields stay out of the JSON, so `Body()` is the `{}` the API asks for.
 private struct Body: Encodable {
     var code, deviceName, memberId, newMemberName: String?
@@ -100,6 +111,14 @@ private struct Revoked: Decodable {
 
 private struct Members: Decodable {
     let members: [AdminMember]
+}
+
+private struct Invites: Decodable {
+    let invites: [ListedInvite]
+}
+
+private struct Cleared: Decodable {
+    let cleared: Int
 }
 
 public struct APIClient: Sendable {
@@ -130,6 +149,20 @@ public struct APIClient: Sendable {
         return response.revoked
     }
 
+    public func invites(memberId: String? = nil) async throws(APIError) -> [ListedInvite] {
+        let response: Invites = try await fetch("GET", "/v1/invites", query: memberId.map { [URLQueryItem(name: "member_id", value: $0)] })
+        return response.invites
+    }
+
+    public func cancelInvite(_ inviteId: String) async throws(APIError) {
+        try await send("DELETE", "/v1/invites/\(inviteId)")
+    }
+
+    public func clearInvites(memberId: String? = nil) async throws(APIError) -> Int {
+        let response: Cleared = try await fetch("POST", "/v1/invites/clear", body: Body(memberId: memberId))
+        return response.cleared
+    }
+
     public func signOut() async throws(APIError) {
         try await send("POST", "/v1/signout")
     }
@@ -152,9 +185,9 @@ public struct APIClient: Sendable {
     }
 
     private func fetch<Response: Decodable>(
-        _ method: String, _ path: String, body: Body? = nil, authorized: Bool = true
+        _ method: String, _ path: String, query: [URLQueryItem]? = nil, body: Body? = nil, authorized: Bool = true
     ) async throws(APIError) -> Response {
-        let (data, status) = try await send(method, path, body: body, authorized: authorized)
+        let (data, status) = try await send(method, path, query: query, body: body, authorized: authorized)
         guard let response = try? JSON.decoder.decode(Response.self, from: data) else {
             throw .unexpected(status: status)
         }
@@ -163,9 +196,13 @@ public struct APIClient: Sendable {
 
     @discardableResult
     private func send(
-        _ method: String, _ path: String, body: Body? = nil, authorized: Bool = true
+        _ method: String, _ path: String, query: [URLQueryItem]? = nil, body: Body? = nil, authorized: Bool = true
     ) async throws(APIError) -> (data: Data, status: Int) {
-        var request = URLRequest(url: server.appending(path: path))
+        var url = server.appending(path: path)
+        if let query {
+            url.append(queryItems: query)
+        }
+        var request = URLRequest(url: url)
         request.httpMethod = method
         if authorized, let token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

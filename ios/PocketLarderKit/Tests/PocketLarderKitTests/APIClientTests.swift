@@ -67,6 +67,40 @@ private func expectRequest(
     try await expectRequest("POST", "/v1/invites", body: #"{"new_member_name":"Sam"}"#, answer: (201, created)) {
         _ = try await $0.createInvite(newMemberName: "Sam")
     }
+    try await expectRequest("GET", "/v1/invites", answer: (200, #"{"invites":[]}"#)) {
+        _ = try await $0.invites()
+    }
+    try await expectRequest("GET", "/v1/invites?member_id=m", answer: (200, #"{"invites":[]}"#)) {
+        _ = try await $0.invites(memberId: "m")
+    }
+    try await expectRequest("DELETE", "/v1/invites/i") {
+        try await $0.cancelInvite("i")
+    }
+    try await expectRequest("POST", "/v1/invites/clear", body: "{}", answer: (200, #"{"cleared":2}"#)) {
+        _ = try await $0.clearInvites()
+    }
+    try await expectRequest("POST", "/v1/invites/clear", body: #"{"member_id":"m"}"#, answer: (200, #"{"cleared":2}"#)) {
+        _ = try await $0.clearInvites(memberId: "m")
+    }
+}
+
+@Test func listedInvitesDecode() async throws {
+    let json = #"""
+    {"invites":[
+      {"id":"a","state":"open","expires_at":"2027-01-15T09:00:00Z"},
+      {"id":"b","state":"redeemed","expires_at":"2027-01-15T08:00:00Z"},
+      {"id":"c","state":"expired","expires_at":"2027-01-15T07:00:00Z"}
+    ]}
+    """#
+    let (client, _) = fakeClient(.answer(status: 200, json: json))
+    let invites = try await client.invites()
+    #expect(invites == [
+        ListedInvite(id: "a", state: .open, expiresAt: Date(timeIntervalSince1970: 1_800_003_600)),
+        ListedInvite(id: "b", state: .redeemed, expiresAt: Date(timeIntervalSince1970: 1_800_000_000)),
+        ListedInvite(id: "c", state: .expired, expiresAt: Date(timeIntervalSince1970: 1_799_996_400)),
+    ])
+    let (cleared, _) = fakeClient(.answer(status: 200, json: #"{"cleared":2}"#))
+    #expect(try await cleared.clearInvites() == 2)
 }
 
 @Test func errorsMapToCodes() async {
