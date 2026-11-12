@@ -249,7 +249,7 @@ mockup's "Items tab, for comparison" and "+2" were mockup notes.
   - "Who can see my list": Open, Read-only, Hidden, with the product spec's
     note that hidden isn't encryption and that filed names reach the shared
     catalog;
-  - "This iPhone": Add a device, Language, and Sign out;
+  - "This iPhone": Add a device, Invites, Language, and Sign out;
   - "Household", for admins only: Members & devices.
 - **Sign out** first tries to send the queue. If changes are still unsent, it
   asks before discarding them. If the server can't be reached, it offers "Sign
@@ -266,6 +266,18 @@ mockup's "Items tab, for comparison" and "+2" were mockup notes.
   in as you until it's used or expires. Only send it to yourself.", and "Cancel
   invite", which revokes every pending invite for that member
   (`POST /v1/invites/revoke`).
+- **Invites**, from My account for the member's own invites and from a
+  member's page for admins: one row per invite the server still has, in the
+  server's order, newest first. Each row shows its state, "Open", "Used" or
+  "Expired", and below it "Expiry: <date>", formatted as Add a device formats
+  it. The server decides the state (`GET /v1/invites`), so the phone's clock
+  never does. Open rows have "Cancel invite", which cancels only that invite
+  (`DELETE /v1/invites/{id}`). "Clear used and expired invites" deletes the
+  others (`POST /v1/invites/clear`) and is disabled while no row is used or
+  expired. An empty list says "No invites.". Neither asks first. After a cancel
+  or clear, whether it worked or not, the list reloads, and on a member's page
+  so do the members. The server keeps only a hash of each invite, so the list
+  can't show an invite's QR code or link again.
 - **Lists…**: the shared lists, with a name and one of the nine color tokens.
   Create, rename, recolor, archive. Archived lists sit in their own section
   with Restore. Not mocked up.
@@ -276,20 +288,22 @@ mockup's "Items tab, for comparison" and "+2" were mockup notes.
   set the category in each store, delete.
 - **Members & devices**, for admins only: each member with their devices
   (name, last seen) or "Invited, not signed in yet". Tapping a member shows the
-  Admin switch, their devices with Sign out, "Add a device for Sam…" and
-  "Remove Sam…". "Invite a new member…" asks for a name and then shows the Add
+  Admin switch, their devices with Sign out, "Add a device for Sam…",
+  Invites and "Remove Sam…". "Invite a new member…" asks for a name and then shows the Add
   a device sheet for the new member. Signing a device out here, this iPhone's
   own included, cancels the unredeemed invites created on that device. The
   server does this (see `server/API.md`), and the confirmation says so. The
-  member's other pending invites stay until they expire or "Cancel invite"
-  revokes them.
+  member's other pending invites stay until they expire, "Cancel invite"
+  revokes them, or they are cancelled one by one under the member's Invites.
 - Admin actions, invites and sign-out need a connection. Offline they say "Needs
   a connection to your server" instead of failing silently.
 - Error copy for admin actions: `conflict` "Someone in the household already
   has that name.", `last_admin` "The household needs at least one admin."
+- When the server refuses to cancel an invite with `invite_redeemed`, Invites
+  shows "Couldn't cancel the invite." with "This invite was already used."
 - When the server refuses an invite with `too_many_invites`, Add a device and
   "Add a device for Sam…" show "Maximum number of open invites reached. Cancel
-  one, or wait until one is used or expires."
+  one under Invites, or wait until one is used or expires."
 
 ## Language
 

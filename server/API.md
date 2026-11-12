@@ -53,10 +53,11 @@ anything else:
 | 401 | `missing_token` | The request has no `Authorization` header with a `Bearer ` prefix. A proxy may have dropped or replaced the header. The device isn't signed out: it keeps its data and tries again later. |
 | 401 | `invalid_invite` | The invite code can't be redeemed. |
 | 403 | `forbidden` | The request needs an admin. |
-| 404 | `not_found` | The member or device doesn't exist, or the id isn't a lowercase UUID. |
+| 404 | `not_found` | The member, device or invite doesn't exist, or the id isn't a lowercase UUID. |
 | 409 | `conflict` | Another member already has that name. |
 | 409 | `last_admin` | The request would leave the household without an admin. |
 | 409 | `too_many_invites` | The member the invite is for already has 10 open invites, the most the server allows. |
+| 409 | `invite_redeemed` | The invite was already redeemed, so it can't be cancelled. |
 | 413 | `too_large` | The body is over 64 KiB, or over 1 MiB for `POST /v1/sync`. |
 | 429 | `rate_limited` | Too many redemption attempts from this client, or too many signed-in requests from this device, in the current one-minute window. |
 | 500 | `internal` | The server failed. Nothing about the cause is sent. |
@@ -90,8 +91,9 @@ member: redeeming it adds a device for that member.
   invites from `pocketlarder invite` included. Over the cap, `POST /v1/invites`
   gets 409 `too_many_invites`, creates nothing and leaves the member's invites
   as they are. An invite stops counting once it is redeemed, revoked
-  (`POST /v1/invites/revoke`, or signing out the device that made it) or
-  expired. `pocketlarder invite` itself is not capped.
+  (`POST /v1/invites/revoke`, or signing out the device that made it),
+  cancelled (`DELETE /v1/invites/{id}`) or expired. `pocketlarder invite`
+  itself is not capped.
 - **One answer for every bad code.** An unknown, used, expired or revoked code
   and a code with the wrong secret all give the same 401 `invalid_invite`.
 - **Rate limit.** Each client gets 10 redemption attempts per minute, counted
@@ -109,9 +111,17 @@ member: redeeming it adds a device for that member.
     whitespace is removed.
   - The name is cut to 64 characters (Unicode code points).
   - A name with nothing left becomes `"Unnamed device"`.
-- **Revoking invites doesn't sign anyone out.** `POST /v1/invites/revoke`
-  deletes invites that haven't been redeemed. Devices that already paired stay
-  signed in. To sign one out, an admin uses `DELETE /v1/admin/devices/{id}`.
+- **Listing, cancelling and clearing.** `GET /v1/invites` lists a member's
+  invites, open, redeemed and expired, without their codes: the server keeps
+  only a hash, so an invite can't be shown again. `DELETE /v1/invites/{id}`
+  cancels one unredeemed invite, and `POST /v1/invites/clear` deletes a
+  member's redeemed and expired invites. Any member may do this for their own
+  invites, and an admin for any member's.
+- **Revoking, cancelling or clearing invites doesn't sign anyone out.**
+  `POST /v1/invites/revoke` and `DELETE /v1/invites/{id}` delete invites that
+  haven't been redeemed, and `POST /v1/invites/clear` deletes redeemed and
+  expired ones. Devices that already paired stay signed in. To sign one out, an
+  admin uses `DELETE /v1/admin/devices/{id}`.
 
 ## Rate limits
 
@@ -137,6 +147,9 @@ member: redeeming it adds a device for that member.
 | `POST /v1/invites/redeem` | none | 10 per minute per client |
 | `POST /v1/invites` | member | 60 per minute per device, shared |
 | `POST /v1/invites/revoke` | member | 60 per minute per device, shared |
+| `GET /v1/invites` | member | 60 per minute per device, shared |
+| `DELETE /v1/invites/{id}` | member | 60 per minute per device, shared |
+| `POST /v1/invites/clear` | member | 60 per minute per device, shared |
 | `POST /v1/signout` | member | 60 per minute per device, shared |
 | `POST /v1/sync` | member | 120 per minute per device |
 | `GET /v1/admin/members` | admin | 60 per minute per device, shared |
@@ -245,6 +258,103 @@ Content-Type: application/json
 ```
 
 `revoked` is how many invites were deleted, expired ones included.
+
+Errors: 400 `invalid`, 401 `unauthorized`, 403 `forbidden`, 404 `not_found`,
+413 `too_large`, 429 `rate_limited`.
+
+### GET /v1/invites
+
+Lists a member's invites: every invite of theirs the server still has, open,
+redeemed and expired. There is no request body. Without a query, it lists the
+caller's own member's invites, and any member may ask for those.
+`?member_id=<id>` lists that member's invites and needs an admin. The parameter
+counts as given when it is in the query, even empty: a non-admin who gives it,
+even with their own id, gets 403 `forbidden`, and an admin naming an unknown
+or malformed id gets 404 `not_found`.
+
+```http
+GET /v1/invites?member_id=7317f087-10f7-4bd2-b23e-c5d5726c04bd
+Authorization: Bearer <token>
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "invites": [
+    {"id": "fdd4efb3-cf5b-44e7-bec4-94df8e478f5f", "state": "open", "expires_at": "2026-10-28T09:00:00Z"},
+    {"id": "0b9b1f0e-6a43-4c8e-9a3d-2f8f6c1d7e55", "state": "redeemed", "expires_at": "2026-10-27T18:30:00Z"},
+    {"id": "5c2e7d1a-93b4-4f0e-8d61-7a0c4b9e2f13", "state": "expired", "expires_at": "2026-10-26T08:15:00Z"}
+  ]
+}
+```
+
+- Each invite has exactly `id`, `state` and `expires_at`. The list never
+  carries a code, a secret, a hash or an invite URL: the server keeps only a
+  hash of the secret, so an open invite can't be shown again.
+- `state` is worked out on the server when it answers, by the same rule
+  redemption uses: `redeemed` once the invite was redeemed, otherwise
+  `expired` from `expires_at` on, otherwise `open`. A client shows it as it is
+  and doesn't compare `expires_at` with its own clock.
+- Invites are ordered by `expires_at`, latest first, then by `id`. An invite
+  expires 24 hours after it was created, so this is also newest first.
+- A member without invites gets `{"invites": []}`.
+
+Errors: 401 `unauthorized`, 403 `forbidden`, 404 `not_found`,
+429 `rate_limited`.
+
+### DELETE /v1/invites/{id}
+
+Cancels one invite: the server deletes it, so its code stops working. The
+member's other invites stay as they are. There is no request body. An
+unredeemed invite is cancelled whether it is open or expired. Any member may
+cancel their own member's invites, and an admin any member's.
+
+```http
+DELETE /v1/invites/fdd4efb3-cf5b-44e7-bec4-94df8e478f5f
+Authorization: Bearer <token>
+```
+
+```http
+HTTP/1.1 204 No Content
+```
+
+Nothing is deleted when the request is refused:
+
+- An unknown invite, or an id that isn't a lowercase UUID, gives 404
+  `not_found`.
+- Another member's invite gives a non-admin the same 404 `not_found`, whatever
+  its state, so nobody can find out which ids exist.
+- A redeemed invite gives 409 `invite_redeemed`. Its device stays signed in.
+
+Errors: 401 `unauthorized`, 404 `not_found`, 409 `invite_redeemed`,
+429 `rate_limited`.
+
+### POST /v1/invites/clear
+
+Deletes a member's redeemed and expired invites, so that they leave the list.
+Open invites stay and still work, and devices that paired with a cleared
+invite stay signed in. The body is `{}` for the caller's own member, or
+`{"member_id": "<id>"}` for another member, which needs an admin, as for
+`POST /v1/invites/revoke`.
+
+```http
+POST /v1/invites/clear
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"cleared": 2}
+```
+
+`cleared` is how many invites were deleted.
 
 Errors: 400 `invalid`, 401 `unauthorized`, 403 `forbidden`, 404 `not_found`,
 413 `too_large`, 429 `rate_limited`.

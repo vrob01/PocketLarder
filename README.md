@@ -88,6 +88,8 @@ Open the invite link on the iPhone, from a message or the QR code, or enter it b
 
 To sign in another iPhone of yours, open My account > Add a device… and scan the QR code with the new iPhone's Camera.
 
+My account > Invites lists your invites, cancels open ones and clears used and expired ones. Admins find a member's invites on the member's page under Members & devices.
+
 Admins can invite a new member, add a device for a member, sign out devices and remove members under My account > Members & devices.
 
 Update the server before installing the app. An older server answers a request that lost its `Authorization` header with `unauthorized`, which makes the app sign out and delete its data.
