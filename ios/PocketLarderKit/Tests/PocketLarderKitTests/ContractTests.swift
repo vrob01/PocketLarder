@@ -114,3 +114,16 @@ import Testing
     let hiddenNotices = adminLarder.notices
     #expect(hiddenNotices == [.listHidden(ownerName: samName, lostChanges: false)])
 }
+
+@Test(.enabled(if: Contract.isConfigured)) func inviteCapAgainstServer() async throws {
+    let (client, _, _) = try await Contract.newMember("Cap")
+    for _ in 1...10 {
+        _ = try await client.createInvite()
+    }
+    await #expect(throws: APIError.server(code: "too_many_invites")) {
+        _ = try await client.createInvite()
+    }
+    let revoked = try await client.revokeInvites()
+    #expect(revoked == 10)
+    _ = try await client.createInvite()
+}

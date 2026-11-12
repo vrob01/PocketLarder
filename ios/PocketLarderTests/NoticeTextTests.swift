@@ -26,6 +26,8 @@ import Testing
     #expect(connectionFailureText(.unexpected(status: 502), host: host) == "lists.example.test answered with HTTP status 502.")
     #expect(connectionFailureText(.server(code: "rate_limited"), host: host) == "lists.example.test limited this iPhone's requests: too many in the past minute.")
     #expect(adminFailureText(.server(code: "rate_limited"), host: host) == "lists.example.test limited this iPhone's requests: too many in the past minute.")
+    #expect(connectionFailureText(.server(code: "too_many_invites"), host: host) == "This member already has the most open invites lists.example.test allows. An invite stops counting once it's used, cancelled or 24 hours old.")
+    #expect(adminFailureText(.server(code: "too_many_invites"), host: host) == "This member already has the most open invites lists.example.test allows. An invite stops counting once it's used, cancelled or 24 hours old.")
 }
 
 @Test func saveFailedTexts() {
