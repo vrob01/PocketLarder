@@ -631,12 +631,12 @@
         }
       }
     },
-    "This member already has the most open invites %@ allows.": {
+    "Maximum number of open invites reached. Cancel one, or wait until one is used or expires.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dieses Mitglied hat schon so viele offene Einladungen, wie %@ erlaubt."
+            "value": "Höchstzahl offener Einladungen erreicht. Widerrufe eine oder warte, bis eine benutzt wurde oder abläuft."
           }
         }
       }
