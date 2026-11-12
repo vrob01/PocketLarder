@@ -188,6 +188,9 @@ func TestAuthRequired(t *testing.T) {
 	for _, route := range []string{
 		"POST /v1/invites",
 		"POST /v1/invites/revoke",
+		"GET /v1/invites",
+		"DELETE /v1/invites/" + id,
+		"POST /v1/invites/clear",
 		"POST /v1/signout",
 		"POST /v1/sync",
 		"GET /v1/admin/members",
@@ -386,6 +389,9 @@ func TestSignedInRateLimit(t *testing.T) {
 	e.wantError(e.call("POST", "/v1/invites", sam, map[string]any{}), http.StatusTooManyRequests, "rate_limited")
 	e.wantError(e.call("POST", "/v1/signout", sam, nil), http.StatusTooManyRequests, "rate_limited")
 	e.wantError(e.call("POST", "/v1/invites", sam, nil), http.StatusTooManyRequests, "rate_limited") // before the body is read
+	e.wantError(e.call("GET", "/v1/invites", sam, nil), http.StatusTooManyRequests, "rate_limited")
+	e.wantError(e.call("DELETE", "/v1/invites/"+newID(), sam, nil), http.StatusTooManyRequests, "rate_limited")
+	e.wantError(e.call("POST", "/v1/invites/clear", sam, map[string]any{}), http.StatusTooManyRequests, "rate_limited")
 	e.wantStatus(e.call("POST", "/v1/sync", sam, map[string]any{"ops": []any{}}), http.StatusOK)
 	e.wantStatus(e.call("GET", "/v1/admin/members", alex, nil), http.StatusOK)
 
