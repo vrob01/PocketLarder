@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -568,6 +569,92 @@ func TestHTTPRevokeInvites(t *testing.T) {
 	}, "POST", "/v1/invites/revoke", admin, map[string]string{"member_id": sam})
 	e.wantError(w, http.StatusForbidden, "forbidden")
 	e.wantStatus(e.call("POST", "/v1/invites/redeem", "", redeemBody(code)), http.StatusOK)
+}
+
+// openInvites counts the member's unredeemed invite rows.
+func (e *testEnv) openInvites(memberID string) int {
+	e.t.Helper()
+	var n int
+	if err := e.db.QueryRow("SELECT count(*) FROM invites WHERE member_id = ? AND used_at IS NULL", memberID).Scan(&n); err != nil {
+		e.t.Fatal(err)
+	}
+	return n
+}
+
+func TestInviteCap(t *testing.T) {
+	e := newTestEnv(t)
+	_, admin := e.member("Alex", true)
+	sam, user := e.member("Sam", false)
+	var codes []string
+	for range maxOpenInvites {
+		_, code := e.invite(user, map[string]any{})
+		codes = append(codes, code)
+	}
+	e.wantError(e.call("POST", "/v1/invites", user, map[string]any{}), http.StatusConflict, "too_many_invites")
+	e.wantError(e.call("POST", "/v1/invites", admin, map[string]string{"member_id": sam}), http.StatusConflict, "too_many_invites")
+	if n := e.openInvites(sam); n != maxOpenInvites {
+		t.Errorf("Sam has %d unredeemed invites after the refusals, want %d", n, maxOpenInvites)
+	}
+	e.invite(admin, map[string]any{}) // the cap is per member
+
+	// A redeemed invite stops counting.
+	e.wantStatus(e.call("POST", "/v1/invites/redeem", "", redeemBody(codes[0])), http.StatusOK)
+	e.invite(user, map[string]any{})
+	e.wantError(e.call("POST", "/v1/invites", user, map[string]any{}), http.StatusConflict, "too_many_invites")
+
+	// The CLI isn't capped.
+	err := withTx(e.db, func(tx *sql.Tx) error {
+		_, _, err := createInvite(tx, sam, nil, e.now)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("CLI invite at the cap: %v", err)
+	}
+
+	var revoked struct {
+		Revoked int `json:"revoked"`
+	}
+	e.decode(e.call("POST", "/v1/invites/revoke", user, map[string]any{}), http.StatusOK, &revoked)
+	if revoked.Revoked != maxOpenInvites+1 {
+		t.Errorf("revoked %d, want %d", revoked.Revoked, maxOpenInvites+1)
+	}
+	e.invite(user, map[string]any{})
+
+	// Expired invites stop counting at exactly 24 hours.
+	for range maxOpenInvites - 1 {
+		e.invite(user, map[string]any{})
+	}
+	e.wantError(e.call("POST", "/v1/invites", user, map[string]any{}), http.StatusConflict, "too_many_invites")
+	e.now = e.now.Add(24 * time.Hour)
+	e.invite(user, map[string]any{})
+}
+
+// Parallel requests can't pass the cap: the count and the insert share a transaction.
+func TestInviteCapParallel(t *testing.T) {
+	e := newTestEnv(t)
+	sam, user := e.member("Sam", false)
+	statuses := make([]int, 2*maxOpenInvites)
+	var wg sync.WaitGroup
+	for i := range statuses {
+		wg.Go(func() {
+			r := httptest.NewRequest("POST", "/v1/invites", strings.NewReader("{}"))
+			r.Header.Set("Authorization", "Bearer "+user)
+			w := httptest.NewRecorder()
+			e.h.ServeHTTP(w, r)
+			statuses[i] = w.Code
+		})
+	}
+	wg.Wait()
+	counts := map[int]int{}
+	for _, s := range statuses {
+		counts[s]++
+	}
+	if want := map[int]int{http.StatusCreated: maxOpenInvites, http.StatusConflict: maxOpenInvites}; !reflect.DeepEqual(counts, want) {
+		t.Errorf("statuses %v, want %v", counts, want)
+	}
+	if n := e.openInvites(sam); n != maxOpenInvites {
+		t.Errorf("Sam has %d unredeemed invites, want %d", n, maxOpenInvites)
+	}
 }
 
 func TestHTTPLastAdminGuard(t *testing.T) {

@@ -14,14 +14,18 @@ type device struct {
 
 // Each message is the API error code the client sees.
 var (
-	errInvalid      = errors.New("invalid")
-	errForbidden    = errors.New("forbidden")
-	errNotFound     = errors.New("not_found")
-	errConflict     = errors.New("conflict")
-	errLastAdmin    = errors.New("last_admin")
-	errBadInvite    = errors.New("invalid_invite")
-	errUnauthorized = errors.New("unauthorized")
+	errInvalid        = errors.New("invalid")
+	errForbidden      = errors.New("forbidden")
+	errNotFound       = errors.New("not_found")
+	errConflict       = errors.New("conflict")
+	errLastAdmin      = errors.New("last_admin")
+	errBadInvite      = errors.New("invalid_invite")
+	errUnauthorized   = errors.New("unauthorized")
+	errTooManyInvites = errors.New("too_many_invites")
 )
+
+// maxOpenInvites caps a member's unredeemed, unexpired invites made through the API.
+const maxOpenInvites = 10
 
 // rowsChanged returns how many rows a statement changed.
 func rowsChanged(res sql.Result, err error) (int64, error) {
@@ -66,7 +70,19 @@ func memberByName(tx *sql.Tx, name string) (string, error) {
 }
 
 // createInvite's invite is deleted with createdBy, the device that made it; nil (the CLI) means no device.
+// The API is capped at maxOpenInvites open invites per member, counting every device's and the CLI's;
+// the CLI (nil) isn't capped.
 func createInvite(tx *sql.Tx, memberID string, createdBy *string, now time.Time) (code string, expires time.Time, err error) {
+	if createdBy != nil {
+		var open int
+		if err := tx.QueryRow("SELECT count(*) FROM invites WHERE member_id = ? AND used_at IS NULL AND expires_at > ?",
+			memberID, now.Unix()).Scan(&open); err != nil {
+			return "", time.Time{}, err
+		}
+		if open >= maxOpenInvites {
+			return "", time.Time{}, errTooManyInvites
+		}
+	}
 	id := newID()
 	secret, hash := newSecret()
 	expires = now.Add(24 * time.Hour)

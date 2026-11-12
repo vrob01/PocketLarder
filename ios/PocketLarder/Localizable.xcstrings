@@ -631,6 +631,16 @@
         }
       }
     },
+    "Maximum number of open invites reached. Cancel one, or wait until one is used or expires.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Höchstzahl offener Einladungen erreicht. Widerrufe eine oder warte, bis eine benutzt wurde oder abläuft."
+          }
+        }
+      }
+    },
     "No changes are waiting to be sent.": {
       "localizations": {
         "de": {
