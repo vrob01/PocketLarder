@@ -264,6 +264,33 @@ private func sentOpIds(_ request: URLRequest) throws -> [String] {
     }
 }
 
+@Test @MainActor func rateLimitedSyncShowsOfflineAndRetries() async throws {
+    let (larder, transport, files, _) = try makeLarder([
+        .answer(status: 429, json: #"{"error":"rate_limited"}"#),
+        try synced(),
+    ])
+    var signedOut = false
+    larder.onSignedOut = { _ in signedOut = true }
+    try larder.perform([add("A"), add("B")], now: at)
+    let queued = larder.pending
+
+    await larder.sync()
+    #expect(larder.isOffline)
+    #expect(larder.lastSyncFailure == .server(code: "rate_limited"))
+    #expect(larder.pending == queued)
+    #expect(files.load().queue == queued)
+    #expect(!signedOut)
+
+    await larder.sync()
+    let requests = await transport.requests
+    try #require(requests.count == 2)
+    #expect(try sentOpIds(requests[1]) == queued.map(\.op.opId))
+    #expect(try sentOpIds(requests[1]) == sentOpIds(requests[0]))
+    #expect(larder.pending == [])
+    #expect(!larder.isOffline)
+    #expect(larder.lastSyncFailure == nil)
+}
+
 @Test @MainActor func performThrowsWhenQueueCantBeSaved() async throws {
     let (larder, transport, _, directory) = try makeLarder([try synced()])
     let view = larder.view

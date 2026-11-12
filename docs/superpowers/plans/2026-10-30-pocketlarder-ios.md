@@ -413,7 +413,7 @@ func testEnterInvite()          // empty form: enter-invite-<lang>-<appearance>;
     - Each round sends `pending.prefix(500)` (and `[]` when nothing is pending, which fetches a snapshot).
     - On 200 it removes exactly the sent `opId`s from `pending`, saves the queue and the snapshot, appends `notices(before: oldView, …)`, recomputes `view`, clears `isOffline`, and loops while ops are pending.
     - On `.server(code: "unauthorized")` it calls `files.wipe()`, clears the state, and calls `onSignedOut(pending.count)` with the count from before the clearing. `APIClient` only produces this code for an HTTP 401.
-    - On any other error it keeps `pending` unchanged, sets `isOffline` for `.offline`, for `.server(code: "missing_token")` and for 5xx, and stops.
+    - On any other error it keeps `pending` unchanged, sets `isOffline` for `.offline`, for `.server(code: "missing_token")`, for `.server(code: "rate_limited")` and for 5xx, and stops.
   - `func dismissNotice()`: removes the first notice.
 - Produces (tests): `TestData.household`, a `Snapshot` built in code with fixed lowercase UUIDs. The builder names the id constants. Its contents:
   - **Members:** me is Alex, an admin with privacy open. Sam is a member with privacy open.
@@ -510,10 +510,12 @@ func testEnterInvite()          // empty form: enter-invite-<lang>-<appearance>;
     - `static var defaultDataDirectory: URL`: `Application Support/Larder`, created with `isExcludedFromBackup = true`.
     - `enum SignInError: Error, Equatable { case invalidInvite, rateLimited, unreachable(host: String), alreadySignedIn(name: String), other }`
     - `func signIn(_ invite: Invite, deviceName: String) async -> SignInError?`. It redeems, saves the `Account`, wipes the data directory, so that files left by a failed wipe never reach the new account, creates the `Larder` and awaits the first `sync()`. If the account is already signed in, it returns `.alreadySignedIn`. When a newer attempt or a restore overtook the redeem, or the Keychain save fails, it tries `POST /v1/signout` once with the redeemed token, without waiting for the answer and ignoring it, sent by a plain `APIClient` so that its answer can't reach `onSignedOut` or the current account.
-    - `enum SignOutResult: Equatable { case done, unsentChanges(Int), unreachable }`
+    - `enum SignOutResult: Equatable { case done, unsentChanges(Int), unreachable, rateLimited }`
     - `func signOut(force: Bool) async -> SignOutResult`. Without `force` it syncs first, then:
+      - returns `.rateLimited` when the sync was refused `rate_limited`, checked before the pending check;
       - returns `.unsentChanges(n)` if ops are still pending;
       - calls `POST /v1/signout` and wipes on success;
+      - returns `.rateLimited` when `POST /v1/signout` is refused `rate_limited`;
       - returns `.unreachable` when the server can't be reached.
 
       `force: true` wipes everything locally without waiting for a request in flight, then tries `POST /v1/signout` once with the old token, without waiting for the answer and ignoring it. A plain `APIClient` sends it, so its answer can't reach `onSignedOut` or a later account. If it fails, the device stays on the server until an admin removes it.
@@ -793,7 +795,7 @@ Behavior, from `settings.html` cards 1–2:
 - **"This iPhone":**
   - "Add a device…".
   - "Language", showing the current language's name and opening `UIApplication.openSettingsURLString`.
-  - "Sign out", which handles the three `SignOutResult` cases from Task 4, with their dialogs.
+  - "Sign out", which handles the four `SignOutResult` cases from Task 4, with their dialogs.
 - **Add a device:**
   - `createInvite()`, then the QR code with "Scan with the new iPhone's Camera".
   - "Signs in as %@ · one use · valid until %@", with the expiry formatted relative to now.

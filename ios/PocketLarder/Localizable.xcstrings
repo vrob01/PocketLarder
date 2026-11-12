@@ -291,6 +291,16 @@
         }
       }
     },
+    "Sign out anyway? This deletes everything on this iPhone. Ask an admin to remove this device from the household.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trotzdem abmelden? Das löscht alles auf diesem iPhone. Bitte einen Admin, dieses Gerät aus dem Haushalt zu entfernen."
+          }
+        }
+      }
+    },
     "Sign out anyway": {
       "localizations": {
         "de": {
@@ -607,6 +617,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$@ hat mit dem HTTP-Status %2$lld geantwortet."
+          }
+        }
+      }
+    },
+    "%@ limited this iPhone's requests: too many in the past minute.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ hat die Anfragen dieses iPhones begrenzt: zu viele in der letzten Minute."
           }
         }
       }

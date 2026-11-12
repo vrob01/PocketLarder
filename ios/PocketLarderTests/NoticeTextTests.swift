@@ -16,6 +16,7 @@ import Testing
     #expect(offlineText(failure: .offline, host: host, pending: 3) == "Can't reach lists.example.test. 3 changes are waiting to be sent.")
     #expect(offlineText(failure: .unexpected(status: 502), host: host, pending: 1) == "lists.example.test answered with HTTP status 502. 1 change is waiting to be sent.")
     #expect(offlineText(failure: .server(code: "missing_token"), host: host, pending: 0) == "lists.example.test answered with error code missing_token. No changes are waiting to be sent.")
+    #expect(offlineText(failure: .server(code: "rate_limited"), host: host, pending: 2) == "lists.example.test limited this iPhone's requests: too many in the past minute. 2 changes are waiting to be sent.")
 }
 
 @Test func connectionFailureTexts() {
@@ -23,6 +24,8 @@ import Testing
     #expect(connectionFailureText(.offline, host: host) == "Needs a connection to your server. Can't reach lists.example.test.")
     #expect(connectionFailureText(.server(code: "internal"), host: host) == "lists.example.test answered with error code internal.")
     #expect(connectionFailureText(.unexpected(status: 502), host: host) == "lists.example.test answered with HTTP status 502.")
+    #expect(connectionFailureText(.server(code: "rate_limited"), host: host) == "lists.example.test limited this iPhone's requests: too many in the past minute.")
+    #expect(adminFailureText(.server(code: "rate_limited"), host: host) == "lists.example.test limited this iPhone's requests: too many in the past minute.")
 }
 
 @Test func saveFailedTexts() {

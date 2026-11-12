@@ -558,6 +558,35 @@ extension KeychainSuite {
         #expect(gone.model.signedOutLostChanges == nil)
     }
 
+    @Test @MainActor func signOutRateLimited() async throws {
+        defer { Keychain.delete() }
+        let rateLimited = FakeTransport.Step.answer(status: 429, json: #"{"error":"rate_limited"}"#)
+
+        // A 429 wins over the unsent change: its question already says that everything on this iPhone goes.
+        let (model, transport, directory) = try await signedIn([rateLimited, signedOut])
+        let op = tea()
+        try model.larder?.perform([op])
+        #expect(await model.signOut(force: false) == .rateLimited)
+        #expect(model.account == account)
+        #expect(Keychain.load() == account)
+        #expect(model.larder?.pending.map(\.op) == [op])
+        #expect(LocalFiles(directory: directory).load().queue.map(\.op) == [op])
+        #expect(!(await paths(transport)).contains("/v1/signout"))
+
+        #expect(await model.signOut(force: true) == .done)
+        #expect(model.account == nil)
+        #expect(model.larder == nil)
+        #expect(Keychain.load() == nil)
+        #expect(try contents(directory) == [])
+        #expect(await revokeShows(transport))
+
+        let refused = try await signedIn([synced, rateLimited])
+        #expect(await refused.model.signOut(force: false) == .rateLimited)
+        #expect(refused.model.account == account)
+        #expect(Keychain.load() == account)
+        #expect(await refused.transport.requests.last?.url?.path == "/v1/signout")
+    }
+
     // A model built with an empty Keychain stands in for a locked launch, because `load()` returns nil in both cases
     // and a test can't lock the simulator. `Keychain.save` after `init` stands in for the phone unlocking.
 
@@ -777,4 +806,5 @@ extension KeychainSuite {
     #expect(signedOutText(lostChanges: 2) == "This iPhone was signed out. 2 changes that weren't sent yet are lost.")
     #expect(unsentChangesText(1) == "1 change hasn't been sent yet. Sign out and lose it?")
     #expect(unsentChangesText(2) == "2 changes haven't been sent yet. Sign out and lose them?")
+    #expect(rateLimitedSignOutText(host: "lists.example.test") == "lists.example.test limited this iPhone's requests: too many in the past minute. Sign out anyway? This deletes everything on this iPhone. Ask an admin to remove this device from the household.")
 }

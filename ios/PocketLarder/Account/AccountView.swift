@@ -209,12 +209,14 @@ struct AccountView: View {
     }
 
     private func signOut(force: Bool) {
+        let host = model.account?.server.host() ?? ""
         signingOut = true
         Task {
             switch await model.signOut(force: force) {
             case .done: break // The root swaps to the welcome screen.
             case let .unsentChanges(count): question = unsentChangesText(count)
             case .unreachable: question = String(localized: "Can't reach your server. Sign out anyway? This deletes everything on this iPhone. Ask an admin to remove this device from the household.")
+            case .rateLimited: question = rateLimitedSignOutText(host: host)
             }
             signingOut = false
         }
@@ -246,6 +248,10 @@ private extension View {
 
 func unsentChangesText(_ count: Int) -> String {
     String(localized: "\(count) changes haven't been sent yet. Sign out and lose them?")
+}
+
+func rateLimitedSignOutText(host: String) -> String {
+    failureText(.server(code: "rate_limited"), host: host) + " " + String(localized: "Sign out anyway? This deletes everything on this iPhone. Ask an admin to remove this device from the household.")
 }
 
 /// Why a request to `host` failed. Only a failed connection says that the action needs one: otherwise the server answered.
