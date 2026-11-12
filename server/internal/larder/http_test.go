@@ -355,6 +355,64 @@ func TestRedeemLimiterDropsExpired(t *testing.T) {
 	}
 }
 
+func TestSyncRateLimit(t *testing.T) {
+	e := newTestEnv(t)
+	_, alex := e.member("Alex", true)
+	_, sam := e.member("Sam", false)
+	empty := map[string]any{"ops": []any{}}
+	// 120 rounds of up to 500 ops: 60,000 ops is the largest queue that drains in one fresh window.
+	for range 120 {
+		e.wantStatus(e.call("POST", "/v1/sync", alex, empty), http.StatusOK)
+	}
+	e.wantError(e.call("POST", "/v1/sync", alex, empty), http.StatusTooManyRequests, "rate_limited")
+	e.wantError(e.call("POST", "/v1/sync", alex, nil), http.StatusTooManyRequests, "rate_limited") // before the body is read
+
+	e.wantStatus(e.call("POST", "/v1/sync", sam, empty), http.StatusOK)
+	e.wantStatus(e.call("POST", "/v1/invites/revoke", alex, map[string]any{}), http.StatusOK) // a separate budget
+
+	e.now = e.now.Add(time.Minute)
+	e.wantStatus(e.call("POST", "/v1/sync", alex, empty), http.StatusOK)
+}
+
+func TestSignedInRateLimit(t *testing.T) {
+	e := newTestEnv(t)
+	_, alex := e.member("Alex", true)
+	_, sam := e.member("Sam", false)
+	// A request refused 403 still counts.
+	for range 60 {
+		e.wantError(e.call("GET", "/v1/admin/members", sam, nil), http.StatusForbidden, "forbidden")
+	}
+	e.wantError(e.call("POST", "/v1/invites", sam, map[string]any{}), http.StatusTooManyRequests, "rate_limited")
+	e.wantError(e.call("POST", "/v1/signout", sam, nil), http.StatusTooManyRequests, "rate_limited")
+	e.wantError(e.call("POST", "/v1/invites", sam, nil), http.StatusTooManyRequests, "rate_limited") // before the body is read
+	e.wantStatus(e.call("POST", "/v1/sync", sam, map[string]any{"ops": []any{}}), http.StatusOK)
+	e.wantStatus(e.call("GET", "/v1/admin/members", alex, nil), http.StatusOK)
+
+	e.now = e.now.Add(time.Minute)
+	e.wantStatus(e.call("POST", "/v1/invites", sam, map[string]any{}), http.StatusCreated)
+	e.wantStatus(e.call("POST", "/v1/signout", sam, nil), http.StatusNoContent)
+}
+
+func TestRateLimitCountsOnlyAuthenticated(t *testing.T) {
+	e := newTestEnv(t)
+	_, token := e.member("Alex", true)
+	deviceID, _, _ := strings.Cut(token, ".")
+	empty := map[string]any{"ops": []any{}}
+	for range 200 {
+		e.wantError(e.call("POST", "/v1/sync", deviceID+".wrong", empty), http.StatusUnauthorized, "unauthorized")
+		e.wantError(e.call("POST", "/v1/invites/revoke", deviceID+".wrong", map[string]any{}), http.StatusUnauthorized, "unauthorized")
+		e.wantError(e.call("POST", "/v1/sync", "", empty), http.StatusUnauthorized, "missing_token")
+		e.wantError(e.call("POST", "/v1/invites/revoke", "", map[string]any{}), http.StatusUnauthorized, "missing_token")
+	}
+
+	for range 120 {
+		e.wantStatus(e.call("POST", "/v1/sync", token, empty), http.StatusOK)
+	}
+	for range 60 {
+		e.wantStatus(e.call("POST", "/v1/invites/revoke", token, map[string]any{}), http.StatusOK)
+	}
+}
+
 func TestInvitePermissions(t *testing.T) {
 	e := newTestEnv(t)
 	alex, admin := e.member("Alex", true)

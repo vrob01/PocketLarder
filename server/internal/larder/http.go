@@ -25,12 +25,16 @@ type server struct {
 	now         func() time.Time
 	log         *slog.Logger
 	redeemLimit *windowLimiter
+	syncLimit   *windowLimiter
+	authedLimit *windowLimiter
 	trustProxy  bool
 }
 
 func newServer(db *sql.DB, publicURL string, trustProxy bool, log *slog.Logger) *server {
 	return &server{db: db, publicURL: publicURL, now: time.Now, log: log, trustProxy: trustProxy,
-		redeemLimit: &windowLimiter{max: 10, window: time.Minute}}
+		redeemLimit: &windowLimiter{max: 10, window: time.Minute},
+		syncLimit:   &windowLimiter{max: 120, window: time.Minute},
+		authedLimit: &windowLimiter{max: 60, window: time.Minute}}
 }
 
 // All clients share one window start, so a new window drops every count and the map holds only this minute's clients.
@@ -125,7 +129,7 @@ func (s *server) fail(w http.ResponseWriter, err error) {
 
 // authed commits the authentication before h runs: with one connection, h's
 // own transaction would wait forever on an open one.
-func (s *server) authed(adminOnly bool, h func(http.ResponseWriter, *http.Request, device)) http.HandlerFunc {
+func (s *server) authed(limit *windowLimiter, adminOnly bool, h func(http.ResponseWriter, *http.Request, device)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if !ok {
@@ -140,6 +144,11 @@ func (s *server) authed(adminOnly bool, h func(http.ResponseWriter, *http.Reques
 		})
 		if err != nil {
 			s.fail(w, err)
+			return
+		}
+		// Counted by the verified device, so nobody can spend another device's budget without its token.
+		if !limit.allow(d.ID, s.now()) {
+			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate_limited"})
 			return
 		}
 		if adminOnly && !d.IsAdmin {
@@ -172,14 +181,14 @@ func recheck(tx *sql.Tx, deviceID string, asAdmin bool) error {
 func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/invites/redeem", s.redeem)
-	mux.HandleFunc("POST /v1/invites", s.authed(false, s.invite))
-	mux.HandleFunc("POST /v1/invites/revoke", s.authed(false, s.revoke))
-	mux.HandleFunc("POST /v1/signout", s.authed(false, s.signOut))
-	mux.HandleFunc("POST /v1/sync", s.authed(false, s.sync))
-	mux.HandleFunc("GET /v1/admin/members", s.authed(true, s.members))
-	mux.HandleFunc("PATCH /v1/admin/members/{id}", s.authed(true, s.patchMember))
-	mux.HandleFunc("DELETE /v1/admin/members/{id}", s.authed(true, s.deleteMember))
-	mux.HandleFunc("DELETE /v1/admin/devices/{id}", s.authed(true, s.revokeDevice))
+	mux.HandleFunc("POST /v1/invites", s.authed(s.authedLimit, false, s.invite))
+	mux.HandleFunc("POST /v1/invites/revoke", s.authed(s.authedLimit, false, s.revoke))
+	mux.HandleFunc("POST /v1/signout", s.authed(s.authedLimit, false, s.signOut))
+	mux.HandleFunc("POST /v1/sync", s.authed(s.syncLimit, false, s.sync))
+	mux.HandleFunc("GET /v1/admin/members", s.authed(s.authedLimit, true, s.members))
+	mux.HandleFunc("PATCH /v1/admin/members/{id}", s.authed(s.authedLimit, true, s.patchMember))
+	mux.HandleFunc("DELETE /v1/admin/members/{id}", s.authed(s.authedLimit, true, s.deleteMember))
+	mux.HandleFunc("DELETE /v1/admin/devices/{id}", s.authed(s.authedLimit, true, s.revokeDevice))
 	// The log line carries no path, query, header or body: they can hold ids and secrets.
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
