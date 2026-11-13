@@ -57,20 +57,6 @@ final class ScreenshotTests: XCTestCase {
         }
     }
 
-    /// The sign-in form's place taken by an invite's server from before 0.1.0.
-    func testEnterInviteOutdated() {
-        for (language, appearance) in variants {
-            let app = launch(language, appearance, "-inviteError", "outdated")
-            app.buttons["welcome.enterInvite"].tap()
-            XCTAssertTrue(withID(app.staticTexts, "incompatible.message").waitForExistence(timeout: 10))
-            XCTAssertTrue(withID(app.buttons, "incompatible.refresh").exists)
-            XCTAssertTrue(withID(app.buttons, "incompatible.back").exists)
-            XCTAssertFalse(withID(app.buttons, "incompatible.signOut").exists)
-            attach(app, "enter-invite-outdated-\(language)-\(appearance)")
-            app.terminate()
-        }
-    }
-
     func testMain() {
         for (language, appearance) in variants {
             let app = launch(language, appearance, "-fixture", "household", "-layout", "rows")
@@ -615,39 +601,23 @@ final class ScreenshotTests: XCTestCase {
         }
     }
 
-    /// My account > About, with the app's version and the fixture server's.
-    func testAbout() {
-        for (language, appearance) in variants {
-            let app = launch(language, appearance, "-fixture", "household")
-            _ = addField(app)
-            _ = openAccount(app)
-            let about = withID(app.buttons, "account.about")
-            scrollUp(app, in: app, until: about)
-            about.tap()
-            XCTAssertTrue(withID(app.staticTexts, "about.serverVersion").waitForExistence(timeout: 20))
-            let server = withID(app.staticTexts, "about.server")
-            XCTAssertTrue(server.label.contains("fixture.invalid"), "The server part reads \(server.label)")
-            attach(app, "about-\(language)-\(appearance)")
-            app.terminate()
-        }
-    }
-
-    /// The blocking screen of a server from before 0.1.0, and its sign-out question. In English light it also checks
-    /// that Refresh keeps the screen up and that signing out shows the welcome screen.
+    /// The blocking screen of a server from before 0.1.0 and its sign-out question, then, signed out, the sign-in form's
+    /// place taken by such a server, in one launch to keep the job within its time limit. In English light it also
+    /// checks that Refresh keeps the blocking screen up.
     func testOutdated() {
         for (language, appearance) in variants {
-            let checks = language == "en" && appearance == "light"
-            let app = launch(language, appearance, "-fixture", "outdated")
+            let app = launch(language, appearance, "-fixture", "outdated", "-inviteError", "outdated")
             let message = withID(app.staticTexts, "incompatible.message")
             XCTAssertTrue(message.waitForExistence(timeout: 10))
             if language == "en" {
                 XCTAssertEqual(message.label, "The server at fixture.invalid answered 404 to GET /v1/version, so it runs a PocketLarder version older than 0.1.0. Ask your admin to update the server.")
             }
             let refresh = withID(app.buttons, "incompatible.refresh")
-            XCTAssertGreaterThanOrEqual(refresh.frame.height, 44)
+            // Rounded, because a 44-point frame can come out a hair under 44.
+            XCTAssertGreaterThanOrEqual(refresh.frame.height.rounded(), 44)
             attach(app, "outdated-\(language)-\(appearance)")
 
-            if checks {
+            if language == "en" && appearance == "light" {
                 refresh.tap()
                 wait(for: [expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: refresh)], timeout: 10)
                 XCTAssertTrue(message.exists, "Refresh took the blocking screen away")
@@ -655,17 +625,26 @@ final class ScreenshotTests: XCTestCase {
             }
 
             let signOut = withID(app.buttons, "incompatible.signOut")
-            XCTAssertGreaterThanOrEqual(signOut.frame.height, 44)
+            XCTAssertGreaterThanOrEqual(signOut.frame.height.rounded(), 44)
             signOut.tap()
-            XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 10))
+            let alert = app.alerts.firstMatch
+            XCTAssertTrue(alert.waitForExistence(timeout: 10))
+            if language == "en" {
+                XCTAssertTrue(alert.staticTexts["Sign out of this iPhone? This deletes everything on this iPhone."].exists)
+            }
             // The alert is still fading in.
             Thread.sleep(forTimeInterval: 0.5)
             attach(app, "outdated-sign-out-\(language)-\(appearance)")
 
-            if checks {
-                answer(app, "Sign out of this iPhone? This deletes everything on this iPhone.", with: "Sign out")
-                XCTAssertTrue(app.buttons["welcome.enterInvite"].waitForExistence(timeout: 10))
-            }
+            alert.buttons[language == "en" ? "Sign out" : "Abmelden"].tap()
+            let enterInvite = app.buttons["welcome.enterInvite"]
+            XCTAssertTrue(enterInvite.waitForExistence(timeout: 10), "Signing out didn't show the welcome screen")
+            enterInvite.tap()
+            XCTAssertTrue(message.waitForExistence(timeout: 10))
+            XCTAssertTrue(refresh.exists)
+            XCTAssertTrue(withID(app.buttons, "incompatible.back").exists)
+            XCTAssertFalse(signOut.exists)
+            attach(app, "enter-invite-outdated-\(language)-\(appearance)")
             app.terminate()
         }
     }
@@ -684,8 +663,9 @@ final class ScreenshotTests: XCTestCase {
         app.terminate()
     }
 
-    /// Members & devices, with Robin invited through the form. In English light it also signs out Sam's iPhone, removes
-    /// Robin, and checks the refusals of a taken name and of the only admin's rights.
+    /// About, the row under Members & devices, so that it needs no launch of its own. Then Members & devices, with Robin
+    /// invited through the form. In English light it also signs out Sam's iPhone, removes Robin, and checks the
+    /// refusals of a taken name and of the only admin's rights.
     func testMembers() {
         let invited = ["en": "Invited, not signed in yet", "de": "Eingeladen, noch nicht angemeldet"]
         for (language, appearance) in variants {
@@ -694,6 +674,15 @@ final class ScreenshotTests: XCTestCase {
             _ = addField(app)
             _ = openAccount(app)
             let membersRow = withID(app.buttons, "account.members")
+            let about = withID(app.buttons, "account.about")
+            scrollUp(app, in: app, until: about)
+            about.tap()
+            XCTAssertTrue(withID(app.staticTexts, "about.serverVersion").waitForExistence(timeout: 20))
+            let server = withID(app.staticTexts, "about.server")
+            XCTAssertTrue(server.label.contains("fixture.invalid"), "The server part reads \(server.label)")
+            attach(app, "about-\(language)-\(appearance)")
+            goBack(app)
+
             scrollUp(app, in: app, until: membersRow)
             membersRow.tap()
 
