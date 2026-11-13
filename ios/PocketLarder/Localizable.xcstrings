@@ -1896,7 +1896,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Server unter %@ hat auf GET /v1/version mit 404 geantwortet. Er läuft also mit einer PocketLarder-Version, die älter als 0.1.0 ist."
+            "value": "Der Server unter %@ hat auf GET\u00a0/\u2060v1/\u2060version mit 404 geantwortet. Er läuft also mit einer PocketLarder-Version, die älter als 0.1.0 ist."
           }
         }
       }
@@ -1916,7 +1916,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ hat auf GET /v1/version geantwortet, aber nicht mit einer Version der Form MAJOR.MINOR.PATCH."
+            "value": "%@ hat auf GET\u00a0/\u2060v1/\u2060version geantwortet, aber nicht mit einer Version der Form MAJOR.MINOR.PATCH."
           }
         }
       }
