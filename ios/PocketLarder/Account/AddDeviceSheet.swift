@@ -114,8 +114,8 @@ struct AddDeviceSheet: View {
                 dismiss()
             } catch {
                 let title = error == .server(code: "invite_redeemed")
-                    ? "Couldn't cancel the invite."
-                    : "Couldn't cancel the invite. It still works until it's used or expires."
+                    ? String(localized: "Couldn't cancel the invite.")
+                    : String(localized: "Couldn't cancel the invite. It still works until it's used or expires.")
                 cancelFailure = (title, connectionFailureText(error, host: host))
             }
             cancelling = false
