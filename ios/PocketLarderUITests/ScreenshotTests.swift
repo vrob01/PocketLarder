@@ -7,6 +7,7 @@ private let example = "pocketlarder://invite?server=https%3A%2F%2Flists.example.
 final class ScreenshotTests: XCTestCase {
     override func setUp() async throws {
         continueAfterFailure = false
+        XCTAssertFalse(variants.isEmpty, "VARIANT names no variant: en-light, en-dark, de-light or de-dark")
     }
 
     func testWelcome() {
@@ -110,7 +111,8 @@ final class ScreenshotTests: XCTestCase {
     }
 
     /// Return on a name that's on the list clears the field and scrolls to the entry, in both layouts.
-    func testAddingExisting() {
+    func testAddingExisting() throws {
+        try onlyEnLight()
         for layout in ["rows", "tiles"] {
             let app = launch("en", "light", "-fixture", "household", "-layout", layout)
             let field = addField(app)
@@ -163,7 +165,8 @@ final class ScreenshotTests: XCTestCase {
     }
 
     /// Every tap above the add bar hides the keyboard and still does its job.
-    func testKeyboardHides() {
+    func testKeyboardHides() throws {
+        try onlyEnLight()
         // Each step stands alone, so that one failure doesn't hide the others.
         continueAfterFailure = true
         let app = launch("en", "light", "-fixture", "household", "-layout", "rows")
@@ -230,7 +233,8 @@ final class ScreenshotTests: XCTestCase {
     }
 
     /// The list's name adds like Return, and only the arrow opens the list picker.
-    func testSplitAddButton() {
+    func testSplitAddButton() throws {
+        try onlyEnLight()
         let app = launch("en", "light", "-fixture", "household", "-layout", "rows")
         let field = addField(app)
         let add = app.buttons["main.addToTarget"]
@@ -532,7 +536,8 @@ final class ScreenshotTests: XCTestCase {
     }
 
     /// Without a connection, Add a device says why and opens no sheet.
-    func testAddDeviceOffline() {
+    func testAddDeviceOffline() throws {
+        try onlyEnLight()
         let app = launch("en", "light", "-fixture", "offline")
         _ = openAccount(app)
         let addDevice = withID(app.buttons, "account.addDevice")
@@ -595,7 +600,8 @@ final class ScreenshotTests: XCTestCase {
     }
 
     /// Without a connection, Invites says why and shows no rows.
-    func testInvitesOffline() {
+    func testInvitesOffline() throws {
+        try onlyEnLight()
         let app = launch("en", "light", "-fixture", "offline")
         _ = openAccount(app)
         let invitesRow = withID(app.buttons, "account.invites")
@@ -686,7 +692,14 @@ final class ScreenshotTests: XCTestCase {
         }
     }
 
+    // CI runs one variant per job: TEST_RUNNER_VARIANT=de-dark reaches this runner as VARIANT.
     private let variants = [("en", "light"), ("en", "dark"), ("de", "light"), ("de", "dark")]
+        .filter { pair in ProcessInfo.processInfo.environment["VARIANT"].map { $0 == "\(pair.0)-\(pair.1)" } ?? true }
+
+    /// Skips a test that runs in English and light only, unless this run has that variant.
+    private func onlyEnLight() throws {
+        try XCTSkipUnless(variants.contains { $0 == ("en", "light") }, "This run has no en-light variant")
+    }
 
     /// Opens My account from the circle and returns its header.
     private func openAccount(_ app: XCUIApplication) -> XCUIElement {
