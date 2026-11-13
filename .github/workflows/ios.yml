@@ -52,20 +52,48 @@ jobs:
       # UI tests stall on a simulator that is still booting.
       - name: Boot the simulator
         run: xcrun simctl bootstatus "${{ steps.simulator.outputs.id }}" -b
-      # Reuses the last run's build folder, so Xcode rebuilds less.
-      - uses: actions/cache@v4
-        with:
-          path: ~/Library/Developer/Xcode/DerivedData
-          key: deriveddata-${{ github.sha }}
-          restore-keys: deriveddata-
+      # The simulator flakes in about its first 25 minutes, and later UI tests haven't flaked.
+      # So the UI tests that failed run once more at the end, on a settled simulator.
       - name: Build and test the app
         run: |
           xcodebuild test -project ios/PocketLarder.xcodeproj -scheme PocketLarder \
             -destination "id=${{ steps.simulator.outputs.id }}" \
-            -resultBundlePath "$RUNNER_TEMP/Tests.xcresult"
+            -resultBundlePath "$RUNNER_TEMP/Tests.xcresult" && exit 0
+          xcrun xcresulttool get test-results tests --path "$RUNNER_TEMP/Tests.xcresult" > "$RUNNER_TEMP/tests.json"
+          failed=$(python3 - "$RUNNER_TEMP/tests.json" <<'EOF'
+          import json, sys
+          ui, other = [], []
+          def walk(node, bundle):
+              if "bundle" in node.get("nodeType", ""):
+                  bundle = node["name"]
+              if node.get("nodeType") == "Test Case":
+                  if node.get("result") == "Failed":
+                      test = bundle + "/" + node["nodeIdentifier"].removesuffix("()")
+                      (ui if bundle == "PocketLarderUITests" else other).append(test)
+                  return
+              for child in node.get("children", []):
+                  walk(child, bundle)
+          for node in json.load(open(sys.argv[1]))["testNodes"]:
+              walk(node, None)
+          if other:
+              sys.exit("Tests outside the UI tests failed, so nothing runs again: " + ", ".join(other))
+          if not ui:
+              sys.exit("xcodebuild test failed, but Tests.xcresult has no failed test: the build or the test run itself failed.")
+          print(" ".join("-only-testing:" + test for test in ui))
+          EOF
+          )
+          echo "Running the failed UI tests again: $failed"
+          # shellcheck disable=SC2086 # one -only-testing argument per failed test
+          xcodebuild test-without-building -project ios/PocketLarder.xcodeproj -scheme PocketLarder \
+            -destination "id=${{ steps.simulator.outputs.id }}" $failed \
+            -resultBundlePath "$RUNNER_TEMP/Retry.xcresult"
       - name: Export the screenshots
         if: always() && hashFiles('ios/PocketLarder.xcodeproj/project.pbxproj') != ''
-        run: xcrun xcresulttool export attachments --path "$RUNNER_TEMP/Tests.xcresult" --output-path "$RUNNER_TEMP/screenshots"
+        run: |
+          xcrun xcresulttool export attachments --path "$RUNNER_TEMP/Tests.xcresult" --output-path "$RUNNER_TEMP/screenshots"
+          if [ -d "$RUNNER_TEMP/Retry.xcresult" ]; then
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/Retry.xcresult" --output-path "$RUNNER_TEMP/screenshots/rerun"
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -76,5 +104,7 @@ jobs:
         if: failure()
         with:
           name: xcresult
-          path: ${{ runner.temp }}/Tests.xcresult
+          path: |
+            ${{ runner.temp }}/Tests.xcresult
+            ${{ runner.temp }}/Retry.xcresult
           if-no-files-found: ignore

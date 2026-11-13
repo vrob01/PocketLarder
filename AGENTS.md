@@ -43,7 +43,8 @@ docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/ios/PocketLarde
 
 Xcode builds run only on GitHub: push, then wait for the `ios` run of your commit.
 The screenshots of its UI tests are in the `screenshots` artifact:
-`gh run download <id> -n screenshots -D <dir>`.
+`gh run download <id> -n screenshots -D <dir>`. UI tests that fail run once more
+at the end of the job; their second run's screenshots are in `rerun/`.
 
 `-fixture household` (Debug builds only, `ios/PocketLarder/Fixtures/`) runs the app on sample data without a server, the Keychain or the real data folder, and the screenshot tests use it; `-fixture offline` is that account with every request failing as unreachable, so the app shows the offline badge and no data.
 
