@@ -7,6 +7,7 @@ struct PocketLarderApp: App {
         switch UserDefaults.standard.string(forKey: "fixture") {
         case "household": return .fixture()
         case "offline": return .fixture(offline: true)
+        case "outdated": return .fixture(outdated: true)
         default: break
         }
         #endif
@@ -36,15 +37,24 @@ private struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        NavigationStack {
-            if let larder = model.larder {
-                MainView(larder: larder)
+        Group {
+            // In place of the stack, so that every sheet and page over the main screen goes too.
+            if let incompatibility = model.incompatibility, let account = model.account {
+                IncompatibleView(incompatibility: incompatibility, host: account.server.host() ?? "", refresh: { await model.checkServer() }) {
+                    BlockedSignOutButton()
+                }
             } else {
-                WelcomeView()
+                NavigationStack {
+                    if let larder = model.larder {
+                        MainView(larder: larder)
+                    } else {
+                        WelcomeView()
+                    }
+                }
+                // A new stack, so that a pushed `EnterInviteView` can't survive signing in.
+                .id(model.account == nil)
             }
         }
-        // A new stack, so that a pushed `EnterInviteView` can't survive signing in.
-        .id(model.account == nil)
         .onOpenURL { model.open($0) }
         .alert(
             signInErrorText(.alreadySignedIn(name: model.alreadySignedInAs ?? "")),
@@ -65,9 +75,11 @@ private struct RootView: View {
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
             model.restoreFromKeychain()
-            while !Task.isCancelled {
+            // It syncs as soon as the server checks out, or can't be checked.
+            await model.checkServer()
+            // Then every minute, until the sleep ends early because the scene phase changed.
+            while (try? await Task.sleep(for: .seconds(60))) != nil {
                 await model.larder?.sync()
-                try? await Task.sleep(for: .seconds(60))
             }
         }
     }

@@ -57,6 +57,20 @@ final class ScreenshotTests: XCTestCase {
         }
     }
 
+    /// The sign-in form's place taken by an invite's server from before 0.1.0.
+    func testEnterInviteOutdated() {
+        for (language, appearance) in variants {
+            let app = launch(language, appearance, "-inviteError", "outdated")
+            app.buttons["welcome.enterInvite"].tap()
+            XCTAssertTrue(withID(app.staticTexts, "incompatible.message").waitForExistence(timeout: 10))
+            XCTAssertTrue(withID(app.buttons, "incompatible.refresh").exists)
+            XCTAssertTrue(withID(app.buttons, "incompatible.back").exists)
+            XCTAssertFalse(withID(app.buttons, "incompatible.signOut").exists)
+            attach(app, "enter-invite-outdated-\(language)-\(appearance)")
+            app.terminate()
+        }
+    }
+
     func testMain() {
         for (language, appearance) in variants {
             let app = launch(language, appearance, "-fixture", "household", "-layout", "rows")
@@ -596,6 +610,61 @@ final class ScreenshotTests: XCTestCase {
                 samInvites.tap()
                 XCTAssertTrue(invite(app, "Open").waitForExistence(timeout: 20))
                 XCTAssertEqual(rows.count, 1)
+            }
+            app.terminate()
+        }
+    }
+
+    /// My account > About, with the app's version and the fixture server's.
+    func testAbout() {
+        for (language, appearance) in variants {
+            let app = launch(language, appearance, "-fixture", "household")
+            _ = addField(app)
+            _ = openAccount(app)
+            let about = withID(app.buttons, "account.about")
+            scrollUp(app, in: app, until: about)
+            about.tap()
+            XCTAssertTrue(withID(app.staticTexts, "about.serverVersion").waitForExistence(timeout: 20))
+            let server = withID(app.staticTexts, "about.server")
+            XCTAssertTrue(server.label.contains("fixture.invalid"), "The server part reads \(server.label)")
+            attach(app, "about-\(language)-\(appearance)")
+            app.terminate()
+        }
+    }
+
+    /// The blocking screen of a server from before 0.1.0, and its sign-out question. In English light it also checks
+    /// that Refresh keeps the screen up and that signing out shows the welcome screen.
+    func testOutdated() {
+        for (language, appearance) in variants {
+            let checks = language == "en" && appearance == "light"
+            let app = launch(language, appearance, "-fixture", "outdated")
+            let message = withID(app.staticTexts, "incompatible.message")
+            XCTAssertTrue(message.waitForExistence(timeout: 10))
+            if language == "en" {
+                XCTAssertEqual(message.label, "The server at fixture.invalid answered 404 to GET /v1/version, so it runs a PocketLarder version older than 0.1.0. Ask your admin to update the server.")
+            }
+            let refresh = withID(app.buttons, "incompatible.refresh")
+            XCTAssertGreaterThanOrEqual(refresh.frame.height, 44)
+            attach(app, "outdated-\(language)-\(appearance)")
+
+            if checks {
+                refresh.tap()
+                wait(for: [expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: refresh)], timeout: 10)
+                XCTAssertTrue(message.exists, "Refresh took the blocking screen away")
+                XCTAssertFalse(app.buttons["main.account"].exists)
+            }
+
+            let signOut = withID(app.buttons, "incompatible.signOut")
+            XCTAssertGreaterThanOrEqual(signOut.frame.height, 44)
+            signOut.tap()
+            XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 10))
+            // The alert is still fading in.
+            Thread.sleep(forTimeInterval: 0.5)
+            attach(app, "outdated-sign-out-\(language)-\(appearance)")
+
+            if checks {
+                answer(app, "Sign out of this iPhone? This deletes everything on this iPhone.", with: "Sign out")
+                XCTAssertTrue(app.buttons["welcome.enterInvite"].waitForExistence(timeout: 10))
             }
             app.terminate()
         }

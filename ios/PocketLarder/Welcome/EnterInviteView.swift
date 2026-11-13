@@ -3,13 +3,18 @@ import SwiftUI
 
 struct EnterInviteView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
     @State private var server = ""
     @State private var code = ""
     @State private var deviceName = "iPhone"
     @State private var signingIn = false
     @State private var signInError: AppModel.SignInError? = {
         #if DEBUG
-        if UserDefaults.standard.string(forKey: "inviteError") == "invalidInvite" { return .invalidInvite }
+        switch UserDefaults.standard.string(forKey: "inviteError") {
+        case "invalidInvite": return .invalidInvite
+        case "outdated": return .incompatible(.serverTooOld(nil), server: URL(string: "https://lists.example.com")!)
+        default: break
+        }
         #endif
         return nil
     }()
@@ -21,6 +26,53 @@ struct EnterInviteView: View {
     private var signInURL: URL? { normalizeServer(server) }
 
     var body: some View {
+        Group {
+            // In place of the form, whose fields stay filled for when Refresh finds the server compatible.
+            if case let .incompatible(incompatibility, invited) = signInError {
+                IncompatibleView(incompatibility: incompatibility, host: invited.host() ?? "", refresh: { await recheck(invited) }) {
+                    Button { dismiss() } label: {
+                        IncompatibleExitLabel(title: "Back to the welcome screen")
+                    }
+                    .accessibilityIdentifier("incompatible.back")
+                }
+            } else {
+                form
+            }
+        }
+        .navigationTitle("Enter invite")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                // Gone without the form, which it would fill out of sight.
+                if !isIncompatible {
+                    PasteButton(payloadType: String.self) { strings in
+                        take(strings.joined(separator: "\n"))
+                    }
+                    .labelStyle(.titleAndIcon)
+                    .accessibilityIdentifier("invite.paste")
+                }
+            }
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { focused = nil }
+                    .accessibilityIdentifier("invite.keyboardDone")
+            }
+        }
+        .onChange(of: server) { take(server) }
+        .onChange(of: code) { take(code) }
+        .onChange(of: deviceName) { old, _ in take(deviceName, keepingDeviceName: old) }
+        .onChange(of: model.pendingInvite, initial: true) {
+            guard let invite = model.pendingInvite else { return }
+            fill(invite)
+            model.pendingInvite = nil
+        }
+    }
+
+    private var isIncompatible: Bool {
+        if case .incompatible = signInError { true } else { false }
+    }
+
+    private var form: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
                 if server.isEmpty && code.isEmpty {
@@ -99,30 +151,17 @@ struct EnterInviteView: View {
             }
             .padding(24)
         }
-        .navigationTitle("Enter invite")
-        .navigationBarTitleDisplayMode(.large)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                PasteButton(payloadType: String.self) { strings in
-                    take(strings.joined(separator: "\n"))
-                }
-                .labelStyle(.titleAndIcon)
-                .accessibilityIdentifier("invite.paste")
-            }
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { focused = nil }
-                    .accessibilityIdentifier("invite.keyboardDone")
-            }
+    }
+
+    /// Refresh checks only. Sign in signs in.
+    private func recheck(_ invited: URL) async -> ServerCompatibility {
+        let outcome = await model.checkServer(at: invited)
+        switch outcome {
+        case let .incompatible(incompatibility): signInError = .incompatible(incompatibility, server: invited)
+        case .compatible: signInError = nil
+        case .couldNotCheck: break
         }
-        .onChange(of: server) { take(server) }
-        .onChange(of: code) { take(code) }
-        .onChange(of: deviceName) { old, _ in take(deviceName, keepingDeviceName: old) }
-        .onChange(of: model.pendingInvite, initial: true) {
-            guard let invite = model.pendingInvite else { return }
-            fill(invite)
-            model.pendingInvite = nil
-        }
+        return outcome
     }
 
     private func label(_ key: LocalizedStringKey) -> some View {
@@ -150,6 +189,7 @@ func signInErrorText(_ error: AppModel.SignInError) -> String {
     case let .unreachable(host): String(localized: "Can't reach \(host).")
     case let .alreadySignedIn(name): String(localized: "This iPhone is already signed in as \(name). Sign out first to use this invite.")
     case .other: String(localized: "Couldn't sign in. Try again, or ask for a new invite.")
+    case let .incompatible(incompatibility, server): incompatibleText(incompatibility, host: server.host() ?? "")
     }
 }
 
