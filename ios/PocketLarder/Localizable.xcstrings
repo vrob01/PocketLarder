@@ -631,12 +631,22 @@
         }
       }
     },
-    "Maximum number of open invites reached. Cancel one, or wait until one is used or expires.": {
+    "Maximum number of open invites reached. Cancel one under Invites, or wait until one is used or expires.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Höchstzahl offener Einladungen erreicht. Widerrufe eine oder warte, bis eine benutzt wurde oder abläuft."
+            "value": "Höchstzahl offener Einladungen erreicht. Widerrufe eine unter Einladungen oder warte, bis eine benutzt wurde oder abläuft."
+          }
+        }
+      }
+    },
+    "This invite was already used.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Einladung wurde schon benutzt."
           }
         }
       }
@@ -1727,6 +1737,106 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ konnte nicht entfernt werden."
+          }
+        }
+      }
+    },
+    "Invites": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einladungen"
+          }
+        }
+      }
+    },
+    "Used": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Benutzt"
+          }
+        }
+      }
+    },
+    "Expired": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abgelaufen"
+          }
+        }
+      }
+    },
+    "Expiry: %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ablauf: %@"
+          }
+        }
+      }
+    },
+    "Cancel invite, expiry: %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einladung widerrufen, Ablauf: %@"
+          }
+        }
+      }
+    },
+    "Clear used and expired invites": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Benutzte und abgelaufene Einladungen löschen"
+          }
+        }
+      }
+    },
+    "No invites.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keine Einladungen."
+          }
+        }
+      }
+    },
+    "Couldn't load the invites.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Einladungen konnten nicht geladen werden."
+          }
+        }
+      }
+    },
+    "Couldn't cancel the invite.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Einladung konnte nicht widerrufen werden."
+          }
+        }
+      }
+    },
+    "Couldn't clear the invites.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Einladungen konnten nicht gelöscht werden."
           }
         }
       }

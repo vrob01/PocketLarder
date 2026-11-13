@@ -1,7 +1,7 @@
 import PocketLarderKit
 import SwiftUI
 
-/// One member, for admins: their admin rights and devices, another device for them, and removing them.
+/// One member, for admins: their admin rights and devices, another device for them, their invites, and removing them.
 struct MemberDetailView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -43,6 +43,8 @@ struct MemberDetailView: View {
                 }
                 Button("Add a device for \(current.name)…") { addDevice() }
                     .accessibilityIdentifier("member.addDevice")
+                NavigationLink("Invites") { InvitesView(memberId: member.id, household: household) }
+                    .accessibilityIdentifier("member.invites")
             }
             Section {
                 Button("Remove \(current.name)…", role: .destructive) { removing = true }

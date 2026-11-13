@@ -17,7 +17,7 @@ struct AccountView: View {
     @State private var path: [Page] = []
 
     private enum Page {
-        case members
+        case members, invites
     }
 
     var body: some View {
@@ -56,6 +56,8 @@ struct AccountView: View {
                     }
                     .disabled(creatingInvite || signingOut)
                     .accessibilityIdentifier("account.addDevice")
+                    NavigationLink("Invites", value: Page.invites)
+                        .accessibilityIdentifier("account.invites")
                     Button {
                         openURL(URL(string: UIApplication.openSettingsURLString)!)
                     } label: {
@@ -92,8 +94,11 @@ struct AccountView: View {
                     }
                 }
             }
-            .navigationDestination(for: Page.self) { _ in
-                MembersView(model: model) { path = [] }
+            .navigationDestination(for: Page.self) { page in
+                switch page {
+                case .members: MembersView(model: model) { path = [] }
+                case .invites: InvitesView(memberId: nil, household: nil)
+                }
             }
             .navigationTitle("My account")
             .navigationBarTitleDisplayMode(.inline)

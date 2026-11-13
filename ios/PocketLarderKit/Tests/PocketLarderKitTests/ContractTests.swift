@@ -127,3 +127,35 @@ import Testing
     #expect(revoked == 10)
     _ = try await client.createInvite()
 }
+
+@Test(.enabled(if: Contract.isConfigured)) func invitesAgainstServer() async throws {
+    let (client, memberId, _) = try await Contract.newMember("Invites")
+    let paired = try await client.invites()
+    #expect(paired.map(\.state) == [.redeemed])
+
+    let admin = try await Contract.admin()
+    _ = try await admin.createInvite(memberId: memberId)
+    let forAdmin = try await admin.invites(memberId: memberId)
+    let own = try await client.invites()
+    // Both can expire in the same second, which leaves their order to their ids.
+    #expect(forAdmin.map(\.state).sorted { $0.rawValue < $1.rawValue } == [.open, .redeemed])
+    #expect(own == forAdmin)
+    await #expect(throws: APIError.server(code: "forbidden")) {
+        _ = try await client.invites(memberId: memberId)
+    }
+
+    let open = try #require(own.first { $0.state == .open })
+    let redeemed = try #require(own.first { $0.state == .redeemed })
+    try await client.cancelInvite(open.id)
+    let afterCancel = try await client.invites()
+    #expect(afterCancel == [redeemed])
+    await #expect(throws: APIError.server(code: "invite_redeemed")) {
+        try await client.cancelInvite(redeemed.id)
+    }
+
+    let cleared = try await client.clearInvites()
+    let afterClear = try await client.invites()
+    #expect(cleared == 1)
+    #expect(afterClear.isEmpty)
+    _ = try await client.sync([])
+}

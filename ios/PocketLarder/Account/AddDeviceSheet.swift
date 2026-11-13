@@ -31,7 +31,7 @@ struct AddDeviceSheet: View {
                                 .accessibilityLabel("QR code of the invite")
                                 .accessibilityIdentifier("addDevice.qr")
                         }
-                        Text("Signs in as \(memberName) · one use · valid until \(expiry)")
+                        Text("Signs in as \(memberName) · one use · valid until \(inviteExpiry(invite.expiresAt))")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -93,16 +93,6 @@ struct AddDeviceSheet: View {
         }
     }
 
-    /// "tomorrow at 09:00" for a new invite.
-    private var expiry: String {
-        let formatter = DateFormatter()
-        formatter.doesRelativeDateFormatting = true
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        formatter.formattingContext = .middleOfSentence
-        return formatter.string(from: invite.expiresAt)
-    }
-
     /// Only on this iPhone, not on the user's other devices, and only for ten minutes.
     private func copy() {
         UIPasteboard.general.setItems(
@@ -127,4 +117,14 @@ struct AddDeviceSheet: View {
             cancelling = false
         }
     }
+}
+
+/// "tomorrow at 09:00", for the middle of a sentence. Add a device and Invites both show an invite's expiry with it.
+func inviteExpiry(_ date: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.doesRelativeDateFormatting = true
+    formatter.dateStyle = .medium
+    formatter.timeStyle = .short
+    formatter.formattingContext = .middleOfSentence
+    return formatter.string(from: date)
 }

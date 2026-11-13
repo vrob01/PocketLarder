@@ -26,8 +26,11 @@ import Testing
     #expect(connectionFailureText(.unexpected(status: 502), host: host) == "lists.example.test answered with HTTP status 502.")
     #expect(connectionFailureText(.server(code: "rate_limited"), host: host) == "lists.example.test limited this iPhone's requests: too many in the past minute.")
     #expect(adminFailureText(.server(code: "rate_limited"), host: host) == "lists.example.test limited this iPhone's requests: too many in the past minute.")
-    #expect(connectionFailureText(.server(code: "too_many_invites"), host: host) == "Maximum number of open invites reached. Cancel one, or wait until one is used or expires.")
-    #expect(adminFailureText(.server(code: "too_many_invites"), host: host) == "Maximum number of open invites reached. Cancel one, or wait until one is used or expires.")
+    let full = "Maximum number of open invites reached. Cancel one under Invites, or wait until one is used or expires."
+    #expect(connectionFailureText(.server(code: "too_many_invites"), host: host) == full)
+    #expect(adminFailureText(.server(code: "too_many_invites"), host: host) == full)
+    #expect(connectionFailureText(.server(code: "invite_redeemed"), host: host) == "This invite was already used.")
+    #expect(adminFailureText(.server(code: "invite_redeemed"), host: host) == "This invite was already used.")
 }
 
 @Test func saveFailedTexts() {

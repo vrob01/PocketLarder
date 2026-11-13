@@ -116,6 +116,7 @@ var errStatus = map[error]int{
 	errConflict:       http.StatusConflict,
 	errLastAdmin:      http.StatusConflict,
 	errTooManyInvites: http.StatusConflict,
+	errInviteRedeemed: http.StatusConflict,
 }
 
 func (s *server) fail(w http.ResponseWriter, err error) {
@@ -184,6 +185,9 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /v1/invites/redeem", s.redeem)
 	mux.HandleFunc("POST /v1/invites", s.authed(s.authedLimit, false, s.invite))
 	mux.HandleFunc("POST /v1/invites/revoke", s.authed(s.authedLimit, false, s.revoke))
+	mux.HandleFunc("GET /v1/invites", s.authed(s.authedLimit, false, s.invites))
+	mux.HandleFunc("DELETE /v1/invites/{id}", s.authed(s.authedLimit, false, s.cancel))
+	mux.HandleFunc("POST /v1/invites/clear", s.authed(s.authedLimit, false, s.clear))
 	mux.HandleFunc("POST /v1/signout", s.authed(s.authedLimit, false, s.signOut))
 	mux.HandleFunc("POST /v1/sync", s.authed(s.syncLimit, false, s.sync))
 	mux.HandleFunc("GET /v1/admin/members", s.authed(s.authedLimit, true, s.members))
@@ -310,6 +314,72 @@ func (s *server) revoke(w http.ResponseWriter, r *http.Request, d device) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]int{"revoked": n})
+}
+
+// invites lists the caller's own member's invites, or with a member_id parameter, even an empty one, an admin's pick.
+func (s *server) invites(w http.ResponseWriter, r *http.Request, d device) {
+	memberID := d.MemberID
+	if query := r.URL.Query(); query.Has("member_id") {
+		if !d.IsAdmin {
+			s.fail(w, errForbidden)
+			return
+		}
+		memberID = query.Get("member_id")
+	}
+	var invites []memberInvite
+	err := withTx(s.db, func(tx *sql.Tx) (err error) {
+		invites, err = listInvites(tx, memberID, s.now())
+		return err
+	})
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string][]memberInvite{"invites": invites})
+}
+
+func (s *server) cancel(w http.ResponseWriter, r *http.Request, d device) {
+	id := r.PathValue("id")
+	if !validID(id) {
+		s.fail(w, errNotFound)
+		return
+	}
+	if err := withTx(s.db, func(tx *sql.Tx) error { return cancelInvite(tx, id, d) }); err != nil {
+		s.fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// clear takes the body of revoke, with the same rule for member_id.
+func (s *server) clear(w http.ResponseWriter, r *http.Request, d device) {
+	var req struct {
+		MemberID *string `json:"member_id"`
+	}
+	if !readJSON(w, r, maxBody, &req) {
+		return
+	}
+	memberID := d.MemberID
+	if req.MemberID != nil {
+		if !d.IsAdmin {
+			s.fail(w, errForbidden)
+			return
+		}
+		memberID = *req.MemberID
+	}
+	var n int
+	err := withTx(s.db, func(tx *sql.Tx) (err error) {
+		if err = recheck(tx, d.ID, req.MemberID != nil); err != nil {
+			return err
+		}
+		n, err = clearInvites(tx, memberID, s.now())
+		return err
+	})
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"cleared": n})
 }
 
 func (s *server) signOut(w http.ResponseWriter, r *http.Request, d device) {
