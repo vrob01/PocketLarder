@@ -15,12 +15,16 @@ import (
 	"time"
 )
 
+// version is the server's version, bumped by hand by the rules under Versioning in AGENTS.md.
+const version = "0.1.0"
+
 const usage = `usage:
   pocketlarder serve
   pocketlarder invite <name>
   pocketlarder invite --new-admin <name>
   pocketlarder invite --revoke <name>
   pocketlarder backup <path>
+  pocketlarder version
 `
 
 // Run is the pocketlarder command. It returns the exit code: 0 for success,
@@ -30,6 +34,10 @@ func Run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	if !ok {
 		fmt.Fprint(stderr, usage)
 		return 2
+	}
+	if cmd == "version" {
+		fmt.Fprintln(stdout, "pocketlarder", version)
+		return 0
 	}
 
 	dir := getenv("POCKETLARDER_DATA_DIR")
@@ -94,11 +102,11 @@ func Run(ctx context.Context, args []string, getenv func(string) string, stdout,
 }
 
 // parseArgs accepts only the forms in usage. cmd is "serve", "backup",
-// "invite", "--new-admin" or "--revoke".
+// "version", "invite", "--new-admin" or "--revoke".
 func parseArgs(args []string) (cmd, arg string, ok bool) {
 	switch {
-	case len(args) == 1 && args[0] == "serve":
-		return "serve", "", true
+	case len(args) == 1 && (args[0] == "serve" || args[0] == "version"):
+		return args[0], "", true
 	case len(args) == 2 && args[0] == "backup":
 		return "backup", args[1], true
 	case len(args) == 2 && args[0] == "invite" && args[1] != "--new-admin" && args[1] != "--revoke":

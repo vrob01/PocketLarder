@@ -59,6 +59,14 @@ Run all commands from the repo root.
 
    **Warning:** restoring an older backup, or starting the server on an empty data directory (for example a data disk that didn't mount), signs out every phone the database doesn't know. Those phones delete their local copy and unsent changes, and each of them needs a new invite. So check the data directory before starting the server.
 
+6. Check which version the server runs:
+
+   ```bash
+   docker compose -f server/deploy/compose.yaml exec pocketlarder pocketlarder version
+   ```
+
+   It prints the version, for example `pocketlarder 0.1.0`. The iOS app asks the server for its version too, and when the server is too old for the app, the app says so and syncs nothing until the server is updated.
+
 ### Hosting notes
 
 - An existing data directory or database keeps its current file mode. `serve` creates them 0700/0600 only when they don't exist yet. If you bring existing data along, check that the data directory is 0700, the database files are 0600, and the owner is 65532:65532 in the container.

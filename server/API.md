@@ -12,8 +12,8 @@ the admin area.
 - **JSON.** Request and response bodies are JSON. Endpoints that take a body
   need a JSON object: send `{}` when there is nothing to say. Responses with a
   body carry `Content-Type: application/json` and `Cache-Control: no-store`.
-- **Authentication.** Every endpoint except `POST /v1/invites/redeem` needs the
-  device token in this header:
+- **Authentication.** Every endpoint except `GET /v1/version` and
+  `POST /v1/invites/redeem` needs the device token in this header:
 
   ```http
   Authorization: Bearer <token>
@@ -144,6 +144,7 @@ member: redeeming it adds a device for that member.
 
 | Method and path | Auth | Rate limit |
 |---|---|---|
+| `GET /v1/version` | none | none |
 | `POST /v1/invites/redeem` | none | 10 per minute per client |
 | `POST /v1/invites` | member | 60 per minute per device, shared |
 | `POST /v1/invites/revoke` | member | 60 per minute per device, shared |
@@ -156,6 +157,29 @@ member: redeeming it adds a device for that member.
 | `PATCH /v1/admin/members/{id}` | admin | 60 per minute per device, shared |
 | `DELETE /v1/admin/members/{id}` | admin | 60 per minute per device, shared |
 | `DELETE /v1/admin/devices/{id}` | admin | 60 per minute per device, shared |
+
+### GET /v1/version
+
+Returns the server's version, MAJOR.MINOR.PATCH, so that a client can tell
+whether it can work with this server before it signs in. No `Authorization`
+header: one that is sent is ignored. The route answers a constant, so it has no
+rate limit and reads no data. There is no request body.
+
+```http
+GET /v1/version
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"version": "0.1.0"}
+```
+
+The route came with version 0.1.0. A server from before it answers with a
+plain-text 404, `404 page not found`, like any path the API doesn't have.
+
+Errors: none.
 
 ### POST /v1/invites/redeem
 

@@ -182,6 +182,10 @@ func recheck(tx *sql.Tx, deviceID string, asAdmin bool) error {
 
 func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
+	// A constant, so it needs no token, no rate limit and no database: the app checks it before it signs in.
+	mux.HandleFunc("GET /v1/version", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"version": version})
+	})
 	mux.HandleFunc("POST /v1/invites/redeem", s.redeem)
 	mux.HandleFunc("POST /v1/invites", s.authed(s.authedLimit, false, s.invite))
 	mux.HandleFunc("POST /v1/invites/revoke", s.authed(s.authedLimit, false, s.revoke))
