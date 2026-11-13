@@ -3,6 +3,9 @@ name: builder
 description: Factory build step. Implements a job's spec on its factory/<job-id> branch, tests it against the acceptance criteria, commits, pushes, opens the draft PR in round 1, and writes build.md. Resumed with SendMessage after a failed gate or a review round.
 tools: Read, Grep, Glob, Bash, Edit, Write
 model: sonnet
+# The builder polls the ios run every ~9 minutes; a 5-minute cache rewrites its whole context each time.
+experimental:
+  cacheTtl: 1h
 hooks:
   PreToolUse:
     - matcher: SubagentHandback
