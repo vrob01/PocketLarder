@@ -601,6 +601,54 @@ final class ScreenshotTests: XCTestCase {
         }
     }
 
+    /// The blocking screen of a server from before 0.1.0 and its sign-out question, then, signed out, the sign-in form's
+    /// place taken by such a server, in one launch to keep the job within its time limit. In English light it also
+    /// checks that Refresh keeps the blocking screen up.
+    func testOutdated() {
+        for (language, appearance) in variants {
+            let app = launch(language, appearance, "-fixture", "outdated", "-inviteError", "outdated")
+            let message = withID(app.staticTexts, "incompatible.message")
+            XCTAssertTrue(message.waitForExistence(timeout: 10))
+            if language == "en" {
+                XCTAssertEqual(message.label, "The server at fixture.invalid answered 404 to GET /v1/version, so it runs a PocketLarder version older than 0.1.0. Ask your admin to update the server.")
+            }
+            let refresh = withID(app.buttons, "incompatible.refresh")
+            // Rounded, because a 44-point frame can come out a hair under 44.
+            XCTAssertGreaterThanOrEqual(refresh.frame.height.rounded(), 44)
+            attach(app, "outdated-\(language)-\(appearance)")
+
+            if language == "en" && appearance == "light" {
+                refresh.tap()
+                wait(for: [expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: refresh)], timeout: 10)
+                XCTAssertTrue(message.exists, "Refresh took the blocking screen away")
+                XCTAssertFalse(app.buttons["main.account"].exists)
+            }
+
+            let signOut = withID(app.buttons, "incompatible.signOut")
+            XCTAssertGreaterThanOrEqual(signOut.frame.height.rounded(), 44)
+            signOut.tap()
+            let alert = app.alerts.firstMatch
+            XCTAssertTrue(alert.waitForExistence(timeout: 10))
+            if language == "en" {
+                XCTAssertTrue(alert.staticTexts["Sign out of this iPhone? This deletes everything on this iPhone."].exists)
+            }
+            // The alert is still fading in.
+            Thread.sleep(forTimeInterval: 0.5)
+            attach(app, "outdated-sign-out-\(language)-\(appearance)")
+
+            alert.buttons[language == "en" ? "Sign out" : "Abmelden"].tap()
+            let enterInvite = app.buttons["welcome.enterInvite"]
+            XCTAssertTrue(enterInvite.waitForExistence(timeout: 10), "Signing out didn't show the welcome screen")
+            enterInvite.tap()
+            XCTAssertTrue(message.waitForExistence(timeout: 10))
+            XCTAssertTrue(refresh.exists)
+            XCTAssertTrue(withID(app.buttons, "incompatible.back").exists)
+            XCTAssertFalse(signOut.exists)
+            attach(app, "enter-invite-outdated-\(language)-\(appearance)")
+            app.terminate()
+        }
+    }
+
     /// Without a connection, Invites says why and shows no rows.
     func testInvitesOffline() {
         let app = launch("en", "light", "-fixture", "offline")
@@ -615,8 +663,9 @@ final class ScreenshotTests: XCTestCase {
         app.terminate()
     }
 
-    /// Members & devices, with Robin invited through the form. In English light it also signs out Sam's iPhone, removes
-    /// Robin, and checks the refusals of a taken name and of the only admin's rights.
+    /// About, the row under Members & devices, so that it needs no launch of its own. Then Members & devices, with Robin
+    /// invited through the form. In English light it also signs out Sam's iPhone, removes Robin, and checks the
+    /// refusals of a taken name and of the only admin's rights.
     func testMembers() {
         let invited = ["en": "Invited, not signed in yet", "de": "Eingeladen, noch nicht angemeldet"]
         for (language, appearance) in variants {
@@ -625,6 +674,15 @@ final class ScreenshotTests: XCTestCase {
             _ = addField(app)
             _ = openAccount(app)
             let membersRow = withID(app.buttons, "account.members")
+            let about = withID(app.buttons, "account.about")
+            scrollUp(app, in: app, until: about)
+            about.tap()
+            XCTAssertTrue(withID(app.staticTexts, "about.serverVersion").waitForExistence(timeout: 20))
+            let server = withID(app.staticTexts, "about.server")
+            XCTAssertTrue(server.label.contains("fixture.invalid"), "The server part reads \(server.label)")
+            attach(app, "about-\(language)-\(appearance)")
+            goBack(app)
+
             scrollUp(app, in: app, until: membersRow)
             membersRow.tap()
 

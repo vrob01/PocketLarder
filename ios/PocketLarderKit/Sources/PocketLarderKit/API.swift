@@ -122,6 +122,10 @@ private struct Cleared: Decodable {
     let cleared: Int
 }
 
+private struct ServerVersion: Decodable {
+    let version: String
+}
+
 public struct APIClient: Sendable {
     private let server: URL
     private let token: String?
@@ -131,6 +135,26 @@ public struct APIClient: Sendable {
         self.server = server
         self.token = token
         self.transport = transport
+    }
+
+    /// Never sends the token, so it works before signing in. `minimum` and `supportedMajor` are for tests.
+    public func serverVersion(
+        minimum: Version = minimumServerVersion, supportedMajor: Int = supportedServerMajor
+    ) async -> ServerCompatibility {
+        let answer: (data: Data, status: Int)
+        do {
+            answer = try await send("GET", "/v1/version", authorized: false, passing: 404)
+        } catch {
+            return .couldNotCheck(error)
+        }
+        // Any 404, because a proxy's JSON `not_found` means the route is missing just as Go's plain text does.
+        if answer.status == 404 { return .incompatible(.serverTooOld(nil)) }
+        guard let body = try? JSON.decoder.decode(ServerVersion.self, from: answer.data), let version = Version(body.version) else {
+            return .couldNotCheck(nil)
+        }
+        if version.major > supportedMajor { return .incompatible(.appTooOld(version)) }
+        if version < minimum { return .incompatible(.serverTooOld(version)) }
+        return .compatible(version)
     }
 
     public func redeem(code: String, deviceName: String) async throws(APIError) -> Redemption {
@@ -195,9 +219,10 @@ public struct APIClient: Sendable {
         return response
     }
 
+    /// `passing` is a status returned like a 2xx instead of thrown.
     @discardableResult
     private func send(
-        _ method: String, _ path: String, query: [URLQueryItem]? = nil, body: Body? = nil, authorized: Bool = true
+        _ method: String, _ path: String, query: [URLQueryItem]? = nil, body: Body? = nil, authorized: Bool = true, passing: Int? = nil
     ) async throws(APIError) -> (data: Data, status: Int) {
         var url = server.appending(path: path)
         if let query {
@@ -214,7 +239,7 @@ public struct APIClient: Sendable {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
         guard let (data, response) = try? await transport.send(request) else { throw .offline }
-        guard (200..<300).contains(response.statusCode) else {
+        guard (200..<300).contains(response.statusCode) || response.statusCode == passing else {
             // `unauthorized` wipes the phone, so a gateway's 403 or 500 with that body must not count as one.
             if let failure = try? JSON.decoder.decode(ErrorBody.self, from: data),
                failure.error != "unauthorized" || response.statusCode == 401 {

@@ -6,6 +6,8 @@ import PocketLarderKit
 final class AppModel {
     enum SignInError: Error, Equatable {
         case invalidInvite, rateLimited, unreachable(host: String), alreadySignedIn(name: String), other
+        /// Nothing was redeemed, because the invite's server is too old or too new for this app.
+        case incompatible(Incompatibility, server: URL)
     }
 
     enum SignOutResult: Equatable {
@@ -19,6 +21,9 @@ final class AppModel {
     var alreadySignedInAs: String?
     private(set) var account: Account?
     private(set) var larder: Larder?
+    /// Set while the account's server is too old or too new for this app, and then the root shows only the blocking
+    /// screen. In memory only, so every launch starts unblocked until its check.
+    private(set) var incompatibility: Incompatibility?
     /// What the main screen shows. A different scope also sets `addTarget`, and assigning the same one changes nothing,
     /// so that re-checking it after a sync can't drop a target the user picked.
     var scope: Scope = .myView {
@@ -40,6 +45,8 @@ final class AppModel {
     /// `Keychain.save`, except in a test that makes it fail.
     private let saveAccount: (Account) throws -> Void
     private var signInAttempts = 0
+    /// So that only the latest version check decides.
+    private var checks = 0
     private var enteredBackground: Date?
 
     /// The member's name, or the server's host until the first snapshot arrives.
@@ -81,8 +88,9 @@ final class AppModel {
 
     #if DEBUG
     /// Signed in on sample data, on a fake server and a new empty directory, so that nothing of a real account is touched.
-    /// Offline, the server can't be reached, so the first sync never succeeds.
-    static func fixture(offline: Bool = false) -> AppModel {
+    /// Offline, the server can't be reached, so the first sync never succeeds. Outdated, the server is from before
+    /// `GET /v1/version`.
+    static func fixture(offline: Bool = false, outdated: Bool = false) -> AppModel {
         let url = Bundle.main.url(forResource: "household", withExtension: "json")!
         let snapshot = try! JSON.decoder.decode(Snapshot.self, from: Data(contentsOf: url))
         let directory = FileManager.default.temporaryDirectory.appending(path: newID())
@@ -93,7 +101,7 @@ final class AppModel {
             memberId: snapshot.me.memberId,
             deviceId: snapshot.me.deviceId
         )
-        let transport: any Transport = offline ? UnreachableTransport() : FixtureTransport(snapshot)
+        let transport: any Transport = offline ? UnreachableTransport() : FixtureTransport(snapshot, outdated: outdated)
         return AppModel(fixture: account, transport: transport, dataDirectory: directory)
     }
 
@@ -108,7 +116,7 @@ final class AppModel {
     #endif
 
     /// `init` reads no account while the phone is locked, so the root asks again on becoming active. The files stay,
-    /// because they may hold unsent changes, and the root's loop does the first sync.
+    /// because they may hold unsent changes, and the root's version check does the first sync.
     func restoreFromKeychain() {
         guard usesKeychain, account == nil, let restored = Keychain.load() else { return }
         // So that an open redeem can't replace this account.
@@ -119,6 +127,32 @@ final class AppModel {
             pendingInvite = nil
             alreadySignedInAs = memberName
         }
+    }
+
+    /// The check of each activation and of Refresh. The larder sends no sync until there is an outcome, and none while the
+    /// server is too old or too new. Couldn't check changes nothing, so a blocked app stays blocked. The outcome is nil
+    /// when signed out.
+    @discardableResult func checkServer() async -> ServerCompatibility? {
+        guard let account, let larder else { return nil }
+        checks += 1
+        let check = checks
+        larder.isHeld = true
+        let outcome = await checkServer(at: account.server)
+        // A newer check decides, and an answer for an account that signed out, or for another one, changes nothing.
+        guard check == checks, self.larder === larder else { return outcome }
+        switch outcome {
+        case let .incompatible(incompatibility): self.incompatibility = incompatibility
+        case .compatible: incompatibility = nil
+        case .couldNotCheck: break
+        }
+        larder.isHeld = incompatibility != nil
+        if !larder.isHeld { await larder.sync() }
+        return outcome
+    }
+
+    /// Sends no token, so it also checks an invite's server before signing in.
+    func checkServer(at server: URL) async -> ServerCompatibility {
+        await APIClient(server: server, token: nil, transport: transport).serverVersion()
     }
 
     func didEnterBackground(now: Date = .now) {
@@ -146,6 +180,10 @@ final class AppModel {
         if account != nil { return .alreadySignedIn(name: memberName) }
         signInAttempts += 1
         let attempt = signInAttempts
+        let outcome = await checkServer(at: invite.server)
+        // A newer attempt or a restore took over during the check. Nothing is redeemed yet, so nothing needs signing out.
+        guard attempt == signInAttempts else { return account == nil ? .other : .alreadySignedIn(name: memberName) }
+        if case let .incompatible(incompatibility) = outcome { return .incompatible(incompatibility, server: invite.server) }
         let redemption: Redemption
         do {
             redemption = try await APIClient(server: invite.server, token: nil, transport: transport)
@@ -229,6 +267,7 @@ final class AppModel {
         larder?.close()
         larder = nil
         account = nil
+        incompatibility = nil
         resetScope()
         if usesKeychain { Keychain.delete() }
         files.wipe()

@@ -519,3 +519,35 @@ private func sentOpIds(_ request: URLRequest) throws -> [String] {
     await larder.sync()
     #expect(larder.lastSyncFailure == nil)
 }
+
+@Test @MainActor func heldLarderSendsNothing() async throws {
+    let (larder, transport, files, _) = try makeLarder([try synced()])
+    larder.isHeld = true
+    try larder.perform([add("A")])
+
+    await larder.sync()
+    try await pause()
+    #expect(await transport.requests.isEmpty)
+    #expect(larder.pending.count == 1)
+    #expect(files.load().queue == larder.pending)
+
+    larder.isHeld = false
+    await larder.sync()
+    #expect(await transport.requests.count == 1)
+    #expect(larder.pending.isEmpty)
+}
+
+@Test @MainActor func holdStopsFurtherRounds() async throws {
+    let (larder, transport, _, _) = try makeLarder([.hold, try synced()])
+    try larder.perform((0..<501).map { add("\($0)") })
+    let call = SyncCall(larder)
+    try #require(await waitUntil { await transport.requests.count == 1 })
+
+    larder.isHeld = true
+    await transport.release(status: 200, json: try syncJSON())
+    try #require(await waitUntil { call.returned })
+    try await pause()
+
+    #expect(await transport.requests.count == 1)
+    #expect(larder.pending.count == 1)
+}

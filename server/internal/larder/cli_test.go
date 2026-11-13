@@ -400,3 +400,26 @@ func TestUsage(t *testing.T) {
 		}
 	}
 }
+
+func TestCLIVersion(t *testing.T) {
+	// Fails the test if Run reads the environment, so version needs no data dir or public URL and never touches /data.
+	getenv := func(k string) string {
+		t.Fatalf("read %s", k)
+		return ""
+	}
+	var stdout, stderr bytes.Buffer
+	if code := Run(context.Background(), []string{"version"}, getenv, &stdout, &stderr); code != 0 {
+		t.Fatalf("exit %d, stderr %q", code, stderr.String())
+	}
+	if want := "pocketlarder " + version + "\n"; stdout.String() != want || stderr.Len() != 0 {
+		t.Fatalf("stdout %q, stderr %q; want stdout %q", stdout.String(), stderr.String(), want)
+	}
+
+	stdout.Reset()
+	if code := Run(context.Background(), []string{"version", "extra"}, getenv, &stdout, &stderr); code != 2 {
+		t.Errorf("version extra: exit %d, want 2", code)
+	}
+	if stderr.String() != usage || !strings.Contains(usage, "pocketlarder version\n") || stdout.Len() != 0 {
+		t.Errorf("version extra: stdout %q, stderr %q", stdout.String(), stderr.String())
+	}
+}

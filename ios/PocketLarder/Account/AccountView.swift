@@ -17,7 +17,7 @@ struct AccountView: View {
     @State private var path: [Page] = []
 
     private enum Page {
-        case members, invites
+        case members, invites, about
     }
 
     var body: some View {
@@ -93,11 +93,16 @@ struct AccountView: View {
                             .accessibilityIdentifier("account.members")
                     }
                 }
+                Section {
+                    NavigationLink("About", value: Page.about)
+                        .accessibilityIdentifier("account.about")
+                }
             }
             .navigationDestination(for: Page.self) { page in
                 switch page {
                 case .members: MembersView(model: model) { path = [] }
                 case .invites: InvitesView(memberId: nil, household: nil)
+                case .about: AboutView()
                 }
             }
             .navigationTitle("My account")

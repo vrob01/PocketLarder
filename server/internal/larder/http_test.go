@@ -213,6 +213,30 @@ func TestAuthRequired(t *testing.T) {
 	e.wantError(w, http.StatusUnauthorized, "missing_token")
 }
 
+func TestVersionRoute(t *testing.T) {
+	e := newTestEnv(t)
+	// No token, and a bad one, which the route ignores.
+	for _, token := range []string{"", "x.y"} {
+		w := e.call("GET", "/v1/version", token, nil)
+		if ct, cc := w.Header().Get("Content-Type"), w.Header().Get("Cache-Control"); w.Code != http.StatusOK || ct != "application/json" || cc != "no-store" {
+			t.Fatalf("token %q: %d, Content-Type %q, Cache-Control %q", token, w.Code, ct, cc)
+		}
+		if want := `{"version":"` + version + `"}` + "\n"; w.Body.String() != want {
+			t.Fatalf("token %q: body %q, want %q", token, w.Body, want)
+		}
+	}
+}
+
+func TestVersionNotRateLimited(t *testing.T) {
+	e := newTestEnv(t)
+	// Past the sync limit of 120, the highest one, from one client in one window.
+	for i := range 130 {
+		if w := e.call("GET", "/v1/version", "", nil); w.Code != http.StatusOK {
+			t.Fatalf("call %d: %d %s", i+1, w.Code, w.Body)
+		}
+	}
+}
+
 func TestRedeemRateLimited(t *testing.T) {
 	e := newTestEnv(t)
 	var code string

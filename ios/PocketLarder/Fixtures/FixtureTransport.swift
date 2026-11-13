@@ -2,7 +2,8 @@
 import Foundation
 import PocketLarderKit
 
-/// The fake server behind `-fixture household`. Each instance works on its own copy of the snapshot.
+/// The fake server behind `-fixture household` and `-fixture outdated`. Each instance works on its own copy of the
+/// snapshot.
 actor FixtureTransport: Transport {
     private struct SyncBody: Decodable {
         let ops: [Op]
@@ -64,9 +65,12 @@ actor FixtureTransport: Transport {
     /// What `GET /v1/admin/members` lists. Changes to it don't reach the snapshot.
     private var members: [MemberAnswer]
     private var invites: [FixtureInvite]
+    /// A server from before `GET /v1/version`, which answers it as Go answers any unknown path.
+    private let outdated: Bool
 
-    init(_ snapshot: Snapshot) {
+    init(_ snapshot: Snapshot, outdated: Bool = false) {
         self.snapshot = snapshot
+        self.outdated = outdated
         let launch = Date.now
         members = snapshot.members.map { member in
             let mine = member.id == snapshot.me.memberId
@@ -95,6 +99,10 @@ actor FixtureTransport: Transport {
         let id = request.url?.lastPathComponent ?? ""
         let body = request.httpBody ?? Data()
         switch (request.httpMethod ?? "", path) {
+        case ("GET", "/v1/version"):
+            if outdated { return (Data("404 page not found\n".utf8), response(to: request, status: 404)) }
+            // The minimum, so that raising it keeps the household compatible.
+            return (Data(#"{"version":"\#(minimumServerVersion)"}"#.utf8), response(to: request, status: 200))
         case ("POST", "/v1/sync"):
             let ops = try JSON.decoder.decode(SyncBody.self, from: body).ops
             snapshot = applying(ops.map { PendingOp(op: $0, at: .now) }, to: snapshot)

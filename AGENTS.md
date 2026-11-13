@@ -74,6 +74,18 @@ In `server/` it runs `gofmt -l`, `go vet ./...`,
 
 Every error says precisely what failed, so that an admin can troubleshoot a self-hosted install from the message alone: the host or step involved, and the real cause, such as DNS, a refused connection, a timeout, a certificate problem or an HTTP status. Never merge different causes into one message, and never advise a fix the cause doesn't call for. This wins over any copy in the plan or design. Tokens, invite codes and invite URLs still never appear in messages or logs. Known gaps are in #50.
 
+## Versioning
+
+The server and the app each have a MAJOR.MINOR.PATCH version, bumped by hand. The server's is `version` in `server/internal/larder/cli.go`, which `pocketlarder version` prints and `GET /v1/version` answers. The app's is `MARKETING_VERSION` in `ios/Config/PocketLarder.xcconfig`. The app's compatibility setting is `minimumServerVersion` and `supportedServerMajor` in `ios/PocketLarderKit/Sources/PocketLarderKit/Version.swift`: the app blocks a server below the minimum, or with a newer major than the supported one.
+
+- **Server adds something the app will use** (a route, a field, a behaviour): the same PR bumps the server's MINOR and raises `minimumServerVersion` to it.
+- **Breaking server change** (it changes or removes something older apps use): bump the server's MAJOR, and raise `supportedServerMajor` in the PR that adapts the app.
+- **Server bug fix:** bump PATCH, at release time (see Release).
+- **Database schema change alone:** needs no app change, because the server migrates its own data and refuses a database newer than itself.
+- **Release:** bumping the app's version, and the server's version for fixes, is the owner's job at release time.
+
+The contract test `serverIsCompatible` catches a minimum that the server of the same commit doesn't meet. A forgotten minimum can't be caught by a test, so code review checks every PR against these rules.
+
 ## Software factory
 
 `/factory run` builds every open GitHub issue labeled `factory` through

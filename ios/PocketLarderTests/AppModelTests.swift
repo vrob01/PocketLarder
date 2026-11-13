@@ -12,6 +12,14 @@ private let account = Account(server: server, token: "test-token", memberId: mem
 private let offline = FakeTransport.Step.error(URLError(.notConnectedToInternet))
 private let unauthorized = FakeTransport.Step.answer(status: 401, json: #"{"error":"unauthorized"}"#)
 private let signedOut = FakeTransport.Step.answer(status: 204, json: "")
+private let compatibleJSON = #"{"version":"\#(minimumServerVersion)"}"#
+/// The minimum, so that raising it changes nothing here.
+private let compatible = FakeTransport.Step.answer(status: 200, json: compatibleJSON)
+/// What a server from before `GET /v1/version` answers.
+private let oldServer = FakeTransport.Step.answer(status: 404, json: "404 page not found\n")
+/// Below any minimum the setting can have.
+private let tooOld = FakeTransport.Step.answer(status: 200, json: #"{"version":"0.0.0"}"#)
+private let tooNew = FakeTransport.Step.answer(status: 200, json: #"{"version":"\#(supportedServerMajor + 1).0.0"}"#)
 
 private func redeemJSON(token: String) -> String {
     #"{"token":"\#(token)","member_id":"\#(member)","device_id":"\#(device)"}"#
@@ -51,13 +59,14 @@ private func seededDirectory() throws -> URL {
     return directory
 }
 
-/// Signed in with a new directory and an empty Keychain. `script` answers the requests after the sign-in's two.
+/// Signed in with a new directory and an empty Keychain. `script` answers the requests after the sign-in's three: the
+/// version check, the redeem and the first sync.
 @MainActor private func signedIn(
     _ script: [FakeTransport.Step] = []
 ) async throws -> (model: AppModel, transport: FakeTransport, directory: URL) {
     Keychain.delete()
     let directory = try temporaryDirectory()
-    let transport = FakeTransport([redeemed(), synced] + script)
+    let transport = FakeTransport([compatible, redeemed(), synced] + script)
     let model = AppModel(transport: transport, dataDirectory: directory)
     try #require(await model.signIn(invite, deviceName: "iPhone") == nil)
     return (model, transport, directory)
@@ -100,15 +109,16 @@ private func sent(_ transport: FakeTransport, token: String) async -> [String] {
     return false
 }
 
-/// A `signIn` the test doesn't wait for yet, whose request is open on the script's first step, a `.hold`.
+/// A `signIn` the test doesn't wait for yet, whose redeem is open on the script's second step, a `.hold`, after the
+/// version check on the first.
 @MainActor private func openSignIn(_ model: AppModel, _ transport: FakeTransport) async throws -> Task<AppModel.SignInError?, Never> {
     let redeeming = Task { await model.signIn(invite, deviceName: "iPhone") }
-    try #require(await waitUntil { await transport.requests.count == 1 })
+    try #require(await waitUntil { await transport.requests.count == 2 })
     return redeeming
 }
 
 /// A sign-in still waiting for its answer, overtaken by a second one that completed, with an empty Keychain before.
-/// `script` answers the requests after those three. By default `signedOut` answers the late answer's revoke and a
+/// `script` answers the requests after those five, two of them version checks. By default `signedOut` answers the late answer's revoke and a
 /// forced sign-out, and the last step answers a request a correct run never sends, such as the sync that a late answer
 /// must not start, so a bug fails the test instead of crashing the process.
 @MainActor private func overtakenSignIn(_ script: [FakeTransport.Step] = [signedOut, signedOut, synced]) async throws -> (
@@ -116,7 +126,7 @@ private func sent(_ transport: FakeTransport, token: String) async -> [String] {
 ) {
     Keychain.delete()
     let directory = try temporaryDirectory()
-    let transport = FakeTransport([.hold, redeemed(token: "next-token"), synced] + script)
+    let transport = FakeTransport([compatible, .hold, compatible, redeemed(token: "next-token"), synced] + script)
     let model = AppModel(transport: transport, dataDirectory: directory)
     let first = try await openSignIn(model, transport)
     try #require(await model.signIn(invite, deviceName: "iPhone") == nil)
@@ -147,7 +157,7 @@ extension KeychainSuite {
 
     @Test @MainActor func signInStoresAccountAndSyncs() async throws {
         defer { Keychain.delete() }
-        let transport = FakeTransport([redeemed(), synced])
+        let transport = FakeTransport([compatible, redeemed(), synced])
         let model = AppModel(transport: transport, dataDirectory: try temporaryDirectory())
         #expect(model.memberName == "")
 
@@ -158,8 +168,8 @@ extension KeychainSuite {
         #expect(model.larder?.snapshot != nil)
         #expect(model.memberName == "Alex")
         let requests = await transport.requests
-        #expect(requests.map(\.url?.path) == ["/v1/invites/redeem", "/v1/sync"])
-        let body = try JSON.decoder.decode(RedeemBody.self, from: try #require(requests.first?.httpBody))
+        #expect(requests.map(\.url?.path) == ["/v1/version", "/v1/invites/redeem", "/v1/sync"])
+        let body = try JSON.decoder.decode(RedeemBody.self, from: try #require(requests.first { $0.url?.path == "/v1/invites/redeem" }?.httpBody))
         #expect(body.deviceName == "Kitchen iPhone")
         #expect(body.code == "code")
     }
@@ -173,7 +183,7 @@ extension KeychainSuite {
             (.answer(status: 500, json: #"{"error":"internal"}"#), .other),
         ]
         for (step, expected) in cases {
-            let model = AppModel(transport: FakeTransport([step]), dataDirectory: try temporaryDirectory())
+            let model = AppModel(transport: FakeTransport([compatible, step]), dataDirectory: try temporaryDirectory())
             #expect(await model.signIn(invite, deviceName: "iPhone") == expected)
             #expect(model.account == nil)
             #expect(model.larder == nil)
@@ -238,34 +248,34 @@ extension KeychainSuite {
 
         #expect(await model.signIn(invite, deviceName: "iPhone") == .alreadySignedIn(name: "Alex"))
         #expect(model.account == account)
-        #expect(await transport.requests.count == 2)
+        #expect(await transport.requests.count == 3)
     }
 
     @Test @MainActor func forcedSignOutDropsAnswerInFlight() async throws {
         defer { Keychain.delete() }
         let (model, transport, directory) = try await signedIn([.hold, signedOut])
         let call = SyncCall(try #require(model.larder))
-        try #require(await waitUntil { await transport.requests.count == 3 })
+        try #require(await waitUntil { await transport.requests.count == 4 })
 
         #expect(await model.signOut(force: true) == .done)
         #expect(!call.returned)
-        #expect(await waitUntil { await transport.requests.count == 4 })
+        #expect(await waitUntil { await transport.requests.count == 5 })
 
         await transport.release(status: 200, json: syncJSON)
         try #require(await waitUntil { call.returned })
         #expect(try contents(directory) == [])
         #expect(model.account == nil)
-        #expect(await transport.requests.count == 4)
+        #expect(await transport.requests.count == 5)
     }
 
     @Test @MainActor func lateUnauthorizedSparesNextAccount() async throws {
         defer { Keychain.delete() }
-        let (model, transport, directory) = try await signedIn([.hold, signedOut, redeemed(token: "next-token"), synced])
+        let (model, transport, directory) = try await signedIn([.hold, signedOut, compatible, redeemed(token: "next-token"), synced])
         let call = SyncCall(try #require(model.larder))
-        try #require(await waitUntil { await transport.requests.count == 3 })
+        try #require(await waitUntil { await transport.requests.count == 4 })
 
         #expect(await model.signOut(force: true) == .done)
-        #expect(await waitUntil { await transport.requests.count == 4 })
+        #expect(await waitUntil { await transport.requests.count == 5 })
         #expect(await model.signIn(invite, deviceName: "iPhone") == nil)
         let next = try #require(model.account)
         #expect(next.token == "next-token")
@@ -295,7 +305,7 @@ extension KeychainSuite {
         #expect(try contents(directory).contains("snapshot.json"))
         #expect(await revokeShows(transport))
         try await Task.sleep(for: .milliseconds(50))
-        #expect(await transport.requests.count == 4)
+        #expect(await transport.requests.count == 6)
         #expect(await sent(transport, token: "late-token") == ["POST lists.example.test/v1/signout"])
     }
 
@@ -316,7 +326,7 @@ extension KeychainSuite {
             #expect(model.larder === larder)
             #expect(try contents(directory).contains("snapshot.json"))
             #expect(model.signedOutLostChanges == nil)
-            #expect(await transport.requests.count == 4)
+            #expect(await transport.requests.count == 6)
         }
     }
 
@@ -341,7 +351,7 @@ extension KeychainSuite {
         #expect(model.larder === larder)
         #expect(try contents(directory).contains("snapshot.json"))
         #expect(model.signedOutLostChanges == nil)
-        #expect(await transport.requests.count == 4)
+        #expect(await transport.requests.count == 6)
     }
 
     @Test @MainActor func lateRedeemAfterSignOutStaysSignedOut() async throws {
@@ -357,9 +367,9 @@ extension KeychainSuite {
         #expect(model.account == nil)
         #expect(model.larder == nil)
         #expect(Keychain.load() == nil)
-        #expect(await waitUntil { await transport.requests.count == 5 })
+        #expect(await waitUntil { await transport.requests.count == 7 })
         try await Task.sleep(for: .milliseconds(50))
-        #expect(await transport.requests.count == 5)
+        #expect(await transport.requests.count == 7)
         #expect(await sent(transport, token: "late-token") == ["POST lists.example.test/v1/signout"])
     }
 
@@ -413,13 +423,13 @@ extension KeychainSuite {
             #expect(Keychain.load() == nil)
             #expect(try contents(directory) == [])
             #expect(model.signedOutLostChanges == nil)
-            #expect(await transport.requests.count == 3)
+            #expect(await transport.requests.count == 4)
         }
     }
 
     @Test @MainActor func heldRevokeSparesNextAccount() async throws {
         defer { Keychain.delete() }
-        let (model, transport, directory) = try await signedIn([.hold, redeemed(token: "next-token"), synced])
+        let (model, transport, directory) = try await signedIn([.hold, compatible, redeemed(token: "next-token"), synced])
         var returned = false
         Task {
             _ = await model.signOut(force: true)
@@ -437,14 +447,14 @@ extension KeychainSuite {
         #expect(Keychain.load() == model.account)
         #expect(try contents(directory).contains("snapshot.json"))
         #expect(model.signedOutLostChanges == nil)
-        #expect(await transport.requests.count == 5)
+        #expect(await transport.requests.count == 7)
     }
 
     @Test @MainActor func failedSaveRevokesDevice() async throws {
         defer { Keychain.delete() }
         for answer in [unauthorized, .answer(status: 500, json: #"{"error":"internal"}"#), offline] {
             let directory = try seededDirectory()
-            let transport = FakeTransport([redeemed(), answer, synced])
+            let transport = FakeTransport([compatible, redeemed(), answer, synced])
             let model = AppModel(transport: transport, dataDirectory: directory, saveAccount: { _ in throw SaveFailed() })
 
             #expect(await model.signIn(invite, deviceName: "iPhone") == .other)
@@ -457,14 +467,14 @@ extension KeychainSuite {
             #expect(Keychain.load() == nil)
             #expect(try contents(directory).sorted() == ["queue.json", "snapshot.json"])
             #expect(model.signedOutLostChanges == nil)
-            #expect(await transport.requests.count == 2)
+            #expect(await transport.requests.count == 3)
         }
     }
 
     @Test @MainActor func heldFailedSaveRevokeSparesNextAccount() async throws {
         defer { Keychain.delete() }
         let directory = try temporaryDirectory()
-        let transport = FakeTransport([redeemed(), .hold, redeemed(token: "next-token"), synced, synced])
+        let transport = FakeTransport([compatible, redeemed(), .hold, compatible, redeemed(token: "next-token"), synced, synced])
         var failsOnce = true
         let model = AppModel(transport: transport, dataDirectory: directory, saveAccount: {
             if failsOnce {
@@ -492,13 +502,13 @@ extension KeychainSuite {
         #expect(model.larder === larder)
         #expect(try contents(directory).contains("snapshot.json"))
         #expect(model.signedOutLostChanges == nil)
-        #expect(await transport.requests.count == 4)
+        #expect(await transport.requests.count == 6)
         #expect(await sent(transport, token: "test-token") == ["POST lists.example.test/v1/signout"])
     }
 
     @Test @MainActor func signInIgnoresLeftoverFiles() async throws {
         defer { Keychain.delete() }
-        let transport = FakeTransport([redeemed(), synced])
+        let transport = FakeTransport([compatible, redeemed(), synced])
         let model = AppModel(transport: transport, dataDirectory: try seededDirectory())
 
         try #require(await model.signIn(invite, deviceName: "iPhone") == nil)
@@ -520,7 +530,7 @@ extension KeychainSuite {
         #expect(relaunched.larder?.view == model.larder?.view)
         #expect(relaunched.memberName == "Alex")
         try await Task.sleep(for: .milliseconds(50))
-        #expect(await transport.requests.count == 2)
+        #expect(await transport.requests.count == 3)
     }
 
     @Test @MainActor func signOutOtherAnswers() async throws {
@@ -631,18 +641,18 @@ extension KeychainSuite {
         #expect(model.larder === larder)
         #expect(Keychain.load() == other)
         try await Task.sleep(for: .milliseconds(50))
-        #expect(await transport.requests.count == 2)
+        #expect(await transport.requests.count == 3)
     }
 
     @Test @MainActor func restoredAccountBeatsOpenRedeem() async throws {
         defer { Keychain.delete() }
         let directory = try seededDirectory()
-        let transport = FakeTransport([.hold, signedOut, synced])
+        let transport = FakeTransport([compatible, .hold, signedOut, synced])
         let model = AppModel(transport: transport, dataDirectory: directory)
         // On another server than the restored account, so that the revoke shows which server it goes to.
         let dropped = Invite(server: try #require(URL(string: "https://other.example.test")), code: "code")
         let redeeming = Task { await model.signIn(dropped, deviceName: "iPhone") }
-        try #require(await waitUntil { await transport.requests.count == 1 })
+        try #require(await waitUntil { await transport.requests.count == 2 })
 
         try Keychain.save(account)
         model.restoreFromKeychain()
@@ -658,13 +668,13 @@ extension KeychainSuite {
         #expect(try contents(directory).contains("queue.json"))
         #expect(await revokeShows(transport))
         try await Task.sleep(for: .milliseconds(50))
-        #expect(await transport.requests.count == 2)
+        #expect(await transport.requests.count == 3)
         #expect(await sent(transport, token: "late-token") == ["POST other.example.test/v1/signout"])
     }
 
     @Test @MainActor func emptyKeychainKeepsOpenRedeem() async throws {
         defer { Keychain.delete() }
-        let transport = FakeTransport([.hold, synced])
+        let transport = FakeTransport([compatible, .hold, synced])
         let model = AppModel(transport: transport, dataDirectory: try temporaryDirectory())
         let redeeming = try await openSignIn(model, transport)
 
@@ -677,7 +687,7 @@ extension KeychainSuite {
         #expect(model.account == account)
         #expect(Keychain.load() == account)
         try await Task.sleep(for: .milliseconds(50))
-        #expect(await transport.requests.count == 2)
+        #expect(await transport.requests.count == 3)
     }
 
     @Test @MainActor func inviteLinkBeforeRestoreIsNotKept() throws {
@@ -792,6 +802,193 @@ extension KeychainSuite {
         #expect(await picked.signOut(force: true) == .done)
         #expect(picked.addTarget == nil)
     }
+
+    // `checkServer()` stands in for an activation and for Refresh, and `larder.sync()` for the root's minute loop and
+    // pull-to-refresh.
+
+    @Test @MainActor func openCheckHoldsSyncs() async throws {
+        defer { Keychain.delete() }
+        let (model, transport, _) = try await signedIn([.hold, synced])
+        let larder = try #require(model.larder)
+        larder.syncDelay = .milliseconds(10)
+        let checking = Task { await model.checkServer() }
+        try #require(await waitUntil { await transport.requests.count == 4 })
+
+        let op = tea()
+        try larder.perform([op])
+        await larder.sync()
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(await paths(transport) == ["/v1/version", "/v1/invites/redeem", "/v1/sync", "/v1/version"])
+        #expect(model.incompatibility == nil)
+        #expect(larder.pending.map(\.op) == [op])
+
+        await transport.release(status: 200, json: compatibleJSON)
+
+        #expect(await checking.value == .compatible(minimumServerVersion))
+        let request = try #require(await transport.requests.last)
+        #expect(request.url?.path == "/v1/sync")
+        #expect(try JSON.decoder.decode(SyncBody.self, from: try #require(request.httpBody)).ops == [op])
+        #expect(larder.pending.isEmpty)
+        #expect(!larder.isHeld)
+    }
+
+    @Test @MainActor func incompatibleServerBlocks() async throws {
+        defer { Keychain.delete() }
+        let cases: [(FakeTransport.Step, Incompatibility)] = [
+            (tooOld, .serverTooOld(Version(0, 0, 0))),
+            (oldServer, .serverTooOld(nil)),
+            (tooNew, .appTooOld(Version(supportedServerMajor + 1, 0, 0))),
+        ]
+        for (answer, expected) in cases {
+            let (model, transport, directory) = try await signedIn([answer, answer])
+            let larder = try #require(model.larder)
+
+            #expect(await model.checkServer() == .incompatible(expected))
+            #expect(model.incompatibility == expected)
+
+            larder.syncDelay = .zero
+            let op = tea()
+            try larder.perform([op])
+            await larder.sync()
+            #expect(await model.checkServer() == .incompatible(expected))
+            try await Task.sleep(for: .milliseconds(50))
+            #expect(await paths(transport) == ["/v1/version", "/v1/invites/redeem", "/v1/sync", "/v1/version", "/v1/version"])
+            #expect(model.incompatibility == expected)
+            #expect(model.account == account)
+            #expect(larder.pending.map(\.op) == [op])
+            #expect(LocalFiles(directory: directory).load().queue.map(\.op) == [op])
+        }
+    }
+
+    @Test @MainActor func uncheckedServerDoesNotBlock() async throws {
+        defer { Keychain.delete() }
+        let cases: [(FakeTransport.Step, ServerCompatibility)] = [
+            (offline, .couldNotCheck(.offline)),
+            (.answer(status: 500, json: #"{"error":"internal"}"#), .couldNotCheck(.server(code: "internal"))),
+            (.answer(status: 200, json: "{}"), .couldNotCheck(nil)),
+        ]
+        for (answer, expected) in cases {
+            let (model, transport, _) = try await signedIn([answer, synced])
+            let larder = try #require(model.larder)
+            let op = tea()
+            try larder.perform([op])
+
+            #expect(await model.checkServer() == expected)
+
+            #expect(model.incompatibility == nil)
+            #expect(!larder.isHeld)
+            let request = try #require(await transport.requests.last)
+            #expect(request.url?.path == "/v1/sync")
+            #expect(try JSON.decoder.decode(SyncBody.self, from: try #require(request.httpBody)).ops == [op])
+            #expect(larder.pending.isEmpty)
+        }
+    }
+
+    @Test @MainActor func refreshUnblocksOnlyWhenCompatible() async throws {
+        defer { Keychain.delete() }
+        let (model, transport, _) = try await signedIn([oldServer, tooOld, offline, compatible, synced])
+        let larder = try #require(model.larder)
+        #expect(await model.checkServer() == .incompatible(.serverTooOld(nil)))
+        let op = tea()
+        try larder.perform([op])
+
+        #expect(await model.checkServer() == .incompatible(.serverTooOld(Version(0, 0, 0))))
+        #expect(model.incompatibility == .serverTooOld(Version(0, 0, 0)))
+        #expect(await model.checkServer() == .couldNotCheck(.offline))
+        #expect(model.incompatibility == .serverTooOld(Version(0, 0, 0)))
+        #expect(larder.isHeld)
+        #expect(await paths(transport).count(where: { $0 == "/v1/sync" }) == 1)
+
+        #expect(await model.checkServer() == .compatible(minimumServerVersion))
+
+        #expect(model.incompatibility == nil)
+        #expect(!larder.isHeld)
+        let request = try #require(await transport.requests.last)
+        #expect(request.url?.path == "/v1/sync")
+        #expect(try JSON.decoder.decode(SyncBody.self, from: try #require(request.httpBody)).ops == [op])
+        #expect(larder.pending.isEmpty)
+    }
+
+    @Test @MainActor func signOutWhileBlocked() async throws {
+        defer { Keychain.delete() }
+        let (model, transport, directory) = try await signedIn([oldServer, signedOut])
+        try model.larder?.perform([tea()])
+        await model.checkServer()
+        try #require(model.incompatibility == .serverTooOld(nil))
+
+        #expect(await model.signOut(force: true) == .done)
+
+        #expect(model.incompatibility == nil)
+        #expect(model.account == nil)
+        #expect(model.larder == nil)
+        #expect(Keychain.load() == nil)
+        #expect(try contents(directory) == [])
+        #expect(await revokeShows(transport))
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await paths(transport) == ["/v1/version", "/v1/invites/redeem", "/v1/sync", "/v1/version", "/v1/signout"])
+    }
+
+    @Test @MainActor func signInChecksServerFirst() async throws {
+        defer { Keychain.delete() }
+        let cases: [(FakeTransport.Step, Incompatibility)] = [
+            (oldServer, .serverTooOld(nil)),
+            (tooNew, .appTooOld(Version(supportedServerMajor + 1, 0, 0))),
+        ]
+        for (answer, expected) in cases {
+            let transport = FakeTransport([answer])
+            let model = AppModel(transport: transport, dataDirectory: try temporaryDirectory())
+
+            #expect(await model.signIn(invite, deviceName: "iPhone") == .incompatible(expected, server: server))
+
+            let requests = await transport.requests
+            #expect(requests.map(\.url?.path) == ["/v1/version"])
+            #expect(requests.first?.value(forHTTPHeaderField: "Authorization") == nil)
+            #expect(model.account == nil)
+            #expect(model.incompatibility == nil)
+            #expect(Keychain.load() == nil)
+        }
+
+        // Couldn't check: the redeem goes ahead.
+        let transport = FakeTransport([offline, redeemed(), synced])
+        let model = AppModel(transport: transport, dataDirectory: try temporaryDirectory())
+        #expect(await model.signIn(invite, deviceName: "iPhone") == nil)
+        #expect(await paths(transport) == ["/v1/version", "/v1/invites/redeem", "/v1/sync"])
+        #expect(model.account == account)
+        #expect(model.incompatibility == nil)
+    }
+
+    @Test @MainActor func lateIncompatibleAnswerChangesNothing() async throws {
+        defer { Keychain.delete() }
+
+        // After a sign-out, the welcome screen stays.
+        let (model, transport, _) = try await signedIn([.hold, signedOut])
+        let checking = Task { await model.checkServer() }
+        try #require(await waitUntil { await transport.requests.count == 4 })
+        #expect(await model.signOut(force: true) == .done)
+        try #require(await revokeShows(transport))
+        await transport.release(status: 404, json: "404 page not found\n")
+        _ = await checking.value
+        #expect(model.incompatibility == nil)
+        #expect(model.account == nil)
+        #expect(model.larder == nil)
+
+        // After another account signed in, it stays unblocked and syncs.
+        let (next, nextTransport, _) = try await signedIn([.hold, signedOut, compatible, redeemed(token: "next-token"), synced, synced])
+        let nextChecking = Task { await next.checkServer() }
+        try #require(await waitUntil { await nextTransport.requests.count == 4 })
+        #expect(await next.signOut(force: true) == .done)
+        try #require(await revokeShows(nextTransport))
+        #expect(await next.signIn(invite, deviceName: "iPhone") == nil)
+        let larder = try #require(next.larder)
+        await nextTransport.release(status: 404, json: "404 page not found\n")
+        _ = await nextChecking.value
+        #expect(next.incompatibility == nil)
+        #expect(next.account?.token == "next-token")
+        #expect(!larder.isHeld)
+        await larder.sync()
+        #expect(await nextTransport.requests.last?.url?.path == "/v1/sync")
+        #expect(await nextTransport.requests.count == 9)
+    }
 }
 
 /// A missing catalog key would otherwise show "1 changes" with no failure.
@@ -807,4 +1004,18 @@ extension KeychainSuite {
     #expect(unsentChangesText(1) == "1 change hasn't been sent yet. Sign out and lose it?")
     #expect(unsentChangesText(2) == "2 changes haven't been sent yet. Sign out and lose them?")
     #expect(rateLimitedSignOutText(host: "lists.example.test") == "lists.example.test limited this iPhone's requests: too many in the past minute. Sign out anyway? This deletes everything on this iPhone. Ask an admin to remove this device from the household.")
+}
+
+@Test func compatibilityTexts() {
+    let host = "lists.example.test"
+    #expect(incompatibleText(.serverTooOld(Version(0, 0, 9)), host: host) == "The server at lists.example.test runs PocketLarder 0.0.9. This app needs \(minimumServerVersion) or newer. Ask your admin to update the server.")
+    #expect(incompatibleText(.serverTooOld(nil), host: host) == "The server at lists.example.test answered 404 to GET /v1/version, so it runs a PocketLarder version older than 0.1.0. Ask your admin to update the server.")
+    #expect(incompatibleText(.appTooOld(Version(1, 0, 0)), host: host) == "The server at lists.example.test runs PocketLarder 1.0.0, which this app doesn't support yet. Update PocketLarder from the App Store.")
+    #expect(signInErrorText(.incompatible(.serverTooOld(nil), server: server)) == incompatibleText(.serverTooOld(nil), host: host))
+    #expect(blockedSignOutText(0) == "Sign out of this iPhone? This deletes everything on this iPhone.")
+    #expect(blockedSignOutText(2) == "2 changes haven't been sent yet. Sign out and lose them?")
+    #expect(oldServerText(host: host) == "The server at lists.example.test answered 404 to GET /v1/version, so it runs a PocketLarder version older than 0.1.0.")
+    #expect(versionCheckFailureText(nil, host: host) == "lists.example.test answered GET /v1/version, but not with a version of the form MAJOR.MINOR.PATCH.")
+    #expect(versionCheckFailureText(.unexpected(status: 502), host: host) == "lists.example.test answered with HTTP status 502.")
+    #expect(versionCheckFailureText(.offline, host: host) == "Can't reach lists.example.test.")
 }

@@ -250,7 +250,8 @@ mockup's "Items tab, for comparison" and "+2" were mockup notes.
     note that hidden isn't encryption and that filed names reach the shared
     catalog;
   - "This iPhone": Add a device, Invites, Language, and Sign out;
-  - "Household", for admins only: Members & devices.
+  - "Household", for admins only: Members & devices;
+  - About, in its own last section (see Server compatibility).
 - **Sign out** first tries to send the queue. If changes are still unsent, it
   asks before discarding them. If the server can't be reached, it offers "Sign
   out anyway", which deletes everything locally and says an admin should remove
@@ -305,6 +306,62 @@ mockup's "Items tab, for comparison" and "+2" were mockup notes.
 - When the server refuses an invite with `too_many_invites`, Add a device and
   "Add a device for Sam…" show "Maximum number of open invites reached. Cancel
   one under Invites, or wait until one is used or expires."
+
+## Server compatibility
+
+The app and the server each have a version, MAJOR.MINOR.PATCH, both 0.1.0 to
+start. The app's compatibility setting is the lowest server version it needs
+and the newest server major it supports (see Versioning in `AGENTS.md`). It
+asks the server with `GET /v1/version`, which needs no token.
+
+- **When it checks:** after the account is restored at launch, each time the
+  app becomes active, before an invite is redeemed, and on Refresh. A
+  signed-out app checks nothing.
+- **Outcomes:** compatible; server too old (below the minimum, or a 404 on the
+  route, from a server older than 0.1.0); app too old (the server's major is
+  newer than the app supports); couldn't check (no answer, any other status,
+  or an answer without a version). Couldn't check never blocks: an unblocked
+  app behaves as before, with the offline badge and its texts, and a blocked
+  one stays blocked.
+- **Syncs wait for the check** **[Claude's call]**. From the start of an
+  activation until its check has an outcome, no sync goes out: not after a
+  change, not every minute and not on pull-to-refresh. The main screen stays
+  usable, and changes are queued as usual. A compatible answer, or one that
+  couldn't check, starts a sync at once.
+- **Blocking screen.** Server too old or app too old: a full screen replaces
+  the main screen and anything open over it. It says one of:
+  - "The server at lists.example.com runs PocketLarder 0.1.0. This app needs
+    0.2.0 or newer. Ask your admin to update the server."
+  - "The server at lists.example.com answered 404 to GET /v1/version, so it
+    runs a PocketLarder version older than 0.1.0. Ask your admin to update the
+    server."
+  - "The server at lists.example.com runs PocketLarder 1.0.0, which this app
+    doesn't support yet. Update PocketLarder from the App Store."
+
+  **Refresh** checks again and shows a spinner meanwhile. Still incompatible
+  updates the message, couldn't check adds the cause under it, and compatible
+  takes the screen away and syncs the queue. **Sign out of this iPhone** always
+  asks first: with unsent changes the question says how many are lost, as
+  "Sign out anyway" does, and otherwise "Sign out of this iPhone? This deletes
+  everything on this iPhone.". It never syncs first, because the server can't
+  be trusted to read this app's changes: it deletes everything on this iPhone
+  and tries once to tell the server to remove the device. The blocked state is
+  kept in memory only, so each launch starts unblocked until its check.
+- **Nothing else is sent while blocked:** only the version check and that one
+  sign-out request. Unsent changes stay queued on the phone and sync once the
+  server is compatible.
+- **Signing in:** the app checks the invite's server before redeeming the
+  invite. Too old or too new: nothing is redeemed, and the same message takes
+  the form's place, with Refresh and "Back to the welcome screen", since there
+  is no account to sign out of yet. Refresh that finds the server compatible
+  brings back the form with its fields filled, and doesn't sign in by itself
+  **[Claude's call]**. Couldn't check: the sign-in goes ahead.
+- **About** (My account > About): the app's version and build, as "0.1.0 (1)",
+  and the server's address and version, fetched each time the page opens. When
+  the answer has no version, About says why: the 404 sentence without its
+  advice, the usual failure text such as "Can't reach lists.example.com.", or
+  "lists.example.com answered GET /v1/version, but not with a version of the
+  form MAJOR.MINOR.PATCH.". About never blocks or unblocks the app.
 
 ## Language
 
@@ -362,9 +419,10 @@ All **[Claude's call]**, within the product spec and `API.md`.
   time. A 200 removes exactly the ops that were sent from the queue. Any other
   answer keeps them, unchanged, for the next attempt. A 401 signs out (see Sync
   feedback).
-- **When it syncs:** on launch and on return to the foreground, about a second
-  after a change, every minute while the app is open, and on pull-to-refresh.
-  There's no background syncing.
+- **When it syncs:** on launch and on return to the foreground, as soon as
+  that activation's version check has an outcome (see Server compatibility),
+  about a second after a change, every minute while the app is open, and on
+  pull-to-refresh. There's no background syncing.
 - **Values are checked before they're queued:** text and names up to 100
   characters, quantity 32, note 200, counted the way the server counts them
   after the same cleaning, so a valid queue never gets 400 `invalid`.

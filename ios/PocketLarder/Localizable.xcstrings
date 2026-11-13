@@ -1840,6 +1840,136 @@
           }
         }
       }
+    },
+    "Refresh": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktualisieren"
+          }
+        }
+      }
+    },
+    "Sign out of this iPhone": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses iPhone abmelden"
+          }
+        }
+      }
+    },
+    "Back to the welcome screen": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zurück zum Anfang"
+          }
+        }
+      }
+    },
+    "Ask your admin to update the server.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bitte deinen Admin, den Server zu aktualisieren."
+          }
+        }
+      }
+    },
+    "The server at %@ runs PocketLarder %@. This app needs %@ or newer.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Server unter %1$@ läuft mit PocketLarder %2$@. Diese App braucht %3$@ oder neuer."
+          }
+        }
+      }
+    },
+    "The server at %@ answered 404 to GET /v1/version, so it runs a PocketLarder version older than 0.1.0.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Server unter %@ hat auf GET\u00a0/\u2060v1/\u2060version mit 404 geantwortet. Er läuft also mit einer PocketLarder-Version, die älter als 0.1.0 ist."
+          }
+        }
+      }
+    },
+    "The server at %@ runs PocketLarder %@, which this app doesn't support yet. Update PocketLarder from the App Store.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Server unter %1$@ läuft mit PocketLarder %2$@. Diese Version unterstützt die App noch nicht. Aktualisiere PocketLarder im App Store."
+          }
+        }
+      }
+    },
+    "%@ answered GET /v1/version, but not with a version of the form MAJOR.MINOR.PATCH.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ hat auf GET\u00a0/\u2060v1/\u2060version geantwortet, aber nicht mit einer Version der Form MAJOR.MINOR.PATCH."
+          }
+        }
+      }
+    },
+    "Sign out of this iPhone? This deletes everything on this iPhone.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses iPhone abmelden? Das löscht alles auf diesem iPhone."
+          }
+        }
+      }
+    },
+    "About": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Info"
+          }
+        }
+      }
+    },
+    "App": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App"
+          }
+        }
+      }
+    },
+    "Version": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Version"
+          }
+        }
+      }
+    },
+    "Address": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adresse"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
