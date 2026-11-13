@@ -14,6 +14,7 @@ actor FixtureTransport: Transport {
     }
 
     private struct InviteAnswer: Encodable {
+        let id: String
         let url: String
         let expiresAt: Date
         let memberId: String
@@ -173,9 +174,11 @@ actor FixtureTransport: Transport {
             memberId = id
         }
         let expiresAt = Date.now.addingTimeInterval(24 * 60 * 60)
-        invites.append(FixtureInvite(id: newID(), memberId: memberId, expiresAt: expiresAt, used: false))
+        let id = newID()
+        invites.append(FixtureInvite(id: id, memberId: memberId, expiresAt: expiresAt, used: false))
         // A dummy, so that no real invite shows in a screenshot.
         let invite = InviteAnswer(
+            id: id,
             url: "pocketlarder://invite?server=https%3A%2F%2Ffixture.invalid&code=fixture-dummy-invite",
             expiresAt: expiresAt,
             memberId: memberId

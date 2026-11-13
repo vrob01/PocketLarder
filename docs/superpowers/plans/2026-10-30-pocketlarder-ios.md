@@ -802,7 +802,7 @@ Behavior, from `settings.html` cards 1–2:
   - "Share invite…" (`ShareLink`).
   - "Copy invite", which writes the pasteboard with `.localOnly: true` and `.expirationDate` 10 minutes ahead.
   - The warning "Anyone with this invite can sign in as you until it's used or expires. Only send it to yourself."
-  - "Cancel invite" (`revokeInvites()`), which closes the sheet.
+  - "Cancel invite" (`cancelInvite(invite.id)`), which closes the sheet, as does a 404 `not_found`.
 - **Offline:** each network action shows "Needs a connection to your server".
 - **`too_many_invites`:** Add a device shows "Maximum number of open invites reached. Cancel one under Invites, or wait until one is used or expires.", through `failureText`.
 

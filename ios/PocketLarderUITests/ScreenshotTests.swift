@@ -526,6 +526,13 @@ final class ScreenshotTests: XCTestCase {
                 scrollUp(app, in: app, until: cancel)
                 cancel.tap()
                 XCTAssertTrue(qr.waitForNonExistence(timeout: 20), "Cancel invite didn't close the sheet")
+
+                let invitesRow = withID(app.buttons, "account.invites")
+                scrollUp(app, in: app, until: invitesRow)
+                invitesRow.tap()
+                let rows = app.staticTexts.matching(NSPredicate(format: "identifier == 'invites.invite'"))
+                XCTAssertTrue(rows.element(boundBy: 2).waitForExistence(timeout: 20))
+                XCTAssertEqual(rows.count, 3, "Cancelling the sheet's invite removed others")
             }
             app.terminate()
         }
