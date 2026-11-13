@@ -12,6 +12,9 @@ import Observation
     public private(set) var lastSyncFailure: APIError?
     public private(set) var notices: [Notice] = []
     public var syncDelay: Duration = .seconds(1)
+    /// While set, no sync request goes out, a round in progress sends no further one, and changes stay queued. The app
+    /// holds a larder while it checks the server's version and while that version is incompatible.
+    public var isHeld = false
     public var onSignedOut: ((_ lostChanges: Int) -> Void)?
 
     private let files: LocalFiles
@@ -52,7 +55,7 @@ import Observation
 
     /// Returns when the state is settled: a call during a request asks for one more round and waits for the loop.
     public func sync() async {
-        guard !closed, let client else { return }
+        guard !closed, !isHeld, let client else { return }
         schedule?.cancel()
         schedule = nil
         if let running {
@@ -83,7 +86,7 @@ import Observation
 
     private func runRounds(_ client: APIClient) async {
         repeat {
-            guard !closed else { break }
+            guard !closed, !isHeld else { break }
             extraRound = false
             let sent = pending.prefix(500).map(\.op)
             do {

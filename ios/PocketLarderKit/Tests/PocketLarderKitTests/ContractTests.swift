@@ -9,6 +9,15 @@ import Testing
     #expect(snapshot.members.contains { $0.name == "Contract" })
 }
 
+/// Fails when the app's setting asks for more than this commit's server: raise the server's version with it.
+@Test(.enabled(if: Contract.isConfigured)) func serverIsCompatible() async throws {
+    let outcome = await APIClient(server: try Contract.serverURL(), token: nil).serverVersion()
+    guard case .compatible = outcome else {
+        Issue.record("This commit's server isn't compatible with the app's setting: \(outcome)")
+        return
+    }
+}
+
 @Test(.enabled(if: Contract.isConfigured)) func badTokenIsUnauthorized() async throws {
     let client = APIClient(server: try Contract.serverURL(), token: "x.y")
     await #expect(throws: APIError.server(code: "unauthorized")) {

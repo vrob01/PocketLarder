@@ -40,6 +40,9 @@ private func expectRequest(
     try await expectRequest("POST", "/v1/invites/redeem", body: #"{"code":"c","device_name":"Phone"}"#, authorized: false, answer: (200, redemption)) {
         _ = try await $0.redeem(code: "c", deviceName: "Phone")
     }
+    try await expectRequest("GET", "/v1/version", authorized: false, answer: (200, #"{"version":"0.1.0"}"#)) {
+        _ = await $0.serverVersion()
+    }
     try await expectRequest("POST", "/v1/sync", body: #"{"ops":[]}"#, answer: (200, synced)) {
         _ = try await $0.sync([])
     }
@@ -128,6 +131,31 @@ private func expectRequest(
         await #expect(throws: expected) {
             _ = try await client.sync([])
         }
+    }
+}
+
+/// Its own minimum and major, so that raising the app's setting changes nothing here.
+@Test func serverVersionOutcomes() async {
+    let cases: [(FakeTransport.Step, ServerCompatibility)] = [
+        (.answer(status: 200, json: #"{"version":"1.2.0"}"#), .compatible(Version(1, 2, 0))),
+        (.answer(status: 200, json: #"{"version":"1.10.3"}"#), .compatible(Version(1, 10, 3))),
+        (.answer(status: 200, json: #"{"version":"1.1.9"}"#), .incompatible(.serverTooOld(Version(1, 1, 9)))),
+        (.answer(status: 200, json: #"{"version":"0.9.0"}"#), .incompatible(.serverTooOld(Version(0, 9, 0)))),
+        (.answer(status: 404, json: "404 page not found\n"), .incompatible(.serverTooOld(nil))),
+        (.answer(status: 404, json: #"{"error":"not_found"}"#), .incompatible(.serverTooOld(nil))),
+        (.answer(status: 200, json: #"{"version":"2.0.0"}"#), .incompatible(.appTooOld(Version(2, 0, 0)))),
+        (.error(URLError(.notConnectedToInternet)), .couldNotCheck(.offline)),
+        (.error(URLError(.timedOut)), .couldNotCheck(.offline)),
+        (.answer(status: 500, json: #"{"error":"internal"}"#), .couldNotCheck(.server(code: "internal"))),
+        (.answer(status: 502, json: "Bad Gateway"), .couldNotCheck(.unexpected(status: 502))),
+        (.answer(status: 301, json: ""), .couldNotCheck(.unexpected(status: 301))),
+        (.answer(status: 200, json: "{}"), .couldNotCheck(nil)),
+        (.answer(status: 200, json: "0.1.0"), .couldNotCheck(nil)),
+        (.answer(status: 200, json: #"{"version":"0.1"}"#), .couldNotCheck(nil)),
+    ]
+    for (step, expected) in cases {
+        let (client, _) = fakeClient(step)
+        #expect(await client.serverVersion(minimum: Version(1, 2, 0), supportedMajor: 1) == expected)
     }
 }
 
