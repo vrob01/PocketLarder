@@ -61,15 +61,21 @@ jobs:
             -resultBundlePath "$RUNNER_TEMP/Tests.xcresult" && exit 0
           xcrun xcresulttool get test-results tests --path "$RUNNER_TEMP/Tests.xcresult" > "$RUNNER_TEMP/tests.json"
           failed=$(python3 - "$RUNNER_TEMP/tests.json" <<'EOF'
-          import json, sys
+          import json, re, sys
           ui, other = [], []
           def walk(node, bundle):
               if "bundle" in node.get("nodeType", ""):
                   bundle = node["name"]
               if node.get("nodeType") == "Test Case":
                   if node.get("result") == "Failed":
-                      test = bundle + "/" + node["nodeIdentifier"].removesuffix("()")
-                      (ui if bundle == "PocketLarderUITests" else other).append(test)
+                      name = node["nodeIdentifier"].removesuffix("()")
+                      if not re.fullmatch(r"\w+/\w+", name):
+                          # not a test but the runner failing, e.g. "PocketLarderUITests-Runner (64557) encountered an error"
+                          name = None
+                      if bundle == "PocketLarderUITests":
+                          ui.append(bundle + "/" + name if name else bundle)
+                      else:
+                          other.append(bundle + "/" + (name or "its test runner"))
                   return
               for child in node.get("children", []):
                   walk(child, bundle)
@@ -79,6 +85,9 @@ jobs:
               sys.exit("Tests outside the UI tests failed, so nothing runs again: " + ", ".join(other))
           if not ui:
               sys.exit("xcodebuild test failed, but Tests.xcresult has no failed test: the build or the test run itself failed.")
+          if "PocketLarderUITests" in ui:
+              # the UI test runner crashed, so its tests may never have run: run the whole bundle again
+              ui = ["PocketLarderUITests"]
           print(" ".join("-only-testing:" + test for test in ui))
           EOF
           )
