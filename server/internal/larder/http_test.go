@@ -102,6 +102,7 @@ func (e *testEnv) wantStatus(w *httptest.ResponseRecorder, status int) {
 }
 
 type inviteResponse struct {
+	ID        string `json:"id"`
 	URL       string `json:"url"`
 	ExpiresAt string `json:"expires_at"`
 	MemberID  string `json:"member_id"`

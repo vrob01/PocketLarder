@@ -279,7 +279,9 @@ func (s *server) invite(w http.ResponseWriter, r *http.Request, d device) {
 		s.fail(w, err)
 		return
 	}
+	id, _, _ := strings.Cut(code, ".")
 	writeJSON(w, http.StatusCreated, map[string]string{
+		"id":         id,
 		"url":        inviteURL(s.publicURL, code),
 		"expires_at": expires.UTC().Format(time.RFC3339),
 		"member_id":  memberID,

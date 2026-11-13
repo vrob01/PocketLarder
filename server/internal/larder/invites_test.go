@@ -159,6 +159,19 @@ func TestCancelInvite(t *testing.T) {
 	e.wantStatus(e.call("POST", "/v1/invites/redeem", "", redeemBody(second)), http.StatusOK)
 }
 
+func TestCreatedInviteIDCancelsOnlyThatInvite(t *testing.T) {
+	e := newTestEnv(t)
+	_, user := e.member("Sam", false)
+	first, firstCode := e.invite(user, map[string]any{})
+	_, second := e.invite(user, map[string]any{})
+
+	if first.ID == "" || first.ID != inviteID(firstCode) {
+		t.Errorf("id = %q, want %q, the id part of the code", first.ID, inviteID(firstCode))
+	}
+	e.wantStatus(e.call("DELETE", "/v1/invites/"+first.ID, user, nil), http.StatusNoContent)
+	e.wantStatus(e.call("POST", "/v1/invites/redeem", "", redeemBody(second)), http.StatusOK)
+}
+
 func TestCancelInviteRefusals(t *testing.T) {
 	e := newTestEnv(t)
 	alex, admin := e.member("Alex", true)

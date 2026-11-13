@@ -216,11 +216,12 @@ Content-Type: application/json
 HTTP/1.1 201 Created
 Content-Type: application/json
 
-{"url": "pocketlarder://invite?server=https%3A%2F%2Flists.example.com&code=fdd4efb3-cf5b-44e7-bec4-94df8e478f5f.ArBLMeKiOpJu5jbcasIRDr8-zlqlbdWCoIfZ9EsLPio", "expires_at": "2026-10-28T09:00:00Z", "member_id": "7317f087-10f7-4bd2-b23e-c5d5726c04bd"}
+{"id": "fdd4efb3-cf5b-44e7-bec4-94df8e478f5f", "url": "pocketlarder://invite?server=https%3A%2F%2Flists.example.com&code=fdd4efb3-cf5b-44e7-bec4-94df8e478f5f.ArBLMeKiOpJu5jbcasIRDr8-zlqlbdWCoIfZ9EsLPio", "expires_at": "2026-10-28T09:00:00Z", "member_id": "7317f087-10f7-4bd2-b23e-c5d5726c04bd"}
 ```
 
-`url` is the invite URL to show as a QR code and as text. `member_id` is the
-member the invite signs in.
+`id` is the invite's id, the one `GET /v1/invites` lists. `DELETE
+/v1/invites/{id}` takes it to cancel only this invite. `url` is the invite URL
+to show as a QR code and as text. `member_id` is the member the invite signs in.
 
 The invite belongs to the device that created it. Signing that device out, with
 `POST /v1/signout` or `DELETE /v1/admin/devices/{id}`, cancels the invite if it

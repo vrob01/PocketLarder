@@ -264,8 +264,9 @@ mockup's "Items tab, for comparison" and "+2" were mockup notes.
   iPhone's Camera", who it signs in, that it works once, and when it expires.
   Then Share invite, Copy invite, the warning "Anyone with this invite can sign
   in as you until it's used or expires. Only send it to yourself.", and "Cancel
-  invite", which revokes every pending invite for that member
-  (`POST /v1/invites/revoke`).
+  invite", which cancels only the invite on screen
+  (`DELETE /v1/invites/{id}`); the member's other invites keep working. An
+  invite that is already gone closes the sheet as on success.
 - **Invites**, from My account for the member's own invites and from a
   member's page for admins: one row per invite the server still has, in the
   server's order, newest first. Each row shows its state, "Open", "Used" or
@@ -293,14 +294,14 @@ mockup's "Items tab, for comparison" and "+2" were mockup notes.
   a device sheet for the new member. Signing a device out here, this iPhone's
   own included, cancels the unredeemed invites created on that device. The
   server does this (see `server/API.md`), and the confirmation says so. The
-  member's other pending invites stay until they expire, "Cancel invite"
-  revokes them, or they are cancelled one by one under the member's Invites.
+  member's other pending invites stay until they expire, or they
+  are cancelled one by one under the member's Invites.
 - Admin actions, invites and sign-out need a connection. Offline they say "Needs
   a connection to your server" instead of failing silently.
 - Error copy for admin actions: `conflict` "Someone in the household already
   has that name.", `last_admin` "The household needs at least one admin."
 - When the server refuses to cancel an invite with `invite_redeemed`, Invites
-  shows "Couldn't cancel the invite." with "This invite was already used."
+  and Add a device show "Couldn't cancel the invite." with "This invite was already used."
 - When the server refuses an invite with `too_many_invites`, Add a device and
   "Add a device for Sam…" show "Maximum number of open invites reached. Cancel
   one under Invites, or wait until one is used or expires."

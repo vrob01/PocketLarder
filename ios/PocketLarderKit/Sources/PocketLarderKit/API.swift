@@ -65,6 +65,7 @@ public struct SyncResponse: Decodable, Equatable, Sendable {
 }
 
 public struct CreatedInvite: Decodable, Equatable, Sendable {
+    public var id: String
     public var url: String
     public var expiresAt: Date
     public var memberId: String

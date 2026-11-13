@@ -8,7 +8,7 @@ import Testing
 private let server = "https://lists.example.test"
 private let redemption = #"{"token":"t","member_id":"m","device_id":"d"}"#
 private let synced = #"{"rejected":[],"snapshot":{"me":{"member_id":"m","device_id":"d","is_admin":false},"members":[],"lists":[],"stores":[],"categories":[],"items":[],"placements":[],"entries":[]}}"#
-private let created = #"{"url":"pocketlarder://invite?server=https%3A%2F%2Flists.example.test&code=c","expires_at":"2026-10-28T09:00:00Z","member_id":"m"}"#
+private let created = #"{"id":"i","url":"pocketlarder://invite?server=https%3A%2F%2Flists.example.test&code=c","expires_at":"2026-10-28T09:00:00Z","member_id":"m"}"#
 
 private func fakeClient(_ step: FakeTransport.Step) -> (APIClient, FakeTransport) {
     let transport = FakeTransport([step])
@@ -82,6 +82,14 @@ private func expectRequest(
     try await expectRequest("POST", "/v1/invites/clear", body: #"{"member_id":"m"}"#, answer: (200, #"{"cleared":2}"#)) {
         _ = try await $0.clearInvites(memberId: "m")
     }
+}
+
+@Test func createdInviteDecodes() async throws {
+    let (client, _) = fakeClient(.answer(status: 201, json: created))
+    let invite = try await client.createInvite()
+    #expect(invite.id == "i")
+    #expect(invite.memberId == "m")
+    #expect(invite.expiresAt == Date(timeIntervalSince1970: 1_793_178_000))
 }
 
 @Test func listedInvitesDecode() async throws {

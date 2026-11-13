@@ -10,7 +10,7 @@ struct AddDeviceSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var cancelling = false
-    @State private var cancelFailure: String?
+    @State private var cancelFailure: (title: String, message: String)?
 
     var body: some View {
         NavigationStack {
@@ -80,7 +80,7 @@ struct AddDeviceSheet: View {
         }
         .interactiveDismissDisabled(cancelling)
         .alert(
-            "Couldn't cancel the invite. It still works until it's used or expires.",
+            cancelFailure?.title ?? "",
             isPresented: Binding(
                 get: { cancelFailure != nil },
                 set: { if !$0 { cancelFailure = nil } }
@@ -89,7 +89,7 @@ struct AddDeviceSheet: View {
         ) { _ in
             Button("OK", role: .cancel) {}
         } message: {
-            Text($0)
+            Text($0.message)
         }
     }
 
@@ -101,18 +101,22 @@ struct AddDeviceSheet: View {
         )
     }
 
-    /// The server refuses a member who isn't an admin and names anyone, even themselves, so one's own invites go without an id.
+    /// Cancels only the invite on screen. One that is already gone closes the sheet, as a cancel does.
     private func cancel() {
         guard let client = model.client else { return }
         let host = model.account?.server.host() ?? ""
-        let me = model.account?.memberId
         cancelling = true
         Task {
             do throws(APIError) {
-                _ = try await client.revokeInvites(memberId: invite.memberId == me ? nil : invite.memberId)
+                try await client.cancelInvite(invite.id)
+                dismiss()
+            } catch .server(code: "not_found") {
                 dismiss()
             } catch {
-                cancelFailure = connectionFailureText(error, host: host)
+                let title = error == .server(code: "invite_redeemed")
+                    ? "Couldn't cancel the invite."
+                    : "Couldn't cancel the invite. It still works until it's used or expires."
+                cancelFailure = (title, connectionFailureText(error, host: host))
             }
             cancelling = false
         }

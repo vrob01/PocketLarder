@@ -134,7 +134,7 @@ import Testing
     #expect(paired.map(\.state) == [.redeemed])
 
     let admin = try await Contract.admin()
-    _ = try await admin.createInvite(memberId: memberId)
+    let created = try await admin.createInvite(memberId: memberId)
     let forAdmin = try await admin.invites(memberId: memberId)
     let own = try await client.invites()
     // Both can expire in the same second, which leaves their order to their ids.
@@ -144,9 +144,8 @@ import Testing
         _ = try await client.invites(memberId: memberId)
     }
 
-    let open = try #require(own.first { $0.state == .open })
     let redeemed = try #require(own.first { $0.state == .redeemed })
-    try await client.cancelInvite(open.id)
+    try await client.cancelInvite(created.id)
     let afterCancel = try await client.invites()
     #expect(afterCancel == [redeemed])
     await #expect(throws: APIError.server(code: "invite_redeemed")) {
