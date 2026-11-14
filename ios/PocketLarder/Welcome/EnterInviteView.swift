@@ -8,11 +8,13 @@ struct EnterInviteView: View {
     @State private var code = ""
     @State private var deviceName = "iPhone"
     @State private var signingIn = false
+    @State private var showingCertificateHelp = false
     @State private var signInError: AppModel.SignInError? = {
         #if DEBUG
         switch UserDefaults.standard.string(forKey: "inviteError") {
         case "invalidInvite": return .invalidInvite
         case "outdated": return .incompatible(.serverTooOld(nil), server: URL(string: "https://lists.example.com")!)
+        case "certificate": return .certificateRefused(host: "lists.example.com", reason: "“lists.example.com” certificate is not trusted")
         default: break
         }
         #endif
@@ -41,6 +43,7 @@ struct EnterInviteView: View {
         }
         .navigationTitle("Enter invite")
         .navigationBarTitleDisplayMode(.large)
+        .navigationDestination(isPresented: $showingCertificateHelp) { CertificateHelpView() }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 // Gone without the form, which it would fill out of sight.
@@ -82,19 +85,29 @@ struct EnterInviteView: View {
                 }
 
                 label("Server")
-                HStack(spacing: 0) {
-                    if !server.contains("://") {
-                        Text(verbatim: "https://").foregroundStyle(.secondary).accessibilityHidden(true)
+                HStack(spacing: 8) {
+                    HStack(spacing: 0) {
+                        if !server.contains("://") {
+                            Text(verbatim: "https://").foregroundStyle(.secondary).accessibilityHidden(true)
+                        }
+                        TextField("Server", text: $server, prompt: Text("lists.example.com"))
+                            .keyboardType(.URL)
+                            .textContentType(.URL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .focused($focused, equals: .server)
+                            .accessibilityIdentifier("invite.server")
                     }
-                    TextField("Server", text: $server, prompt: Text("lists.example.com"))
-                        .keyboardType(.URL)
-                        .textContentType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .focused($focused, equals: .server)
-                        .accessibilityIdentifier("invite.server")
+                    .fieldStyle()
+                    Button { showingCertificateHelp = true } label: {
+                        Image(systemName: "info.circle")
+                            .font(.title3)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityLabel("Servers with their own certificate")
+                    .accessibilityIdentifier("invite.certificateHelp")
                 }
-                .fieldStyle()
 
                 label("Invite code")
                 TextField("Invite code", text: $code, prompt: Text("from your invite"))
@@ -147,6 +160,14 @@ struct EnterInviteView: View {
                     Text(signInErrorText(signInError))
                         .padding(.top, 8)
                         .accessibilityIdentifier("invite.error")
+                    if case .certificateRefused = signInError {
+                        Button { showingCertificateHelp = true } label: {
+                            Text("Servers with their own certificate")
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .accessibilityIdentifier("invite.error.certificateHelp")
+                    }
                 }
             }
             .padding(24)
