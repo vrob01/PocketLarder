@@ -2,38 +2,83 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
+#if canImport(Security)
+import Security
+#endif
+import Synchronization
 
 public protocol Transport: Sendable {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
+    /// From the next request on, accepts any certificate from `host`, ignoring case and port. Nil trusts no host.
+    func trust(host: String?)
 }
 
-public struct URLSessionTransport: Transport {
-    private let session: URLSession
+extension Transport {
+    public func trust(host: String?) {}
+}
+
+public final class URLSessionTransport: Transport {
+    /// Replaced, never changed, so that no request started after `trust(host:)` reuses a connection or TLS session that
+    /// the old setting accepted. Requests take it under the lock, so that none starts on a session already invalidated.
+    private let current: Mutex<URLSession>
 
     public init() {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 30
-        // shortcut: the session holds its delegate until invalidated and this struct never does that, so each transport leaks both; upgrade if the app ever makes more than a few.
-        session = URLSession(configuration: configuration, delegate: RedirectRefuser(), delegateQueue: nil)
+        current = Mutex(Self.session(trusting: nil))
+    }
+
+    /// The session new requests start on.
+    var session: URLSession {
+        current.withLock { $0 }
+    }
+
+    public func trust(host: String?) {
+        current.withLock { session in
+            guard (session.delegate as? SessionDelegate)?.trustedHost != host else { return }
+            // Requests already running finish under the old setting.
+            session.finishTasksAndInvalidate()
+            session = Self.session(trusting: host)
+        }
     }
 
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         try await withCheckedThrowingContinuation { continuation in
-            session.dataTask(with: request) { data, response, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else if let response = response as? HTTPURLResponse {
-                    continuation.resume(returning: (data ?? Data(), response))
-                } else {
-                    continuation.resume(throwing: URLError(.badServerResponse))
-                }
-            }.resume()
+            current.withLock { session in
+                session.dataTask(with: request) { data, response, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else if let response = response as? HTTPURLResponse {
+                        continuation.resume(returning: (data ?? Data(), response))
+                    } else {
+                        continuation.resume(throwing: URLError(.badServerResponse))
+                    }
+                }.resume()
+            }
         }
+    }
+
+    private static func session(trusting host: String?) -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 30
+        // shortcut: a session holds its delegate until invalidated, and only `trust(host:)` invalidates one, so each transport leaks its last session and delegate; upgrade if the app ever makes more than a few.
+        return URLSession(configuration: configuration, delegate: SessionDelegate(trustedHost: host), delegateQueue: nil)
     }
 }
 
-/// Keeps the bearer token from following a redirect to another host. `send` returns the 3xx as an ordinary response.
-private final class RedirectRefuser: NSObject, URLSessionTaskDelegate {
+/// Keeps the bearer token from following a redirect to another host, and accepts any certificate from the one trusted
+/// host. `send` returns the 3xx as an ordinary response.
+final class SessionDelegate: NSObject, URLSessionTaskDelegate {
+    let trustedHost: String?
+
+    init(trustedHost: String?) {
+        self.trustedHost = trustedHost
+    }
+
+    /// Equal names only, so that no other host that starts or ends with the trusted one gets in. A challenge's host has
+    /// no port.
+    func trusts(_ host: String) -> Bool {
+        trustedHost?.lowercased() == host.lowercased()
+    }
+
     func urlSession(
         _ session: URLSession,
         task: URLSessionTask,
@@ -43,6 +88,22 @@ private final class RedirectRefuser: NSObject, URLSessionTaskDelegate {
     ) {
         completionHandler(nil)
     }
+
+    #if canImport(Security)
+    /// The trusted host's certificate is accepted unevaluated. Every other challenge is checked as the system checks it.
+    func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        let space = challenge.protectionSpace
+        guard space.authenticationMethod == NSURLAuthenticationMethodServerTrust, trusts(space.host), let trust = space.serverTrust else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        completionHandler(.useCredential, URLCredential(trust: trust))
+    }
+    #endif
 }
 
 public enum APIError: Error, Equatable, Sendable {
