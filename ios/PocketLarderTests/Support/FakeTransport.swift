@@ -1,7 +1,9 @@
 import Foundation
 import PocketLarderKit
+import Synchronization
 
-/// Records every request and answers from a script, one step per request. A copy of the kit's.
+/// Records every request and the host trusted when it was sent, and answers from a script, one step per request. A copy
+/// of the kit's, plus the trusted host.
 actor FakeTransport: Transport {
     enum Step {
         case answer(status: Int, json: String)
@@ -12,14 +14,27 @@ actor FakeTransport: Transport {
 
     private var script: [Step]
     private(set) var requests: [URLRequest] = []
+    /// What `trustedHost` was when each request in `requests` was sent.
+    private(set) var trustedHosts: [String?] = []
+    private let trusted = Mutex<String?>(nil)
     private var held: CheckedContinuation<(status: Int, json: String), Never>?
 
     init(_ script: [Step]) {
         self.script = script
     }
 
+    /// Nonisolated, as `AppModel` sets it from the main actor without waiting.
+    nonisolated var trustedHost: String? {
+        trusted.withLock { $0 }
+    }
+
+    nonisolated func trust(host: String?) {
+        trusted.withLock { $0 = host }
+    }
+
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         requests.append(request)
+        trustedHosts.append(trustedHost)
         switch script.removeFirst() {
         case let .answer(status, json):
             return (Data(json.utf8), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)

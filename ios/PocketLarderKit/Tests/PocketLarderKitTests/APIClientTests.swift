@@ -159,16 +159,22 @@ private func expectRequest(
     }
 }
 
-@Test func redirectsAreNotFollowed() async throws {
+/// Also while a host is trusted, and after a change of it, because each change moves the transport to a new session.
+@Test(arguments: [[], ["127.0.0.1"], ["localhost", "127.0.0.1"]])
+func redirectsAreNotFollowed(trusting hosts: [String]) async throws {
+    let transport = URLSessionTransport()
+    for host in hosts {
+        transport.trust(host: host)
+    }
     let target = try LoopbackServer(answer: "200 OK\r\n")
     let targetURL = "http://localhost:\(target.port)/v1/sync"
-    let (_, control) = try await URLSessionTransport().send(URLRequest(url: URL(string: targetURL)!))
+    let (_, control) = try await transport.send(URLRequest(url: URL(string: targetURL)!))
     #expect(control.statusCode == 200)
     #expect(target.requests.count == 1)
 
     for status in [301, 302, 303, 307, 308] {
         let origin = try LoopbackServer(answer: "\(status) Redirect\r\nLocation: \(targetURL)\r\n")
-        let client = APIClient(server: URL(string: "http://127.0.0.1:\(origin.port)")!, token: "t")
+        let client = APIClient(server: URL(string: "http://127.0.0.1:\(origin.port)")!, token: "t", transport: transport)
         await #expect(throws: APIError.unexpected(status: status)) {
             _ = try await client.sync([])
         }
@@ -178,6 +184,38 @@ private func expectRequest(
 
     #expect(target.requests.count == 1)
     #expect(!target.requests.contains { $0.localizedCaseInsensitiveContains("Authorization:") })
+}
+
+@Test func onlyTheTrustedHostIsTrusted() {
+    let delegate = SessionDelegate(trustedHost: "lists.example.test")
+    #expect(delegate.trusts("lists.example.test"))
+    #expect(delegate.trusts("Lists.EXAMPLE.test"))
+    for other in ["other.example.test", "example.test", "www.lists.example.test", "evil-lists.example.test", "lists.example.test.evil", "lists.example.testx", ""] {
+        #expect(!delegate.trusts(other), "\(other) is trusted")
+    }
+    #expect(!SessionDelegate(trustedHost: nil).trusts("lists.example.test"))
+}
+
+@Test func newTransportTrustsNothing() throws {
+    let delegate = try #require(URLSessionTransport().session.delegate as? SessionDelegate)
+    #expect(delegate.trustedHost == nil)
+}
+
+/// So that no connection accepted under the old setting serves a later request.
+@Test func trustChangeMovesToNewSession() throws {
+    let transport = URLSessionTransport()
+    let untrusting = transport.session
+    transport.trust(host: "lists.example.test")
+    let trusting = transport.session
+    #expect(trusting !== untrusting)
+    #expect(try #require(trusting.delegate as? SessionDelegate).trustedHost == "lists.example.test")
+
+    transport.trust(host: "lists.example.test")
+    #expect(transport.session === trusting)
+
+    transport.trust(host: nil)
+    #expect(transport.session !== trusting)
+    #expect(try #require(transport.session.delegate as? SessionDelegate).trustedHost == nil)
 }
 
 #if canImport(Glibc)

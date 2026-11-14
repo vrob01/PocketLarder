@@ -39,6 +39,28 @@ extension KeychainSuite {
         Keychain.delete()
         #expect(Keychain.load() == nil)
     }
+
+    /// An account as `Keychain.save` wrote it before `acceptsAnyCertificate` existed.
+    @Test func accountWithoutCertificateKeyLoads() throws {
+        defer { Keychain.delete() }
+        let json = #"{"device_id":"d","member_id":"m","server":"https:\/\/lists.example.test","token":"old"}"#
+        let attributes: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "org.pocketlarder.account",
+            kSecAttrSynchronizable as String: false,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            kSecValueData as String: Data(json.utf8),
+        ]
+        #expect(SecItemAdd(attributes as CFDictionary, nil) == errSecSuccess)
+        let server = try #require(URL(string: "https://lists.example.test"))
+        let old = try #require(Keychain.load())
+        #expect(old == Account(server: server, token: "old", memberId: "m", deviceId: "d"))
+        #expect(!old.acceptsAnyCertificate)
+
+        let trusting = Account(server: server, token: "new", memberId: "m", deviceId: "d", acceptsAnyCertificate: true)
+        try Keychain.save(trusting)
+        #expect(Keychain.load() == trusting)
+    }
 }
 
 @Test func dataDirectoryIsExcludedFromBackup() throws {

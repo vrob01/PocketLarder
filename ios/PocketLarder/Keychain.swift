@@ -7,6 +7,20 @@ struct Account: Codable, Equatable, Sendable {
     var token: String
     var memberId: String
     var deviceId: String
+    /// Set only by the user's choice on Enter invite. The transport then accepts any certificate from `server`'s host.
+    var acceptsAnyCertificate = false
+}
+
+extension Account {
+    /// An account saved before `acceptsAnyCertificate` existed has no key for it, and loads with it off.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        server = try container.decode(URL.self, forKey: .server)
+        token = try container.decode(String.self, forKey: .token)
+        memberId = try container.decode(String.self, forKey: .memberId)
+        deviceId = try container.decode(String.self, forKey: .deviceId)
+        acceptsAnyCertificate = try container.decodeIfPresent(Bool.self, forKey: .acceptsAnyCertificate) ?? false
+    }
 }
 
 /// The one place the device token is stored.

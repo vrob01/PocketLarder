@@ -2,6 +2,7 @@ import UIKit
 import XCTest
 
 private let example = "pocketlarder://invite?server=https%3A%2F%2Flists.example.com&code=fdd4efb3-cf5b-44e7-bec4-94df8e478f5f.ArBLMeKiOpJu5jbcasIRDr8-zlqlbdWCoIfZ9EsLPio"
+private let warning = "The app will accept any certificate from lists.example.com. Anyone on your network could then read and change your lists. Use with caution!"
 
 @MainActor
 final class ScreenshotTests: XCTestCase {
@@ -54,6 +55,105 @@ final class ScreenshotTests: XCTestCase {
             XCTAssertTrue(app.staticTexts["invite.error"].waitForExistence(timeout: 10))
             attach(app, "enter-invite-error-\(language)-\(appearance)")
             app.terminate()
+        }
+    }
+
+    /// The checkbox under the server field off, its warning, and on, then My account's section with
+    /// `-acceptsAnyCertificate YES`. In English light it also checks cancel, confirm, a change of host, links and Turn off.
+    func testAcceptAnyCertificate() {
+        for (language, appearance) in variants {
+            let checks = language == "en" && appearance == "light"
+            let app = launch(language, appearance)
+            app.buttons["welcome.enterInvite"].tap()
+            let checkbox = withID(app.switches, "invite.acceptAnyCertificate")
+            XCTAssertTrue(checkbox.waitForExistence(timeout: 10))
+            XCTAssertFalse(checkbox.isEnabled, "The checkbox is enabled without a server")
+            XCTAssertGreaterThanOrEqual(checkbox.frame.height.rounded(), 44)
+            let server = app.textFields["invite.server"]
+            server.tap()
+            server.typeText("lists.example.com")
+            let done = app.buttons["invite.keyboardDone"]
+            if done.waitForExistence(timeout: 2) { done.tap() }
+            XCTAssertTrue(checkbox.isEnabled)
+            XCTAssertEqual(checkbox.value as? String, "0")
+            attach(app, "enter-invite-certificate-off-\(language)-\(appearance)")
+
+            let alert = app.alerts.firstMatch
+            checkbox.tap()
+            XCTAssertTrue(alert.waitForExistence(timeout: 10))
+            let named = alert.staticTexts.matching(NSPredicate(format: "label CONTAINS 'lists.example.com'")).firstMatch
+            XCTAssertTrue(named.exists, "The warning doesn't name the host")
+            if language == "en" {
+                XCTAssertTrue(alert.staticTexts["Warning!"].exists)
+                XCTAssertTrue(alert.staticTexts[warning].exists)
+            }
+            // The alert is still fading in.
+            Thread.sleep(forTimeInterval: 0.5)
+            attach(app, "enter-invite-certificate-warning-\(language)-\(appearance)")
+            if checks {
+                alert.buttons["Cancel"].tap()
+                XCTAssertTrue(alert.waitForNonExistence(timeout: 5))
+                XCTAssertEqual(checkbox.value as? String, "0", "Cancel turned it on")
+                checkbox.tap()
+                XCTAssertTrue(alert.waitForExistence(timeout: 10))
+            }
+            alert.buttons[language == "en" ? "Accept any certificate" : "Jedes Zertifikat akzeptieren"].tap()
+            XCTAssertTrue(alert.waitForNonExistence(timeout: 5))
+            XCTAssertEqual(checkbox.value as? String, "1")
+            attach(app, "enter-invite-certificate-on-\(language)-\(appearance)")
+
+            if checks {
+                checkbox.tap()
+                XCTAssertEqual(checkbox.value as? String, "0")
+                XCTAssertFalse(alert.exists, "Turning it off asked first")
+
+                // Into the empty code field, so that the whole field is the link.
+                checkbox.tap()
+                answer(app, warning, with: "Accept any certificate")
+                let code = app.textFields["invite.code"]
+                code.tap()
+                code.typeText("pocketlarder://invite?server=https%3A%2F%2Fother.example.com&code=other-code")
+                XCTAssertEqual(server.value as? String, "other.example.com")
+                XCTAssertEqual(checkbox.value as? String, "0", "A link for another host kept it on")
+
+                checkbox.tap()
+                answer(app, "The app will accept any certificate from other.example.com. Anyone on your network could then read and change your lists. Use with caution!", with: "Accept any certificate")
+                // After the end of the text, then back to the same host.
+                server.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+                server.typeText("x")
+                XCTAssertEqual(server.value as? String, "other.example.comx")
+                XCTAssertEqual(checkbox.value as? String, "0", "Another host kept it on")
+                server.typeText(XCUIKeyboardKey.delete.rawValue)
+                XCTAssertEqual(server.value as? String, "other.example.com")
+                XCTAssertEqual(checkbox.value as? String, "0", "Coming back to the host turned it on")
+
+                goBack(app)
+                app.buttons["welcome.enterInvite"].tap()
+                XCTAssertTrue(code.waitForExistence(timeout: 10))
+                code.tap()
+                code.typeText(example)
+                XCTAssertEqual(server.value as? String, "lists.example.com")
+                XCTAssertEqual(checkbox.value as? String, "0", "A link turned it on")
+            }
+            app.terminate()
+
+            let signedIn = launch(language, appearance, "-fixture", "household", "-acceptsAnyCertificate", "YES")
+            // Once the first sync is in, so that the header has the name.
+            _ = addField(signedIn)
+            let header = openAccount(signedIn)
+            let row = withID(signedIn.descendants(matching: .any), "account.acceptAnyCertificate")
+            XCTAssertTrue(row.waitForExistence(timeout: 10))
+            XCTAssertGreaterThan(row.frame.minY, header.frame.maxY, "The section isn't below the header")
+            XCTAssertLessThan(row.frame.maxY, signedIn.segmentedControls.firstMatch.frame.minY, "The section isn't above List layout")
+            if language == "en" {
+                XCTAssertTrue(row.label.contains("Accepting any certificate from fixture.invalid"), "The row reads \(row.label)")
+            }
+            attach(signedIn, "account-certificate-\(language)-\(appearance)")
+            if checks {
+                withID(signedIn.buttons, "account.acceptAnyCertificate.off").tap()
+                XCTAssertTrue(row.waitForNonExistence(timeout: 5), "Turn off left the section")
+            }
+            signedIn.terminate()
         }
     }
 
@@ -498,6 +598,7 @@ final class ScreenshotTests: XCTestCase {
                 }
             }
             attach(app, "account-\(language)-\(appearance)")
+            XCTAssertFalse(withID(app.descendants(matching: .any), "account.acceptAnyCertificate").exists, "The certificate section shows")
 
             if checks {
                 let open = app.buttons.matching(NSPredicate(format: "label == 'Open'")).firstMatch

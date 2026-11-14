@@ -1970,6 +1970,106 @@
           }
         }
       }
+    },
+    "Accept any certificate from this server": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jedes Zertifikat dieses Servers akzeptieren"
+          }
+        }
+      }
+    },
+    "Warning!": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Warnung!"
+          }
+        }
+      }
+    },
+    "Accept any certificate": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jedes Zertifikat akzeptieren"
+          }
+        }
+      }
+    },
+    "The app will accept any certificate from %@. Anyone on your network could then read and change your lists. Use with caution!": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die App wird jedes Zertifikat von %@ akzeptieren. Jeder in deinem Netzwerk könnte dann deine Listen lesen und ändern. Verwende das mit Vorsicht!"
+          }
+        }
+      }
+    },
+    "Accepting any certificate from %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jedes Zertifikat von %@ wird akzeptiert"
+          }
+        }
+      }
+    },
+    "Turn off": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ausschalten"
+          }
+        }
+      }
+    },
+    "Anyone on your network could read and change your lists. To turn it on again, sign out and sign in with a new invite.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jeder in deinem Netzwerk könnte deine Listen lesen und ändern. Um es wieder einzuschalten, melde dich ab und mit einer neuen Einladung wieder an."
+          }
+        }
+      }
+    },
+    "Couldn't save the change in the Keychain on this iPhone: status %lld.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Änderung konnte nicht im Schlüsselbund dieses iPhones gespeichert werden: Status %lld."
+          }
+        }
+      }
+    },
+    "Couldn't save the change in the Keychain on this iPhone: %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Änderung konnte nicht im Schlüsselbund dieses iPhones gespeichert werden: %@"
+          }
+        }
+      }
+    },
+    "Accepting any certificate is off now, but on again the next time the app starts.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jedes Zertifikat zu akzeptieren ist jetzt aus, beim nächsten Start der App aber wieder an."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

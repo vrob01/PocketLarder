@@ -1,5 +1,6 @@
 import Foundation
 import PocketLarderKit
+import Security
 import Testing
 @testable import PocketLarder
 
@@ -62,13 +63,14 @@ private func seededDirectory() throws -> URL {
 /// Signed in with a new directory and an empty Keychain. `script` answers the requests after the sign-in's three: the
 /// version check, the redeem and the first sync.
 @MainActor private func signedIn(
-    _ script: [FakeTransport.Step] = []
+    _ script: [FakeTransport.Step] = [],
+    acceptsAnyCertificate: Bool = false
 ) async throws -> (model: AppModel, transport: FakeTransport, directory: URL) {
     Keychain.delete()
     let directory = try temporaryDirectory()
     let transport = FakeTransport([compatible, redeemed(), synced] + script)
     let model = AppModel(transport: transport, dataDirectory: directory)
-    try #require(await model.signIn(invite, deviceName: "iPhone") == nil)
+    try #require(await model.signIn(invite, deviceName: "iPhone", acceptsAnyCertificate: acceptsAnyCertificate) == nil)
     return (model, transport, directory)
 }
 
@@ -169,9 +171,139 @@ extension KeychainSuite {
         #expect(model.memberName == "Alex")
         let requests = await transport.requests
         #expect(requests.map(\.url?.path) == ["/v1/version", "/v1/invites/redeem", "/v1/sync"])
+        #expect(await transport.trustedHosts == [nil, nil, nil])
         let body = try JSON.decoder.decode(RedeemBody.self, from: try #require(requests.first { $0.url?.path == "/v1/invites/redeem" }?.httpBody))
         #expect(body.deviceName == "Kitchen iPhone")
         #expect(body.code == "code")
+    }
+
+    @Test @MainActor func signInTrustsChosenHost() async throws {
+        defer { Keychain.delete() }
+        let (model, transport, _) = try await signedIn([synced], acceptsAnyCertificate: true)
+
+        #expect(await transport.trustedHosts == ["lists.example.test", "lists.example.test", "lists.example.test"])
+        #expect(model.account?.acceptsAnyCertificate == true)
+        #expect(Keychain.load() == model.account)
+        await model.larder?.sync()
+        #expect(await transport.trustedHosts.count == 4)
+        #expect(await transport.trustedHosts.last == "lists.example.test")
+    }
+
+    /// Each sign-out leaves the host trusted, so that a forced one's request can still reach the server, and the next
+    /// sign-in without the choice clears it before its first request.
+    @Test @MainActor func signInAfterSignOutTrustsOnlyItsChoice() async throws {
+        defer { Keychain.delete() }
+        let next = [compatible, redeemed(token: "next-token"), synced]
+        let routes: [(name: String, script: [FakeTransport.Step], signOut: @MainActor (AppModel) async -> Void)] = [
+            ("forced", [signedOut], { _ = await $0.signOut(force: true) }),
+            ("normal", [synced, signedOut], { _ = await $0.signOut(force: false) }),
+            ("blocked", [oldServer, signedOut], {
+                await $0.checkServer()
+                _ = await $0.signOut(force: true)
+            }),
+            ("401", [unauthorized], { await $0.larder?.sync() }),
+        ]
+        for route in routes {
+            let (model, transport, _) = try await signedIn(route.script + next, acceptsAnyCertificate: true)
+
+            await route.signOut(model)
+
+            #expect(model.account == nil, "\(route.name)")
+            #expect(Keychain.load() == nil, "\(route.name)")
+            try #require(await waitUntil { await transport.requests.count == 3 + route.script.count }, "\(route.name)")
+            #expect(await transport.trustedHosts.allSatisfy { $0 == "lists.example.test" }, "\(route.name)")
+            #expect(transport.trustedHost == "lists.example.test", "\(route.name)")
+
+            #expect(await model.signIn(invite, deviceName: "iPhone") == nil, "\(route.name)")
+
+            #expect(await transport.trustedHosts.suffix(3) == [nil, nil, nil], "\(route.name)")
+            #expect(model.account?.acceptsAnyCertificate == false, "\(route.name)")
+            #expect(Keychain.load() == model.account, "\(route.name)")
+        }
+    }
+
+    @Test @MainActor func inviteLinkCantTrustHost() async throws {
+        defer { Keychain.delete() }
+        let transport = FakeTransport([compatible, redeemed(), synced])
+        let model = AppModel(transport: transport, dataDirectory: try temporaryDirectory())
+        transport.trust(host: "before.example.test")
+        let link = "pocketlarder://invite?server=https%3A%2F%2Flists.example.test&code=code&accepts_any_certificate=true&trust=lists.example.test"
+
+        model.open(try #require(URL(string: link)))
+
+        #expect(model.pendingInvite == invite)
+        #expect(transport.trustedHost == "before.example.test")
+        #expect(await model.signIn(try #require(model.pendingInvite), deviceName: "iPhone") == nil)
+        #expect(await transport.trustedHosts == [nil, nil, nil])
+        #expect(model.account?.acceptsAnyCertificate == false)
+    }
+
+    @Test @MainActor func alreadySignedInKeepsTrustedHost() async throws {
+        defer { Keychain.delete() }
+        let (model, transport, _) = try await signedIn(acceptsAnyCertificate: true)
+        let other = Invite(server: try #require(URL(string: "https://other.example.test")), code: "code")
+
+        #expect(await model.signIn(other, deviceName: "iPhone") == .alreadySignedIn(name: "Alex"))
+        #expect(transport.trustedHost == "lists.example.test")
+        #expect(await model.signIn(other, deviceName: "iPhone", acceptsAnyCertificate: true) == .alreadySignedIn(name: "Alex"))
+        #expect(transport.trustedHost == "lists.example.test")
+        #expect(await transport.requests.count == 3)
+    }
+
+    @Test @MainActor func launchTrustsStoredChoice() throws {
+        defer { Keychain.delete() }
+        for accepts in [true, false] {
+            var stored = account
+            stored.acceptsAnyCertificate = accepts
+            let expected = accepts ? "lists.example.test" : nil
+
+            try Keychain.save(stored)
+            let launched = FakeTransport([])
+            launched.trust(host: "before.example.test")
+            #expect(AppModel(transport: launched, dataDirectory: try temporaryDirectory()).account == stored)
+            #expect(launched.trustedHost == expected)
+
+            Keychain.delete()
+            let restored = FakeTransport([])
+            let model = AppModel(transport: restored, dataDirectory: try temporaryDirectory())
+            restored.trust(host: "before.example.test")
+            try Keychain.save(stored)
+            model.restoreFromKeychain()
+            #expect(model.account == stored)
+            #expect(restored.trustedHost == expected)
+            Keychain.delete()
+        }
+    }
+
+    @Test @MainActor func turningOffTrustSaves() async throws {
+        defer { Keychain.delete() }
+        let (model, transport, _) = try await signedIn([synced], acceptsAnyCertificate: true)
+
+        try model.stopAcceptingAnyCertificate()
+
+        #expect(transport.trustedHost == nil)
+        #expect(model.account?.acceptsAnyCertificate == false)
+        #expect(Keychain.load() == model.account)
+        await model.larder?.sync()
+        #expect(await transport.trustedHosts == ["lists.example.test", "lists.example.test", "lists.example.test", nil])
+    }
+
+    @Test @MainActor func turningOffTrustWithFailedSave() async throws {
+        defer { Keychain.delete() }
+        let transport = FakeTransport([compatible, redeemed(), synced])
+        var fails = false
+        let model = AppModel(transport: transport, dataDirectory: try temporaryDirectory(), saveAccount: {
+            if fails { throw Keychain.SaveError(status: errSecInteractionNotAllowed) }
+            try Keychain.save($0)
+        })
+        try #require(await model.signIn(invite, deviceName: "iPhone", acceptsAnyCertificate: true) == nil)
+        fails = true
+
+        #expect(throws: Keychain.SaveError.self) { try model.stopAcceptingAnyCertificate() }
+
+        #expect(transport.trustedHost == nil)
+        #expect(model.account?.acceptsAnyCertificate == false)
+        #expect(Keychain.load()?.acceptsAnyCertificate == true)
     }
 
     @Test @MainActor func signInErrors() async throws {
@@ -1004,6 +1136,7 @@ extension KeychainSuite {
     #expect(unsentChangesText(1) == "1 change hasn't been sent yet. Sign out and lose it?")
     #expect(unsentChangesText(2) == "2 changes haven't been sent yet. Sign out and lose them?")
     #expect(rateLimitedSignOutText(host: "lists.example.test") == "lists.example.test limited this iPhone's requests: too many in the past minute. Sign out anyway? This deletes everything on this iPhone. Ask an admin to remove this device from the household.")
+    #expect(certificateSaveFailureText(Keychain.SaveError(status: -25308)) == "Couldn't save the change in the Keychain on this iPhone: status -25308. Accepting any certificate is off now, but on again the next time the app starts.")
 }
 
 @Test func compatibilityTexts() {
