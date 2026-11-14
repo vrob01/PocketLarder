@@ -1,5 +1,6 @@
 import Foundation
 import PocketLarderKit
+import Security
 import Testing
 @testable import PocketLarder
 
@@ -179,10 +180,19 @@ extension KeychainSuite {
         let cases: [(FakeTransport.Step, AppModel.SignInError)] = [
             (.answer(status: 401, json: #"{"error":"invalid_invite"}"#), .invalidInvite),
             (.answer(status: 429, json: #"{"error":"rate_limited"}"#), .rateLimited),
-            (offline, .unreachable(host: "lists.example.test")),
             (.error(CertificateRefused(reason: "R")), .certificateRefused(host: "lists.example.test", reason: "R")),
             (.error(URLError(.serverCertificateUntrusted)), .certificateRefused(host: "lists.example.test", reason: nil)),
-            (.answer(status: 500, json: #"{"error":"internal"}"#), .other),
+            (.error(URLError(.cannotFindHost)), .failed(.offline(.hostNotFound), host: "lists.example.test")),
+            (.error(URLError(.cannotConnectToHost)), .failed(.offline(.refused), host: "lists.example.test")),
+            (.error(URLError(.timedOut)), .failed(.offline(.timedOut), host: "lists.example.test")),
+            (offline, .failed(.offline(.noNetwork), host: "lists.example.test")),
+            (.error(URLError(.networkConnectionLost)), .failed(.offline(.connectionLost), host: "lists.example.test")),
+            (.error(URLError(.secureConnectionFailed)), .failed(.offline(.tlsFailed), host: "lists.example.test")),
+            (.error(URLError(.badServerResponse)), .failed(.offline(.other(code: -1011)), host: "lists.example.test")),
+            (.answer(status: 500, json: #"{"error":"internal"}"#), .failed(.server(code: "internal"), host: "lists.example.test")),
+            (.answer(status: 502, json: "Bad Gateway"), .failed(.unexpected(status: 502), host: "lists.example.test")),
+            (.answer(status: 301, json: ""), .failed(.unexpected(status: 301), host: "lists.example.test")),
+            (.answer(status: 200, json: "<html>Sign in to the Wi-Fi</html>"), .failed(.notPocketLarder(status: 200), host: "lists.example.test")),
         ]
         for (step, expected) in cases {
             let model = AppModel(transport: FakeTransport([compatible, step]), dataDirectory: try temporaryDirectory())
@@ -214,7 +224,7 @@ extension KeychainSuite {
         let op = tea()
         try model.larder?.perform([op])
 
-        #expect(await model.signOut(force: false) == .unreachable)
+        #expect(await model.signOut(force: false) == .failed(.offline(.noNetwork)))
         #expect(model.account == account)
         #expect(Keychain.load() == account)
         #expect(model.larder?.pending.map(\.op) == [op])
@@ -365,7 +375,7 @@ extension KeychainSuite {
 
         await transport.release(status: 200, json: redeemJSON(token: "late-token"))
 
-        #expect(await first.value == .other)
+        #expect(await first.value == .overtaken)
         #expect(model.account == nil)
         #expect(model.larder == nil)
         #expect(Keychain.load() == nil)
@@ -380,8 +390,8 @@ extension KeychainSuite {
         let invalid = FakeTransport.Step.answer(status: 400, json: #"{"error":"invalid"}"#)
         let routes: [(script: [FakeTransport.Step], dialog: AppModel.SignOutResult?)] = [
             ([signedOut], nil),
-            ([invalid, signedOut], .unsentChanges(1)),
-            ([offline, signedOut], .unreachable),
+            ([invalid, signedOut], .failed(.server(code: "invalid"))),
+            ([offline, signedOut], .failed(.offline(.noNetwork))),
         ]
         for route in routes {
             let (model, transport, directory) = try await signedIn(route.script)
@@ -459,7 +469,7 @@ extension KeychainSuite {
             let transport = FakeTransport([compatible, redeemed(), answer, synced])
             let model = AppModel(transport: transport, dataDirectory: directory, saveAccount: { _ in throw SaveFailed() })
 
-            #expect(await model.signIn(invite, deviceName: "iPhone") == .other)
+            #expect(await model.signIn(invite, deviceName: "iPhone") == .keychainFailed(status: nil))
 
             #expect(await revokeShows(transport))
             try await Task.sleep(for: .milliseconds(50))
@@ -471,6 +481,19 @@ extension KeychainSuite {
             #expect(model.signedOutLostChanges == nil)
             #expect(await transport.requests.count == 3)
         }
+    }
+
+    @Test @MainActor func failedSaveNamesItsStatus() async throws {
+        defer { Keychain.delete() }
+        let transport = FakeTransport([compatible, redeemed(), signedOut])
+        let model = AppModel(transport: transport, dataDirectory: try temporaryDirectory(), saveAccount: { _ in
+            throw Keychain.SaveError(status: errSecInteractionNotAllowed)
+        })
+
+        #expect(await model.signIn(invite, deviceName: "iPhone") == .keychainFailed(status: errSecInteractionNotAllowed))
+
+        #expect(model.account == nil)
+        #expect(await revokeShows(transport))
     }
 
     @Test @MainActor func heldFailedSaveRevokeSparesNextAccount() async throws {
@@ -488,7 +511,7 @@ extension KeychainSuite {
         var dropped: AppModel.SignInError?
         Task { dropped = await model.signIn(invite, deviceName: "iPhone") }
         #expect(await waitUntil { dropped != nil })
-        #expect(dropped == .other)
+        #expect(dropped == .keychainFailed(status: nil))
         // If it never shows, the next `signIn` would wait on the `.hold` itself, and nothing is held to release.
         try #require(await revokeShows(transport))
         #expect(await model.signIn(invite, deviceName: "iPhone") == nil)
@@ -535,19 +558,33 @@ extension KeychainSuite {
         #expect(await transport.requests.count == 3)
     }
 
-    @Test @MainActor func signOutOtherAnswers() async throws {
+    /// A failed sync asks first and sends no sign-out request, even with unsent changes: its question already says that
+    /// everything on this iPhone goes.
+    @Test @MainActor func signOutAfterFailedSync() async throws {
         defer { Keychain.delete() }
+        let cases: [(FakeTransport.Step, APIError)] = [
+            (offline, .offline(.noNetwork)),
+            (.answer(status: 400, json: #"{"error":"invalid"}"#), .server(code: "invalid")),
+            (.answer(status: 301, json: ""), .unexpected(status: 301)),
+            (.answer(status: 502, json: "Bad Gateway"), .unexpected(status: 502)),
+            (.answer(status: 429, json: #"{"error":"rate_limited"}"#), .server(code: "rate_limited")),
+            (.error(CertificateRefused(reason: "R")), .certificateRefused(reason: "R")),
+        ]
+        for (answer, failure) in cases {
+            let (model, transport, directory) = try await signedIn([answer])
+            let op = tea()
+            try model.larder?.perform([op])
 
-        // The server answered, so these changes are unsent, not stuck behind a lost connection.
-        let invalid = try await signedIn([.answer(status: 400, json: #"{"error":"invalid"}"#)])
-        try invalid.model.larder?.perform([tea()])
-        #expect(await invalid.model.signOut(force: false) == .unsentChanges(1))
-        #expect(invalid.model.account == account)
-        #expect(Keychain.load() == account)
-        #expect(invalid.model.larder?.pending.count == 1)
-        #expect(LocalFiles(directory: invalid.directory).load().queue.count == 1)
-        #expect(!(await paths(invalid.transport)).contains("/v1/signout"))
+            #expect(await model.signOut(force: false) == .failed(failure))
 
+            #expect(model.account == account)
+            #expect(Keychain.load() == account)
+            #expect(model.larder?.pending.map(\.op) == [op])
+            #expect(LocalFiles(directory: directory).load().queue.map(\.op) == [op])
+            #expect(!(await paths(transport)).contains("/v1/signout"))
+        }
+
+        // A 401 during the sync has wiped already.
         let revoked = try await signedIn([unauthorized])
         try revoked.model.larder?.perform([tea()])
         #expect(await revoked.model.signOut(force: false) == .done)
@@ -555,68 +592,55 @@ extension KeychainSuite {
         #expect(Keychain.load() == nil)
         #expect(revoked.model.signedOutLostChanges == 1)
         #expect(!(await paths(revoked.transport)).contains("/v1/signout"))
-
-        let failing = try await signedIn([synced, .answer(status: 500, json: #"{"error":"internal"}"#)])
-        #expect(await failing.model.signOut(force: false) == .unreachable)
-        #expect(failing.model.account == account)
-        #expect(Keychain.load() == account)
-        #expect(await failing.transport.requests.last?.url?.path == "/v1/signout")
-
-        let gone = try await signedIn([synced, unauthorized])
-        #expect(await gone.model.signOut(force: false) == .done)
-        #expect(gone.model.account == nil)
-        #expect(Keychain.load() == nil)
-        #expect(try contents(gone.directory) == [])
-        #expect(gone.model.signedOutLostChanges == nil)
     }
 
-    @Test @MainActor func signOutRateLimited() async throws {
+    /// Only `unauthorized` and a success sign out: then the server already treats this device as signed out.
+    @Test @MainActor func signOutRequestAnswers() async throws {
         defer { Keychain.delete() }
-        let rateLimited = FakeTransport.Step.answer(status: 429, json: #"{"error":"rate_limited"}"#)
+        let cases: [(FakeTransport.Step, AppModel.SignOutResult)] = [
+            (.answer(status: 403, json: "Forbidden"), .failed(.unexpected(status: 403))),
+            (.answer(status: 500, json: #"{"error":"internal"}"#), .failed(.server(code: "internal"))),
+            (.answer(status: 502, json: "Bad Gateway"), .failed(.unexpected(status: 502))),
+            (offline, .failed(.offline(.noNetwork))),
+            (.answer(status: 429, json: #"{"error":"rate_limited"}"#), .failed(.server(code: "rate_limited"))),
+            (.error(URLError(.serverCertificateUntrusted)), .failed(.certificateRefused(reason: nil))),
+            (unauthorized, .done),
+            (signedOut, .done),
+        ]
+        for (answer, result) in cases {
+            let (model, transport, directory) = try await signedIn([synced, answer])
 
-        // A 429 wins over the unsent change: its question already says that everything on this iPhone goes.
-        let (model, transport, directory) = try await signedIn([rateLimited, signedOut])
-        let op = tea()
-        try model.larder?.perform([op])
-        #expect(await model.signOut(force: false) == .rateLimited)
-        #expect(model.account == account)
-        #expect(Keychain.load() == account)
-        #expect(model.larder?.pending.map(\.op) == [op])
-        #expect(LocalFiles(directory: directory).load().queue.map(\.op) == [op])
-        #expect(!(await paths(transport)).contains("/v1/signout"))
+            #expect(await model.signOut(force: false) == result)
 
-        #expect(await model.signOut(force: true) == .done)
-        #expect(model.account == nil)
-        #expect(model.larder == nil)
-        #expect(Keychain.load() == nil)
-        #expect(try contents(directory) == [])
-        #expect(await revokeShows(transport))
-
-        let refused = try await signedIn([synced, rateLimited])
-        #expect(await refused.model.signOut(force: false) == .rateLimited)
-        #expect(refused.model.account == account)
-        #expect(Keychain.load() == account)
-        #expect(await refused.transport.requests.last?.url?.path == "/v1/signout")
+            #expect(await transport.requests.last?.url?.path == "/v1/signout")
+            if result == .done {
+                #expect(model.account == nil)
+                #expect(Keychain.load() == nil)
+                #expect(try contents(directory) == [])
+                #expect(model.signedOutLostChanges == nil)
+            } else {
+                #expect(model.account == account)
+                #expect(Keychain.load() == account)
+                #expect(try contents(directory).contains("snapshot.json"))
+            }
+        }
     }
 
-    @Test @MainActor func signOutCertificateRefused() async throws {
+    /// Changes stay unsent after a sync without a failure only while the larder is held.
+    @Test @MainActor func heldSignOutAsksAboutUnsentChanges() async throws {
         defer { Keychain.delete() }
-        let refusal = FakeTransport.Step.error(CertificateRefused(reason: "R"))
+        let (model, transport, _) = try await signedIn()
+        let larder = try #require(model.larder)
+        larder.isHeld = true
+        try larder.perform([tea()])
 
-        let (model, transport, _) = try await signedIn([refusal])
-        #expect(await model.signOut(force: false) == .certificateRefused(reason: "R"))
+        #expect(await model.signOut(force: false) == .unsentChanges(1))
+
         #expect(model.account == account)
         #expect(Keychain.load() == account)
-        #expect(!(await paths(transport)).contains("/v1/signout"))
-
-        let refused = try await signedIn([synced, .error(URLError(.serverCertificateUntrusted))])
-        #expect(await refused.model.signOut(force: false) == .certificateRefused(reason: nil))
-        #expect(refused.model.account == account)
-        #expect(await refused.transport.requests.last?.url?.path == "/v1/signout")
-
-        let unreachable = try await signedIn([synced, offline])
-        #expect(await unreachable.model.signOut(force: false) == .unreachable)
-        #expect(await unreachable.transport.requests.last?.url?.path == "/v1/signout")
+        #expect(larder.pending.count == 1)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await paths(transport) == ["/v1/version", "/v1/invites/redeem", "/v1/sync"])
     }
 
     // A model built with an empty Keychain stands in for a locked launch, because `load()` returns nil in both cases
@@ -710,6 +734,22 @@ extension KeychainSuite {
         #expect(Keychain.load() == account)
         try await Task.sleep(for: .milliseconds(50))
         #expect(await transport.requests.count == 3)
+    }
+
+    @Test @MainActor func overtakenCheckRedeemsNothing() async throws {
+        defer { Keychain.delete() }
+        let transport = FakeTransport([.hold, compatible, .answer(status: 401, json: #"{"error":"invalid_invite"}"#)])
+        let model = AppModel(transport: transport, dataDirectory: try temporaryDirectory())
+        let first = Task { await model.signIn(invite, deviceName: "iPhone") }
+        try #require(await waitUntil { await transport.requests.count == 1 })
+        #expect(await model.signIn(invite, deviceName: "iPhone") == .invalidInvite)
+
+        await transport.release(status: 200, json: compatibleJSON)
+
+        #expect(await first.value == .overtaken)
+        #expect(model.account == nil)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await paths(transport) == ["/v1/version", "/v1/version", "/v1/invites/redeem"])
     }
 
     @Test @MainActor func inviteLinkBeforeRestoreIsNotKept() throws {
@@ -885,7 +925,7 @@ extension KeychainSuite {
     @Test @MainActor func uncheckedServerDoesNotBlock() async throws {
         defer { Keychain.delete() }
         let cases: [(FakeTransport.Step, ServerCompatibility)] = [
-            (offline, .couldNotCheck(.offline)),
+            (offline, .couldNotCheck(.offline(.noNetwork))),
             (.answer(status: 500, json: #"{"error":"internal"}"#), .couldNotCheck(.server(code: "internal"))),
             (.answer(status: 200, json: "{}"), .couldNotCheck(nil)),
         ]
@@ -916,7 +956,7 @@ extension KeychainSuite {
 
         #expect(await model.checkServer() == .incompatible(.serverTooOld(Version(0, 0, 0))))
         #expect(model.incompatibility == .serverTooOld(Version(0, 0, 0)))
-        #expect(await model.checkServer() == .couldNotCheck(.offline))
+        #expect(await model.checkServer() == .couldNotCheck(.offline(.noNetwork)))
         #expect(model.incompatibility == .serverTooOld(Version(0, 0, 0)))
         #expect(larder.isHeld)
         #expect(await paths(transport).count(where: { $0 == "/v1/sync" }) == 1)
@@ -1017,9 +1057,12 @@ extension KeychainSuite {
 @Test func copyTexts() {
     #expect(signInErrorText(.invalidInvite) == "This invite can't be used. It may have expired or been used already. Ask for a new one.")
     #expect(signInErrorText(.rateLimited) == "Too many sign-in attempts on this server. Try again in a minute.")
-    #expect(signInErrorText(.unreachable(host: "lists.example.test")) == "Can't reach lists.example.test.")
     #expect(signInErrorText(.alreadySignedIn(name: "Alex")) == "This iPhone is already signed in as Alex. Sign out first to use this invite.")
-    #expect(signInErrorText(.other) == "Couldn't sign in. Try again, or ask for a new invite.")
+    #expect(signInErrorText(.failed(.offline(.refused), host: "lists.example.test")) == "lists.example.test refused the connection.")
+    #expect(signInErrorText(.failed(.unexpected(status: 502), host: "lists.example.test")) == "lists.example.test answered with HTTP status 502.")
+    #expect(signInErrorText(.keychainFailed(status: errSecInteractionNotAllowed)) == "Couldn't save the sign-in in this iPhone's Keychain: OSStatus -25308.")
+    #expect(signInErrorText(.keychainFailed(status: nil)) == "Couldn't save the sign-in in this iPhone's Keychain.")
+    #expect(signInErrorText(.overtaken) == "A newer sign-in took over from this one.")
     #expect(signedOutText(lostChanges: 0) == "This iPhone was signed out.")
     #expect(signedOutText(lostChanges: 1) == "This iPhone was signed out. 1 change that wasn't sent yet is lost.")
     #expect(signedOutText(lostChanges: 2) == "This iPhone was signed out. 2 changes that weren't sent yet are lost.")
@@ -1045,5 +1088,5 @@ extension KeychainSuite {
     #expect(oldServerText(host: host) == "The server at lists.example.test answered 404 to GET /v1/version, so it runs a PocketLarder version older than 0.1.0.")
     #expect(versionCheckFailureText(nil, host: host) == "lists.example.test answered GET /v1/version, but not with a version of the form MAJOR.MINOR.PATCH.")
     #expect(versionCheckFailureText(.unexpected(status: 502), host: host) == "lists.example.test answered with HTTP status 502.")
-    #expect(versionCheckFailureText(.offline, host: host) == "Can't reach lists.example.test.")
+    #expect(versionCheckFailureText(.offline(.timedOut), host: host) == "The request to lists.example.test timed out.")
 }

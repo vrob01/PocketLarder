@@ -5,14 +5,20 @@ import PocketLarderKit
 @MainActor @Observable
 final class AppModel {
     enum SignInError: Error, Equatable {
-        case invalidInvite, rateLimited, unreachable(host: String), alreadySignedIn(name: String), other
+        case invalidInvite, rateLimited, alreadySignedIn(name: String)
         case certificateRefused(host: String, reason: String?)
         /// Nothing was redeemed, because the invite's server is too old or too new for this app.
         case incompatible(Incompatibility, server: URL)
+        /// Any other failed redeem.
+        case failed(APIError, host: String)
+        /// The Keychain refused the account, with the status it gave, if any.
+        case keychainFailed(status: OSStatus?)
+        /// A newer sign-in took over while this one waited.
+        case overtaken
     }
 
     enum SignOutResult: Equatable {
-        case done, unsentChanges(Int), unreachable, rateLimited, certificateRefused(reason: String?)
+        case done, unsentChanges(Int), failed(APIError)
     }
 
     var pendingInvite: Invite?
@@ -183,7 +189,7 @@ final class AppModel {
         let attempt = signInAttempts
         let outcome = await checkServer(at: invite.server)
         // A newer attempt or a restore took over during the check. Nothing is redeemed yet, so nothing needs signing out.
-        guard attempt == signInAttempts else { return account == nil ? .other : .alreadySignedIn(name: memberName) }
+        guard attempt == signInAttempts else { return account == nil ? .overtaken : .alreadySignedIn(name: memberName) }
         if case let .incompatible(incompatibility) = outcome { return .incompatible(incompatibility, server: invite.server) }
         let redemption: Redemption
         do {
@@ -193,9 +199,8 @@ final class AppModel {
             switch error {
             case .server(code: "invalid_invite"): return .invalidInvite
             case .server(code: "rate_limited"): return .rateLimited
-            case .offline: return .unreachable(host: invite.server.host() ?? "")
             case let .certificateRefused(reason): return .certificateRefused(host: invite.server.host() ?? "", reason: reason)
-            default: return .other
+            default: return .failed(error, host: invite.server.host() ?? "")
             }
         }
         // A newer attempt or a restore took over while this request was open. This answer must not replace that account
@@ -204,7 +209,7 @@ final class AppModel {
         guard attempt == signInAttempts else {
             let client = APIClient(server: invite.server, token: redemption.token, transport: transport)
             Task { try? await client.signOut() }
-            return account == nil ? .other : .alreadySignedIn(name: memberName)
+            return account == nil ? .overtaken : .alreadySignedIn(name: memberName)
         }
         let account = Account(server: invite.server, token: redemption.token, memberId: redemption.memberId, deviceId: redemption.deviceId)
         do {
@@ -213,7 +218,7 @@ final class AppModel {
             // Nothing holds the token now, so its device is signed out the same way as above.
             let client = APIClient(server: invite.server, token: redemption.token, transport: transport)
             Task { try? await client.signOut() }
-            return .other
+            return .keychainFailed(status: (error as? Keychain.SaveError)?.status)
         }
         // Files left by a failed wipe must never reach the new account.
         files.wipe()
@@ -238,9 +243,9 @@ final class AppModel {
         await larder.sync()
         // A 401 or a forced sign-out during the wait has wiped already, and a new account may have signed in since.
         guard self.larder === larder else { return .done }
-        if larder.lastSyncFailure == .server(code: "rate_limited") { return .rateLimited }
-        if case let .certificateRefused(reason)? = larder.lastSyncFailure { return .certificateRefused(reason: reason) }
-        if larder.isOffline { return .unreachable }
+        // A failed sync asks first: its question already says that everything on this iPhone goes.
+        if let failure = larder.lastSyncFailure { return .failed(failure) }
+        // Left only while the larder is held, because a sync that succeeds sends the whole queue.
         if !larder.pending.isEmpty { return .unsentChanges(larder.pending.count) }
         var failure: APIError?
         do {
@@ -249,10 +254,8 @@ final class AppModel {
             failure = error
         }
         guard self.larder === larder else { return .done }
-        if failure == .server(code: "rate_limited") { return .rateLimited }
-        if case let .certificateRefused(reason)? = failure { return .certificateRefused(reason: reason) }
         // `unauthorized` means the server already treats this device as signed out.
-        if let failure, failure != .server(code: "unauthorized") { return .unreachable }
+        if let failure, failure != .server(code: "unauthorized") { return .failed(failure) }
         wipe()
         return .done
     }

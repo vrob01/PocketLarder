@@ -7,11 +7,11 @@ struct OfflineBadge: View {
     @State private var showingDetails = false
 
     var body: some View {
-        if larder.isOffline, let failure = larder.lastSyncFailure {
+        if let failure = larder.lastSyncFailure {
             Button {
                 showingDetails = true
             } label: {
-                Image(systemName: "icloud.slash")
+                Image(systemName: "exclamationmark.icloud")
                     .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
             }
@@ -49,7 +49,14 @@ func offlineText(failure: APIError, host: String, pending: Int) -> String {
 /// What failed when the app asked `host` for something.
 func failureText(_ failure: APIError, host: String) -> String {
     switch failure {
-    case .offline: String(localized: "Can't reach \(host).")
+    case .offline(.hostNotFound): String(localized: "Can't find \(host): looking up its name (DNS) failed.")
+    case .offline(.refused): String(localized: "\(host) refused the connection.")
+    case .offline(.timedOut): String(localized: "The request to \(host) timed out.")
+    case .offline(.noNetwork): String(localized: "This iPhone has no network connection, so it can't reach \(host).")
+    case .offline(.connectionLost): String(localized: "The connection to \(host) broke off.")
+    case .offline(.tlsFailed): String(localized: "The secure connection (TLS) to \(host) failed, for a reason other than its certificate.")
+    // A string, because an interpolated number gets the locale's grouping, such as "-1,022" or "-1.022".
+    case let .offline(.other(code)): String(localized: "Can't reach \(host) (URLError \(String(code))).")
     case let .certificateRefused(reason?): String(localized: "This iPhone refused the certificate of \(host): \(reason).")
     case .certificateRefused(nil): String(localized: "This iPhone refused the certificate of \(host).")
     case .server(code: "rate_limited"): String(localized: "\(host) limited this iPhone's requests: too many in the past minute.")
@@ -57,5 +64,6 @@ func failureText(_ failure: APIError, host: String) -> String {
     case .server(code: "invite_redeemed"): String(localized: "This invite was already used.")
     case let .server(code): String(localized: "\(host) answered with error code \(code).")
     case let .unexpected(status): String(localized: "\(host) answered with HTTP status \(status).")
+    case let .notPocketLarder(status): String(localized: "\(host) answered with HTTP status \(status), but the answer isn't PocketLarder's. It may be a captive portal's or a proxy's page.")
     }
 }
