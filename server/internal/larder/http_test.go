@@ -82,6 +82,16 @@ func (e *testEnv) decode(w *httptest.ResponseRecorder, status int, v any) {
 	}
 }
 
+// wantInvalid checks for a 400 whose body is exactly {"error": "invalid", "detail": detail}.
+func (e *testEnv) wantInvalid(w *httptest.ResponseRecorder, detail string) {
+	e.t.Helper()
+	var body map[string]any
+	json.Unmarshal(w.Body.Bytes(), &body)
+	if want := map[string]any{"error": "invalid", "detail": detail}; w.Code != http.StatusBadRequest || !reflect.DeepEqual(body, want) {
+		e.t.Errorf("got %d %s, want 400 %v", w.Code, w.Body, want)
+	}
+}
+
 // wantError checks the status and the error code in the body.
 func (e *testEnv) wantError(w *httptest.ResponseRecorder, status int, code string) {
 	e.t.Helper()
@@ -476,12 +486,13 @@ func TestInvitePermissions(t *testing.T) {
 		t.Errorf("Sam's invite redeemed for %s, want %s", redeemed.MemberID, sam.MemberID)
 	}
 	e.wantError(e.call("POST", "/v1/invites", admin, map[string]string{"new_member_name": "sam"}), http.StatusConflict, "conflict")
-	e.wantError(e.call("POST", "/v1/invites", admin, map[string]string{"new_member_name": ""}), http.StatusBadRequest, "invalid")
+	e.wantInvalid(e.call("POST", "/v1/invites", admin, map[string]string{"new_member_name": ""}), "bad_member_name")
+	e.wantInvalid(e.call("POST", "/v1/invites", admin, map[string]string{"new_member_name": "a\u200bb"}), "bad_member_name")
 
 	if forKim, _ := e.invite(admin, map[string]string{"member_id": kim}); forKim.MemberID != kim {
 		t.Errorf("admin invite for Kim: member %s, want %s", forKim.MemberID, kim)
 	}
-	e.wantError(e.call("POST", "/v1/invites", admin, map[string]string{"member_id": kim, "new_member_name": "Robin"}), http.StatusBadRequest, "invalid")
+	e.wantInvalid(e.call("POST", "/v1/invites", admin, map[string]string{"member_id": kim, "new_member_name": "Robin"}), "member_id_and_new_member_name")
 	e.wantError(e.call("POST", "/v1/invites", admin, map[string]string{"member_id": newID()}), http.StatusNotFound, "not_found")
 
 	// Alex's request is authenticated, then he loses admin rights before its body arrives.
@@ -695,7 +706,8 @@ func TestHTTPLastAdminGuard(t *testing.T) {
 	e.wantError(e.call("DELETE", "/v1/admin/members/"+alex, admin, nil), http.StatusConflict, "last_admin")
 	e.wantError(e.call("PATCH", "/v1/admin/members/not-a-uuid", admin, map[string]bool{"is_admin": true}), http.StatusNotFound, "not_found")
 	e.wantError(e.call("DELETE", "/v1/admin/members/not-a-uuid", admin, nil), http.StatusNotFound, "not_found")
-	e.wantError(e.call("PATCH", "/v1/admin/members/"+alex, admin, map[string]any{}), http.StatusBadRequest, "invalid")
+	e.wantInvalid(e.call("PATCH", "/v1/admin/members/"+alex, admin, map[string]any{}), "missing_is_admin")
+	e.wantInvalid(e.call("PATCH", "/v1/admin/members/"+alex, admin, map[string]any{"is_admin": nil}), "missing_is_admin")
 	e.wantError(e.call("PATCH", "/v1/admin/members/"+newID(), admin, map[string]bool{"is_admin": true}), http.StatusNotFound, "not_found")
 
 	// With a second admin, Sam can demote Alex and then remove him.
@@ -806,8 +818,8 @@ func TestSecretsNeverLogged(t *testing.T) {
 	e.wantError(e.call("POST", "/v1/invites/redeem", "", redeemBody(created)), http.StatusInternalServerError, "internal")
 
 	logs := e.logs.String()
-	if !strings.Contains(logs, "/v1/invites/redeem") || !strings.Contains(logs, "database is closed") {
-		t.Fatalf("requests or the database failure not logged:\n%s", logs)
+	if !strings.Contains(logs, "/v1/invites/redeem") || !strings.Contains(logs, `msg="request failed" method=POST pattern="POST /v1/invites/redeem" err="sql: database is closed"`) {
+		t.Fatalf("requests or the database failure with its route not logged:\n%s", logs)
 	}
 	for _, secret := range []string{code, resp.Token, wrong, created} {
 		_, part, _ := strings.Cut(secret, ".")
@@ -826,11 +838,31 @@ func TestBodyLimits(t *testing.T) {
 	if body := strings.TrimSpace(w.Body.String()); w.Code != http.StatusRequestEntityTooLarge || body != `{"error":"too_large"}` {
 		t.Errorf("100 KiB redeem: %d %s, want 413", w.Code, body)
 	}
-	w = e.call("POST", "/v1/invites/redeem", "", map[string]string{"code": "x", "device_name": "Phone", "extra": "y"})
-	if body := strings.TrimSpace(w.Body.String()); w.Code != http.StatusBadRequest || body != `{"error":"invalid"}` {
-		t.Errorf("unknown field: %d %s, want 400", w.Code, body)
-	}
-	e.wantError(e.call("POST", "/v1/invites/redeem", "", nil), http.StatusBadRequest, "invalid")
-	e.wantError(e.call("POST", "/v1/invites/redeem", "", map[string]int{"code": 1}), http.StatusBadRequest, "invalid")
+	// The detail never quotes the body.
+	e.wantInvalid(e.call("POST", "/v1/invites/redeem", "", map[string]string{"code": "x", "device_name": "Phone", "extra": "y"}), "malformed_body")
+	e.wantInvalid(e.call("POST", "/v1/invites/redeem", "", nil), "malformed_body")
+	e.wantInvalid(e.call("POST", "/v1/invites/redeem", "", map[string]int{"code": 1}), "malformed_body")
+	r := httptest.NewRequest("POST", "/v1/invites/redeem", strings.NewReader("nope"))
+	w = httptest.NewRecorder()
+	e.h.ServeHTTP(w, r)
+	e.wantInvalid(w, "malformed_body")
 	e.wantError(e.call("POST", "/v1/invites", token, big), http.StatusRequestEntityTooLarge, "too_large")
+}
+
+func TestRequestLogPath(t *testing.T) {
+	e := newTestEnv(t)
+	long := "/" + strings.Repeat("a", 300)
+	for _, c := range []struct{ target, want string }{
+		{"/nope/x?secret=abc", ` pattern="" path=/nope/x status=404 `},
+		{long + "?secret=abc", ` pattern="" path=` + long[:maxLoggedPath] + ` status=404 `},
+		{"/n\u00f6pe\u202e?secret=abc", ` pattern="" path=/n%C3%B6pe%E2%80%AE status=404 `},
+		{"/v1/sync?secret=abc", ` pattern="" path=/v1/sync status=405 `}, // only POST is routed
+		{"/v1/version?secret=abc", ` pattern="GET /v1/version" status=200 `},
+	} {
+		e.logs.Reset()
+		e.h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", c.target, nil))
+		if logs := e.logs.String(); !strings.Contains(logs, c.want) || strings.Contains(logs, "secret") {
+			t.Errorf("GET %s logged %q, want it to contain %q and no query", c.target, logs, c.want)
+		}
+	}
 }

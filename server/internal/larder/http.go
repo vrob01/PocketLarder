@@ -19,6 +19,9 @@ const (
 	maxSyncBody = 1 << 20
 )
 
+// maxLoggedPath caps the path an unmatched request logs, in bytes.
+const maxLoggedPath = 256
+
 type server struct {
 	db          *sql.DB
 	publicURL   string
@@ -94,9 +97,14 @@ func readJSON(w http.ResponseWriter, r *http.Request, limit int64, v any) bool {
 	case errors.As(err, &tooLarge):
 		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "too_large"})
 	case err != nil:
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid"})
+		invalid(w, "malformed_body")
 	}
 	return err == nil
+}
+
+// invalid answers 400 invalid with a detail code, the only error body that has one.
+func invalid(w http.ResponseWriter, detail string) {
+	writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid", "detail": detail})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -117,12 +125,13 @@ var errStatus = map[error]int{
 	errLastAdmin:      http.StatusConflict,
 	errTooManyInvites: http.StatusConflict,
 	errInviteRedeemed: http.StatusConflict,
+	errInviteExpired:  http.StatusGone,
 }
 
-func (s *server) fail(w http.ResponseWriter, err error) {
+func (s *server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	status, ok := errStatus[err]
 	if !ok {
-		s.log.Error("request failed", "err", err)
+		s.log.Error("request failed", "method", r.Method, "pattern", r.Pattern, "err", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal"})
 		return
 	}
@@ -145,7 +154,7 @@ func (s *server) authed(limit *windowLimiter, adminOnly bool, h func(http.Respon
 			return err
 		})
 		if err != nil {
-			s.fail(w, err)
+			s.fail(w, r, err)
 			return
 		}
 		// Counted by the verified device, so nobody can spend another device's budget without its token.
@@ -154,7 +163,7 @@ func (s *server) authed(limit *windowLimiter, adminOnly bool, h func(http.Respon
 			return
 		}
 		if adminOnly && !d.IsAdmin {
-			s.fail(w, errForbidden)
+			s.fail(w, r, errForbidden)
 			return
 		}
 		h(w, r, d)
@@ -198,12 +207,20 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("PATCH /v1/admin/members/{id}", s.authed(s.authedLimit, true, s.patchMember))
 	mux.HandleFunc("DELETE /v1/admin/members/{id}", s.authed(s.authedLimit, true, s.deleteMember))
 	mux.HandleFunc("DELETE /v1/admin/devices/{id}", s.authed(s.authedLimit, true, s.revokeDevice))
-	// The log line carries no path, query, header or body: they can hold ids and secrets.
+	// The log line carries the method, the route pattern, the status and the duration, never a header, a body or
+	// the query: secrets travel in headers and bodies. Only an unmatched request (pattern "") also logs its path,
+	// so an admin can see what was asked for; a known route's path carries ids, so it stays out.
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		mux.ServeHTTP(sw, r) // sets r.Pattern
-		s.log.Info("request", "method", r.Method, "pattern", r.Pattern, "status", sw.status, "duration", time.Since(start))
+		attrs := []any{"method", r.Method, "pattern", r.Pattern}
+		if r.Pattern == "" {
+			// Escaped, so the path is ASCII and the byte cut can't split a character.
+			path := r.URL.EscapedPath()
+			attrs = append(attrs, "path", path[:min(len(path), maxLoggedPath)])
+		}
+		s.log.Info("request", append(attrs, "status", sw.status, "duration", time.Since(start))...)
 	})
 }
 
@@ -237,7 +254,7 @@ func (s *server) redeem(w http.ResponseWriter, r *http.Request) {
 		return err
 	})
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"token": token, "member_id": d.MemberID, "device_id": d.ID})
@@ -253,11 +270,11 @@ func (s *server) invite(w http.ResponseWriter, r *http.Request, d device) {
 		return
 	}
 	if (req.MemberID != nil || req.NewMemberName != nil) && !d.IsAdmin {
-		s.fail(w, errForbidden)
+		s.fail(w, r, errForbidden)
 		return
 	}
 	if req.MemberID != nil && req.NewMemberName != nil {
-		s.fail(w, errInvalid)
+		invalid(w, "member_id_and_new_member_name")
 		return
 	}
 	memberID := d.MemberID
@@ -279,8 +296,13 @@ func (s *server) invite(w http.ResponseWriter, r *http.Request, d device) {
 		code, expires, err = createInvite(tx, memberID, &d.ID, now)
 		return err
 	})
+	// createMember's name check is the only errInvalid in this transaction.
+	if err == errInvalid {
+		invalid(w, "bad_member_name")
+		return
+	}
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	id, _, _ := strings.Cut(code, ".")
@@ -302,7 +324,7 @@ func (s *server) revoke(w http.ResponseWriter, r *http.Request, d device) {
 	memberID := d.MemberID
 	if req.MemberID != nil {
 		if !d.IsAdmin {
-			s.fail(w, errForbidden)
+			s.fail(w, r, errForbidden)
 			return
 		}
 		memberID = *req.MemberID
@@ -316,7 +338,7 @@ func (s *server) revoke(w http.ResponseWriter, r *http.Request, d device) {
 		return err
 	})
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]int{"revoked": n})
@@ -327,7 +349,7 @@ func (s *server) invites(w http.ResponseWriter, r *http.Request, d device) {
 	memberID := d.MemberID
 	if query := r.URL.Query(); query.Has("member_id") {
 		if !d.IsAdmin {
-			s.fail(w, errForbidden)
+			s.fail(w, r, errForbidden)
 			return
 		}
 		memberID = query.Get("member_id")
@@ -338,7 +360,7 @@ func (s *server) invites(w http.ResponseWriter, r *http.Request, d device) {
 		return err
 	})
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string][]memberInvite{"invites": invites})
@@ -347,11 +369,11 @@ func (s *server) invites(w http.ResponseWriter, r *http.Request, d device) {
 func (s *server) cancel(w http.ResponseWriter, r *http.Request, d device) {
 	id := r.PathValue("id")
 	if !validID(id) {
-		s.fail(w, errNotFound)
+		s.fail(w, r, errNotFound)
 		return
 	}
 	if err := withTx(s.db, func(tx *sql.Tx) error { return cancelInvite(tx, id, d) }); err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -368,7 +390,7 @@ func (s *server) clear(w http.ResponseWriter, r *http.Request, d device) {
 	memberID := d.MemberID
 	if req.MemberID != nil {
 		if !d.IsAdmin {
-			s.fail(w, errForbidden)
+			s.fail(w, r, errForbidden)
 			return
 		}
 		memberID = *req.MemberID
@@ -382,7 +404,7 @@ func (s *server) clear(w http.ResponseWriter, r *http.Request, d device) {
 		return err
 	})
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]int{"cleared": n})
@@ -390,7 +412,7 @@ func (s *server) clear(w http.ResponseWriter, r *http.Request, d device) {
 
 func (s *server) signOut(w http.ResponseWriter, r *http.Request, d device) {
 	if err := withTx(s.db, func(tx *sql.Tx) error { return deleteDevice(tx, d.ID) }); err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -404,7 +426,7 @@ func (s *server) sync(w http.ResponseWriter, r *http.Request, d device) {
 		return
 	}
 	if len(req.Ops) > maxOps {
-		s.fail(w, errInvalid)
+		invalid(w, "too_many_ops")
 		return
 	}
 	now := s.now()
@@ -423,7 +445,7 @@ func (s *server) sync(w http.ResponseWriter, r *http.Request, d device) {
 		return err
 	})
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -477,7 +499,7 @@ ORDER BY m.id, d.id`, s.now().Unix())
 		return rows.Err()
 	})
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string][]adminMember{"members": members})
@@ -486,7 +508,7 @@ ORDER BY m.id, d.id`, s.now().Unix())
 func (s *server) patchMember(w http.ResponseWriter, r *http.Request, d device) {
 	id := r.PathValue("id")
 	if !validID(id) {
-		s.fail(w, errNotFound)
+		s.fail(w, r, errNotFound)
 		return
 	}
 	var req struct {
@@ -496,7 +518,7 @@ func (s *server) patchMember(w http.ResponseWriter, r *http.Request, d device) {
 		return
 	}
 	if req.IsAdmin == nil {
-		s.fail(w, errInvalid)
+		invalid(w, "missing_is_admin")
 		return
 	}
 	err := withTx(s.db, func(tx *sql.Tx) error {
@@ -506,7 +528,7 @@ func (s *server) patchMember(w http.ResponseWriter, r *http.Request, d device) {
 		return setAdmin(tx, id, *req.IsAdmin)
 	})
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -515,11 +537,11 @@ func (s *server) patchMember(w http.ResponseWriter, r *http.Request, d device) {
 func (s *server) deleteMember(w http.ResponseWriter, r *http.Request, d device) {
 	id := r.PathValue("id")
 	if !validID(id) {
-		s.fail(w, errNotFound)
+		s.fail(w, r, errNotFound)
 		return
 	}
 	if err := withTx(s.db, func(tx *sql.Tx) error { return removeMember(tx, id) }); err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -528,11 +550,11 @@ func (s *server) deleteMember(w http.ResponseWriter, r *http.Request, d device) 
 func (s *server) revokeDevice(w http.ResponseWriter, r *http.Request, d device) {
 	id := r.PathValue("id")
 	if !validID(id) {
-		s.fail(w, errNotFound)
+		s.fail(w, r, errNotFound)
 		return
 	}
 	if err := withTx(s.db, func(tx *sql.Tx) error { return deleteDevice(tx, id) }); err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

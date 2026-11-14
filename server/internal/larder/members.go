@@ -23,6 +23,7 @@ var (
 	errUnauthorized   = errors.New("unauthorized")
 	errTooManyInvites = errors.New("too_many_invites")
 	errInviteRedeemed = errors.New("invite_redeemed")
+	errInviteExpired  = errors.New("invite_expired")
 )
 
 // maxOpenInvites caps a member's unredeemed, unexpired invites made through the API.
@@ -203,15 +204,23 @@ func redeemInvite(tx *sql.Tx, code, deviceName string, now time.Time) (token str
 	if err != nil {
 		return "", device{}, err
 	}
-	if !secretMatches(secret, hash) || usedAt != nil || now.Unix() >= expiresAt {
+	// The secret comes first, so that only the invite's holder learns whether it exists and what state it is in.
+	if !secretMatches(secret, hash) {
 		return "", device{}, errBadInvite
+	}
+	// Used before expired, the order listInvites judges state in.
+	if usedAt != nil {
+		return "", device{}, errInviteRedeemed
+	}
+	if now.Unix() >= expiresAt {
+		return "", device{}, errInviteExpired
 	}
 	n, err := rowsChanged(tx.Exec("UPDATE invites SET used_at = ? WHERE id = ? AND used_at IS NULL", now.Unix(), inviteID))
 	if err != nil {
 		return "", device{}, err
 	}
 	if n != 1 {
-		return "", device{}, errBadInvite
+		return "", device{}, errInviteRedeemed
 	}
 	d.ID = newID()
 	deviceSecret, deviceHash := newSecret()
