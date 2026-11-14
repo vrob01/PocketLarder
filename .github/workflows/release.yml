@@ -1,0 +1,149 @@
+# Publishes the release for each pushed server/vX.Y.Z or ios/vX.Y.Z tag (see Versioning in AGENTS.md).
+# Like ios.yml it lands by hand: factory branches never change .github/.
+name: release
+
+on:
+  push:
+    tags: ["server/v*", "ios/v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the GitHub Release
+      packages: write # the server image
+    env:
+      IMAGE: ghcr.io/vrob01/pocketlarder
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # main and the earlier tags, for the checks and the notes
+          persist-credentials: false
+
+      - name: Check the tag
+        id: tag
+        run: |
+          tag=$GITHUB_REF_NAME
+          component=${tag%%/*}
+          version=${tag#*/v}
+          if [[ ! $version =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Tag $tag: \"$version\" isn't MAJOR.MINOR.PATCH."
+            exit 1
+          fi
+          if [ "$component" = server ]; then
+            file=server/internal/larder/cli.go
+            found=$(git show "$GITHUB_SHA:$file" | sed -n 's/^const version = "\(.*\)"$/\1/p')
+          else
+            file=ios/Config/PocketLarder.xcconfig
+            found=$(git show "$GITHUB_SHA:$file" | sed -n 's/^MARKETING_VERSION = \(.*\)$/\1/p')
+          fi
+          if [ "$found" != "$version" ]; then
+            echo "::error::Tag $tag is version $version, but $file in $GITHUB_SHA has ${found:-no version}."
+            exit 1
+          fi
+          # Main's own commits only (merges, squash merges, direct commits): the notes walk that line.
+          main_line=$(git rev-list --first-parent origin/main)
+          if ! grep -qxF "$GITHUB_SHA" <<<"$main_line"; then
+            echo "::error::Tag $tag points to $GITHUB_SHA, which isn't one of main's own commits (merges, squash merges and direct commits; not a commit inside a merged branch)."
+            exit 1
+          fi
+          # describe fails when no earlier tag of this component exists: then the notes go back to the first commit.
+          previous=$(git describe --tags --abbrev=0 --first-parent --match "$component/v*" "$GITHUB_SHA^" 2>/dev/null || true)
+          printf 'component=%s\nversion=%s\nprevious=%s\n' "$component" "$version" "$previous" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v6
+        if: steps.tag.outputs.component == 'server'
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: Test the server
+        if: steps.tag.outputs.component == 'server'
+        working-directory: server
+        run: |
+          go vet ./...
+          go test ./...
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        if: steps.tag.outputs.component == 'server'
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        if: steps.tag.outputs.component == 'server'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Pick the image tags
+        id: image
+        if: steps.tag.outputs.component == 'server'
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          tags="$IMAGE:$VERSION,$IMAGE:${VERSION%.*},$IMAGE:latest"
+          # Below 1.0 any minor may break, so 0.x gets no major tag.
+          [[ $VERSION == 0.* ]] || tags+=",$IMAGE:${VERSION%%.*}"
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        if: steps.tag.outputs.component == 'server'
+        with:
+          context: server
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.image.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.tag.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=AGPL-3.0-only
+          # ghcr.io reads these from the multi-platform index, not from the per-platform labels.
+          annotations: |
+            index:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            index:org.opencontainers.image.licenses=AGPL-3.0-only
+
+      - name: Write the release notes
+        env:
+          COMPONENT: ${{ steps.tag.outputs.component }}
+          VERSION: ${{ steps.tag.outputs.version }}
+          PREVIOUS: ${{ steps.tag.outputs.previous }}
+        run: |
+          # One line per commit on main's first-parent line that touched the component: a merged PR, a squash-merged PR
+          # or a direct commit.
+          merge='^Merge pull request #([0-9]+) '
+          changes=$(git log --first-parent --format=%H "${PREVIOUS:+$PREVIOUS..}$GITHUB_SHA" -- "$COMPONENT/" |
+            while read -r sha; do
+              subject=$(git log -1 --format=%s "$sha")
+              if [[ $subject =~ $merge ]]; then
+                pr=${BASH_REMATCH[1]}
+                title=$(git log -1 --format=%b "$sha" | sed -n '/./{p;q}')
+                echo "- ${title:-$subject} (#$pr)"
+              elif [[ $subject =~ \(#[0-9]+\)$ ]]; then
+                echo "- $subject"
+              else
+                echo "- $subject (${sha::7})"
+              fi
+            done)
+          {
+            if [ "$COMPONENT" = server ]; then
+              printf 'Image: `%s:%s`, for linux/amd64 and linux/arm64.\n\n' "$IMAGE" "$VERSION"
+            fi
+            echo "Changes in \`$COMPONENT/\`${PREVIOUS:+ since $PREVIOUS}:"
+            echo
+            echo "${changes:-- none}"
+          } > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          COMPONENT: ${{ steps.tag.outputs.component }}
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          # Self-hosters look for the server, so app releases are never marked latest.
+          if [ "$COMPONENT" = server ]; then title="PocketLarder server $VERSION" latest=true
+          else title="PocketLarder for iOS $VERSION" latest=false; fi
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$title" --notes-file "$RUNNER_TEMP/notes.md" --latest="$latest"
