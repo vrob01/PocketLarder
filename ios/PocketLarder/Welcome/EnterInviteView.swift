@@ -8,6 +8,10 @@ struct EnterInviteView: View {
     @State private var code = ""
     @State private var deviceName = "iPhone"
     @State private var signingIn = false
+    /// Off on every visit, and on only after the warning, for the host it named.
+    @State private var acceptsAnyCertificate = false
+    /// The host the warning names while it's up.
+    @State private var warnedHost: String?
     @State private var signInError: AppModel.SignInError? = {
         #if DEBUG
         switch UserDefaults.standard.string(forKey: "inviteError") {
@@ -61,6 +65,11 @@ struct EnterInviteView: View {
         .onChange(of: server) { take(server) }
         .onChange(of: code) { take(code) }
         .onChange(of: deviceName) { old, _ in take(deviceName, keepingDeviceName: old) }
+        // Whatever changed the host, typing, Paste or a link, the choice was for another one.
+        .onChange(of: signInURL?.host()) {
+            acceptsAnyCertificate = false
+            warnedHost = nil
+        }
         .onChange(of: model.pendingInvite, initial: true) {
             guard let invite = model.pendingInvite else { return }
             fill(invite)
@@ -96,6 +105,30 @@ struct EnterInviteView: View {
                 }
                 .fieldStyle()
 
+                Button {
+                    toggleAcceptsAnyCertificate()
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: acceptsAnyCertificate ? "checkmark.square.fill" : "square")
+                            .font(.title2)
+                            .foregroundStyle(acceptsAnyCertificate ? Color.accentColor : Color.secondary)
+                        Text("Accept any certificate from this server")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                // A checkbox to the eye, and to VoiceOver a toggle with its state.
+                .accessibilityRepresentation {
+                    Toggle(
+                        "Accept any certificate from this server",
+                        isOn: Binding(get: { acceptsAnyCertificate }, set: { _ in toggleAcceptsAnyCertificate() })
+                    )
+                }
+                .disabled(signInURL == nil || signingIn)
+                .accessibilityIdentifier("invite.acceptAnyCertificate")
+
                 label("Invite code")
                 TextField("Invite code", text: $code, prompt: Text("from your invite"))
                     .font(.system(.body, design: .monospaced))
@@ -122,8 +155,9 @@ struct EnterInviteView: View {
                     signInError = nil
                     signingIn = true
                     let invite = Invite(server: url, code: trimmedCode)
+                    let accepts = acceptsAnyCertificate
                     Task {
-                        let error = await model.signIn(invite, deviceName: deviceName)
+                        let error = await model.signIn(invite, deviceName: deviceName, acceptsAnyCertificate: accepts)
                         signingIn = false
                         signInError = error
                         if let error {
@@ -150,6 +184,27 @@ struct EnterInviteView: View {
                 }
             }
             .padding(24)
+        }
+        .alert(
+            "Warning!",
+            isPresented: Binding(get: { warnedHost != nil }, set: { if !$0 { warnedHost = nil } }),
+            presenting: warnedHost
+        ) { host in
+            Button("Accept any certificate", role: .destructive) {
+                if host == signInURL?.host() { acceptsAnyCertificate = true }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { host in
+            Text("The app will accept any certificate from \(host). Anyone on your network could then read and change your lists. Use with caution!")
+        }
+    }
+
+    /// Off at once, but on only once the warning is confirmed.
+    private func toggleAcceptsAnyCertificate() {
+        if acceptsAnyCertificate {
+            acceptsAnyCertificate = false
+        } else {
+            warnedHost = signInURL?.host()
         }
     }
 

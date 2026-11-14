@@ -13,6 +13,8 @@ struct AccountView: View {
     @State private var invite: CreatedInvite?
     @State private var inviteFailure: String?
     @State private var saveFailure: String?
+    /// Why turning off "Accept any certificate" wasn't saved.
+    @State private var certificateFailure: String?
     /// A path, so that losing one's own admin rights can go back to My account from any page under it.
     @State private var path: [Page] = []
 
@@ -24,6 +26,7 @@ struct AccountView: View {
         NavigationStack(path: $path) {
             List {
                 header
+                certificate
                 Section("List layout") {
                     Picker("List layout", selection: $layout) {
                         Text("Rows").tag("rows")
@@ -166,6 +169,35 @@ struct AccountView: View {
         .accessibilityIdentifier("account.header")
     }
 
+    /// Only while the account accepts any certificate from its server. It can't be turned back on here.
+    @ViewBuilder private var certificate: some View {
+        if let account = model.account, account.acceptsAnyCertificate {
+            Section {
+                Label {
+                    Text("Accepting any certificate from \(account.server.host() ?? "")")
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color(ListColor.orange))
+                }
+                .accessibilityIdentifier("account.acceptAnyCertificate")
+                Button("Turn off") {
+                    do {
+                        try model.stopAcceptingAnyCertificate()
+                    } catch {
+                        certificateFailure = announced(certificateSaveFailureText(error))
+                    }
+                }
+                .accessibilityIdentifier("account.acceptAnyCertificate.off")
+            } footer: {
+                Text("Anyone on your network could read and change your lists. To turn it on again, sign out and sign in with a new invite.")
+            }
+        }
+        if let certificateFailure {
+            Section {
+                Text(certificateFailure).accessibilityIdentifier("account.acceptAnyCertificate.saveFailure")
+            }
+        }
+    }
+
     /// Left out until the first snapshot, because until then the current setting is unknown.
     @ViewBuilder private var privacy: some View {
         if let larder = model.larder, let me = larder.view?.member(model.account?.memberId) {
@@ -254,6 +286,16 @@ private extension View {
             .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets())
     }
+}
+
+/// Turning it off still holds until the app quits, but the Keychain keeps the old account.
+func certificateSaveFailureText(_ error: any Error) -> String {
+    let failure = if let error = error as? Keychain.SaveError {
+        String(localized: "Couldn't save the change in the Keychain on this iPhone: status \(Int(error.status)).")
+    } else {
+        String(localized: "Couldn't save the change in the Keychain on this iPhone: \(error.localizedDescription)")
+    }
+    return failure + " " + String(localized: "Accepting any certificate is off now, but on again the next time the app starts.")
 }
 
 func unsentChangesText(_ count: Int) -> String {
