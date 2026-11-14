@@ -97,7 +97,7 @@ private func sentOpIds(_ request: URLRequest) throws -> [String] {
     let op = add("Tea")
 
     try larder.perform([op])
-    #expect(await waitUntil { larder.isOffline })
+    #expect(await waitUntil { larder.lastSyncFailure != nil })
 
     let relaunched = Larder(files: files, client: nil)
     #expect(relaunched.pending == larder.pending)
@@ -150,7 +150,6 @@ private func sentOpIds(_ request: URLRequest) throws -> [String] {
     let queued = larder.pending
 
     await larder.sync()
-    #expect(larder.isOffline)
     #expect(larder.lastSyncFailure == .certificateRefused(reason: "R"))
     #expect(larder.pending == queued)
     #expect(files.load().queue == queued)
@@ -164,10 +163,10 @@ private func sentOpIds(_ request: URLRequest) throws -> [String] {
     await larder.sync()
     #expect(larder.pending == queued)
     #expect(files.load().queue == queued)
-    #expect(larder.isOffline)
+    #expect(larder.lastSyncFailure == .offline(.noNetwork))
 
     await larder.sync()
-    #expect(!larder.isOffline)
+    #expect(larder.lastSyncFailure == nil)
     #expect(larder.pending == [])
     #expect(files.load().queue == [])
 }
@@ -215,7 +214,7 @@ private func sentOpIds(_ request: URLRequest) throws -> [String] {
 
     try larder.perform([add("A"), add("B"), add("C")])
     await larder.sync()
-    #expect(larder.isOffline)
+    #expect(larder.lastSyncFailure == .offline(.noNetwork))
 
     await larder.sync()
     #expect(signedOut == [3])
@@ -223,7 +222,7 @@ private func sentOpIds(_ request: URLRequest) throws -> [String] {
     #expect(larder.view == nil)
     #expect(larder.pending == [])
     #expect(larder.notices == [])
-    #expect(!larder.isOffline)
+    #expect(larder.lastSyncFailure == nil)
     let loaded = files.load()
     #expect(loaded.snapshot == nil)
     #expect(loaded.queue == [])
@@ -233,12 +232,12 @@ private func sentOpIds(_ request: URLRequest) throws -> [String] {
 }
 
 @Test @MainActor func onlyARealUnauthorizedWipes() async throws {
-    let cases: [(step: FakeTransport.Step, isOffline: Bool)] = [
-        (.answer(status: 403, json: unauthorized), false),
-        (.answer(status: 500, json: unauthorized), true),
-        (.answer(status: 401, json: #"{"error":"missing_token"}"#), true),
+    let cases: [(FakeTransport.Step, APIError)] = [
+        (.answer(status: 403, json: unauthorized), .unexpected(status: 403)),
+        (.answer(status: 500, json: unauthorized), .unexpected(status: 500)),
+        (.answer(status: 401, json: #"{"error":"missing_token"}"#), .server(code: "missing_token")),
     ]
-    for (step, isOffline) in cases {
+    for (step, failure) in cases {
         let (larder, transport, files, _) = try makeLarder([step])
         var signedOut = false
         larder.onSignedOut = { _ in signedOut = true }
@@ -248,7 +247,7 @@ private func sentOpIds(_ request: URLRequest) throws -> [String] {
 
         await larder.sync()
 
-        #expect(larder.isOffline == isOffline)
+        #expect(larder.lastSyncFailure == failure)
         #expect(!signedOut)
         #expect(larder.pending == queued)
         #expect(larder.snapshot == TestData.household)
@@ -257,24 +256,6 @@ private func sentOpIds(_ request: URLRequest) throws -> [String] {
         #expect(loaded.snapshot == TestData.household)
         #expect(loaded.queue == queued)
         #expect(await transport.requests.count == 1)
-    }
-}
-
-@Test @MainActor func serverErrorKeepsQueue() async throws {
-    let cases: [FakeTransport.Step] = [
-        .answer(status: 500, json: #"{"error":"internal"}"#),
-        .answer(status: 503, json: "Service Unavailable"),
-    ]
-    for step in cases {
-        let (larder, _, files, _) = try makeLarder([step])
-        try larder.perform([add("A")], now: at)
-        let queued = larder.pending
-
-        await larder.sync()
-
-        #expect(larder.pending == queued)
-        #expect(files.load().queue == queued)
-        #expect(larder.isOffline)
     }
 }
 
@@ -289,7 +270,6 @@ private func sentOpIds(_ request: URLRequest) throws -> [String] {
     let queued = larder.pending
 
     await larder.sync()
-    #expect(larder.isOffline)
     #expect(larder.lastSyncFailure == .server(code: "rate_limited"))
     #expect(larder.pending == queued)
     #expect(files.load().queue == queued)
@@ -301,7 +281,6 @@ private func sentOpIds(_ request: URLRequest) throws -> [String] {
     #expect(try sentOpIds(requests[1]) == queued.map(\.op.opId))
     #expect(try sentOpIds(requests[1]) == sentOpIds(requests[0]))
     #expect(larder.pending == [])
-    #expect(!larder.isOffline)
     #expect(larder.lastSyncFailure == nil)
 }
 
@@ -321,7 +300,7 @@ private func sentOpIds(_ request: URLRequest) throws -> [String] {
 
     // A failed save after a 200 is ignored: memory moves on.
     await larder.sync()
-    #expect(!larder.isOffline)
+    #expect(larder.lastSyncFailure == nil)
     #expect(larder.snapshot == TestData.household)
     #expect(await transport.requests.count == 1)
 }
@@ -369,31 +348,38 @@ private func sentOpIds(_ request: URLRequest) throws -> [String] {
     #expect(await transport.requests.count == 2)
 }
 
-@Test @MainActor func otherErrorsKeepQueueWithoutOffline() async throws {
-    let cases: [FakeTransport.Step] = [
-        .answer(status: 400, json: #"{"error":"invalid"}"#),
-        .answer(status: 413, json: #"{"error":"too_large"}"#),
-        .answer(status: 404, json: "404 page not found\n"),
-        .answer(status: 401, json: "Unauthorized"),
-        .answer(status: 301, json: ""),
-        .answer(status: 200, json: "not the snapshot"),
+/// Whatever the cause, the badge has it and the queue waits, until a 200 clears it.
+@Test @MainActor func everyFailureKeepsQueue() async throws {
+    let cases: [(FakeTransport.Step, APIError)] = [
+        (.answer(status: 301, json: ""), .unexpected(status: 301)),
+        (.answer(status: 401, json: "Unauthorized"), .unexpected(status: 401)),
+        (.answer(status: 404, json: "404 page not found\n"), .unexpected(status: 404)),
+        (.answer(status: 400, json: #"{"error":"invalid"}"#), .server(code: "invalid")),
+        (.answer(status: 413, json: #"{"error":"too_large"}"#), .server(code: "too_large")),
+        (.answer(status: 200, json: "not the snapshot"), .notPocketLarder(status: 200)),
+        (.answer(status: 500, json: #"{"error":"internal"}"#), .server(code: "internal")),
+        (.answer(status: 503, json: "Service Unavailable"), .unexpected(status: 503)),
+        (.answer(status: 429, json: #"{"error":"rate_limited"}"#), .server(code: "rate_limited")),
+        (.error(CertificateRefused(reason: "R")), .certificateRefused(reason: "R")),
+        (offline, .offline(.noNetwork)),
     ]
-    for step in cases {
-        let (larder, _, files, _) = try makeLarder([offline, step])
+    for (step, failure) in cases {
+        let (larder, _, files, _) = try makeLarder([step, try synced()])
         var signedOut = false
         larder.onSignedOut = { _ in signedOut = true }
         try larder.perform([add("A"), add("B")], now: at)
         let queued = larder.pending
 
         await larder.sync()
-        #expect(larder.isOffline)
-
-        await larder.sync()
-        #expect(!larder.isOffline)
+        #expect(larder.lastSyncFailure == failure)
         #expect(larder.pending == queued)
         #expect(files.load().queue == queued)
         #expect(files.load().snapshot == TestData.household)
         #expect(!signedOut)
+
+        await larder.sync()
+        #expect(larder.lastSyncFailure == nil)
+        #expect(larder.pending == [])
     }
 }
 
@@ -521,7 +507,7 @@ private func sentOpIds(_ request: URLRequest) throws -> [String] {
     #expect(larder.lastSyncFailure == nil)
 
     await larder.sync()
-    #expect(larder.lastSyncFailure == .offline)
+    #expect(larder.lastSyncFailure == .offline(.noNetwork))
     await larder.sync()
     #expect(larder.lastSyncFailure == .unexpected(status: 502))
     await larder.sync()

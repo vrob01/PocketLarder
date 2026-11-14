@@ -225,9 +225,7 @@ struct AccountView: View {
             switch await model.signOut(force: force) {
             case .done: break // The root swaps to the welcome screen.
             case let .unsentChanges(count): question = unsentChangesText(count)
-            case .unreachable: question = String(localized: "Can't reach your server. Sign out anyway? This deletes everything on this iPhone. Ask an admin to remove this device from the household.")
-            case .rateLimited: question = signOutAnywayText(.server(code: "rate_limited"), host: host)
-            case let .certificateRefused(reason): question = signOutAnywayText(.certificateRefused(reason: reason), host: host)
+            case let .failed(failure): question = signOutAnywayText(failure, host: host)
             }
             signingOut = false
         }
@@ -269,5 +267,6 @@ func signOutAnywayText(_ failure: APIError, host: String) -> String {
 /// Why a request to `host` failed. Only a failed connection says that the action needs one: otherwise the server answered.
 func connectionFailureText(_ failure: APIError, host: String) -> String {
     let cause = failureText(failure, host: host)
-    return failure == .offline ? String(localized: "Needs a connection to your server.") + " " + cause : cause
+    guard case .offline = failure else { return cause }
+    return String(localized: "Needs a connection to your server.") + " " + cause
 }

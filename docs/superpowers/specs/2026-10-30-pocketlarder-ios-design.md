@@ -161,7 +161,17 @@ Shown on launch whenever the device has no token.
     used already. Ask for a new one."
   - `rate_limited`: "Too many sign-in attempts on this server. Try again in a
     minute."
-  - No connection: "Can't reach lists.example.com."
+  - A refused certificate: iOS's reason, such as "This iPhone refused the
+    certificate of lists.example.com: “lists.example.com” certificate is not
+    trusted.", with the help "Servers with their own certificate".
+  - Any other failure shows the same failure text as the badge on the main
+    screen, such as "lists.example.com refused the connection.", "Can't find
+    lists.example.com: looking up its name (DNS) failed." or
+    "lists.example.com answered with HTTP status 502."
+  - The Keychain refused the sign-in: "Couldn't save the sign-in in this
+    iPhone's Keychain: OSStatus -25308."
+  - A newer sign-in took over while this one waited: "A newer sign-in took over
+    from this one."
 - If an invite link opens the app while it's signed in: "This iPhone is
   already signed in as Alex. Sign out first to use this invite."
   **[Claude's call]**.
@@ -224,12 +234,13 @@ owner asked for.
   - An item rename refused `conflict`: "Couldn't rename "Milk" to "Bread": that
     item already exists."
   - Refusals for things already deleted elsewhere (`not_found`) stay silent.
-- **Offline:** while the last sync attempt failed for lack of a connection, a
-  server error or because the server limited this iPhone's requests, a small
-  crossed-out cloud sits next to the account circle.
-  Tapping it says "Not connected. 3 changes will be sent when your server is
-  reachable." Otherwise there's nothing to see, and the app works the same
-  online or off.
+- **Failed sync:** after every failed sync, whatever the cause, a small cloud
+  with an exclamation mark (`exclamationmark.icloud`) sits next to the account
+  circle. Tapping it shows the failure text, then "3 changes are waiting to be
+  sent." (or "No changes are waiting to be sent."), such as "lists.example.com
+  refused the connection. 3 changes are waiting to be sent." The queue is kept
+  for the next sync. Otherwise there's nothing to see, and the app works the
+  same online or off.
 - **Signed out from elsewhere**, when a request gets 401 because an admin
   revoked this iPhone or removed the member: the app deletes the token, the
   local copy of the household's data and the queue, and returns to the welcome
@@ -252,12 +263,14 @@ mockup's "Items tab, for comparison" and "+2" were mockup notes.
   - "This iPhone": Add a device, Invites, Language, and Sign out;
   - "Household", for admins only: Members & devices;
   - About, in its own last section (see Server compatibility).
-- **Sign out** first tries to send the queue. If changes are still unsent, it
-  asks before discarding them. If the server can't be reached, it offers "Sign
-  out anyway", which deletes everything locally and says an admin should remove
-  the device from the household's list **[Claude's call]**. When the server
-  limited this iPhone's requests, it says so and offers "Sign out anyway" the
-  same way. After any of these questions, "Sign out anyway" also tries once to tell the server to remove the
+- **Sign out** first tries to send the queue. If that sync fails, whatever the
+  cause, or the request that signs this device out fails with anything other
+  than `unauthorized`, it shows the failure text and offers "Sign out anyway",
+  which deletes everything locally and says an admin should remove the device
+  from the household's list **[Claude's call]**. Unsent changes ask their own
+  question before they are discarded only when there was no failure.
+  `unauthorized` means the server already treats this device as signed out, so
+  the app signs out. After any of these questions, "Sign out anyway" also tries once to tell the server to remove the
   device, without waiting for the answer, so that no device is left for an admin
   to remove when the server can be reached. If that fails, the device stays on
   the list until an admin removes it.
@@ -297,8 +310,10 @@ mockup's "Items tab, for comparison" and "+2" were mockup notes.
   server does this (see `server/API.md`), and the confirmation says so. The
   member's other pending invites stay until they expire, or they
   are cancelled one by one under the member's Invites.
-- Admin actions, invites and sign-out need a connection. Offline they say "Needs
-  a connection to your server" instead of failing silently.
+- Admin actions and invites need a connection. When no answer came, they say
+  "Needs a connection to your server." followed by the cause, such as "Needs a
+  connection to your server. lists.example.com refused the connection.", instead
+  of failing silently. When the server answered, they show only the cause.
 - Error copy for admin actions: `conflict` "Someone in the household already
   has that name.", `last_admin` "The household needs at least one admin."
 - When the server refuses to cancel an invite with `invite_redeemed`, Invites
@@ -359,7 +374,8 @@ asks the server with `GET /v1/version`, which needs no token.
 - **About** (My account > About): the app's version and build, as "0.1.0 (1)",
   and the server's address and version, fetched each time the page opens. When
   the answer has no version, About says why: the 404 sentence without its
-  advice, the usual failure text such as "Can't reach lists.example.com.", or
+  advice, the usual failure text such as "lists.example.com refused the
+  connection.", or
   "lists.example.com answered GET /v1/version, but not with a version of the
   form MAJOR.MINOR.PATCH.". About never blocks or unblocks the app.
 

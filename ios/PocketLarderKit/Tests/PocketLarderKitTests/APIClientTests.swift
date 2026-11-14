@@ -123,8 +123,9 @@ private func expectRequest(
         (.answer(status: 429, json: #"{"error":"rate_limited"}"#), .server(code: "rate_limited")),
         (.answer(status: 500, json: #"{"error":"internal"}"#), .server(code: "internal")),
         (.answer(status: 404, json: "404 page not found\n"), .unexpected(status: 404)),
-        (.error(URLError(.notConnectedToInternet)), .offline),
-        (.answer(status: 200, json: "not the snapshot"), .unexpected(status: 200)),
+        (.answer(status: 301, json: ""), .unexpected(status: 301)),
+        (.error(URLError(.notConnectedToInternet)), .offline(.noNetwork)),
+        (.answer(status: 200, json: "not the snapshot"), .notPocketLarder(status: 200)),
     ]
     for (step, expected) in cases {
         let (client, _) = fakeClient(step)
@@ -144,10 +145,10 @@ private func expectRequest(
         (URLError(.serverCertificateHasUnknownRoot), .certificateRefused(reason: nil)),
         (URLError(.serverCertificateNotYetValid), .certificateRefused(reason: nil)),
         (URLError(.secureConnectionFailed, userInfo: peerTrust), .certificateRefused(reason: nil)),
-        (URLError(.secureConnectionFailed), .offline),
-        (URLError(.clientCertificateRejected), .offline),
-        (URLError(.clientCertificateRequired), .offline),
-        (URLError(.notConnectedToInternet), .offline),
+        (URLError(.secureConnectionFailed), .offline(.tlsFailed)),
+        (URLError(.clientCertificateRejected), .offline(.other(code: -1205))),
+        (URLError(.clientCertificateRequired), .offline(.other(code: -1206))),
+        (URLError(.notConnectedToInternet), .offline(.noNetwork)),
     ]
     for (error, expected) in cases {
         let (client, _) = fakeClient(.error(error))
@@ -156,6 +157,50 @@ private func expectRequest(
         }
         let (checking, _) = fakeClient(.error(error))
         #expect(await checking.serverVersion() == .couldNotCheck(expected), "\(error.code)")
+    }
+}
+
+@Test func connectionFailures() {
+    let cases: [(URLError.Code, ConnectionFailure)] = [
+        (.cannotFindHost, .hostNotFound),
+        (.dnsLookupFailed, .hostNotFound),
+        (.cannotConnectToHost, .refused),
+        (.timedOut, .timedOut),
+        (.notConnectedToInternet, .noNetwork),
+        (.dataNotAllowed, .noNetwork),
+        (.internationalRoamingOff, .noNetwork),
+        (.networkConnectionLost, .connectionLost),
+        (.secureConnectionFailed, .tlsFailed),
+        (.appTransportSecurityRequiresSecureConnection, .other(code: -1022)),
+        (.clientCertificateRejected, .other(code: -1205)),
+        (.badServerResponse, .other(code: -1011)),
+    ]
+    for (code, expected) in cases {
+        #expect(URLError(code).connectionFailure == expected, "\(code)")
+    }
+}
+
+private struct NotAURLError: Error {}
+
+/// Each reason reaches the caller, and an error that isn't a `URLError` still counts as no answer.
+@Test func transportFailures() async {
+    let cases: [(any Error, ConnectionFailure)] = [
+        (URLError(.cannotFindHost), .hostNotFound),
+        (URLError(.cannotConnectToHost), .refused),
+        (URLError(.timedOut), .timedOut),
+        (URLError(.dataNotAllowed), .noNetwork),
+        (URLError(.networkConnectionLost), .connectionLost),
+        (URLError(.secureConnectionFailed), .tlsFailed),
+        (URLError(.badServerResponse), .other(code: -1011)),
+        (NotAURLError(), .other(code: -1)),
+    ]
+    for (error, expected) in cases {
+        let (client, _) = fakeClient(.error(error))
+        await #expect(throws: APIError.offline(expected), "\(error)") {
+            _ = try await client.sync([])
+        }
+        let (checking, _) = fakeClient(.error(error))
+        #expect(await checking.serverVersion() == .couldNotCheck(.offline(expected)), "\(error)")
     }
 }
 
@@ -193,8 +238,8 @@ private func expectRequest(
         (.answer(status: 404, json: "404 page not found\n"), .incompatible(.serverTooOld(nil))),
         (.answer(status: 404, json: #"{"error":"not_found"}"#), .incompatible(.serverTooOld(nil))),
         (.answer(status: 200, json: #"{"version":"2.0.0"}"#), .incompatible(.appTooOld(Version(2, 0, 0)))),
-        (.error(URLError(.notConnectedToInternet)), .couldNotCheck(.offline)),
-        (.error(URLError(.timedOut)), .couldNotCheck(.offline)),
+        (.error(URLError(.notConnectedToInternet)), .couldNotCheck(.offline(.noNetwork))),
+        (.error(URLError(.timedOut)), .couldNotCheck(.offline(.timedOut))),
         (.answer(status: 500, json: #"{"error":"internal"}"#), .couldNotCheck(.server(code: "internal"))),
         (.answer(status: 502, json: "Bad Gateway"), .couldNotCheck(.unexpected(status: 502))),
         (.answer(status: 301, json: ""), .couldNotCheck(.unexpected(status: 301))),

@@ -207,11 +207,14 @@ func signInErrorText(_ error: AppModel.SignInError) -> String {
     switch error {
     case .invalidInvite: String(localized: "This invite can't be used. It may have expired or been used already. Ask for a new one.")
     case .rateLimited: String(localized: "Too many sign-in attempts on this server. Try again in a minute.")
-    case let .unreachable(host): String(localized: "Can't reach \(host).")
     case let .alreadySignedIn(name): String(localized: "This iPhone is already signed in as \(name). Sign out first to use this invite.")
-    case .other: String(localized: "Couldn't sign in. Try again, or ask for a new invite.")
     case let .certificateRefused(host, reason): failureText(.certificateRefused(reason: reason), host: host)
     case let .incompatible(incompatibility, server): incompatibleText(incompatibility, host: server.host() ?? "")
+    case let .failed(failure, host): failureText(failure, host: host)
+    // A string, because an interpolated number gets the locale's grouping, such as "-25,308" or "-25.308".
+    case let .keychainFailed(status?): String(localized: "Couldn't save the sign-in in this iPhone's Keychain: OSStatus \(String(status)).")
+    case .keychainFailed(nil): String(localized: "Couldn't save the sign-in in this iPhone's Keychain.")
+    case .overtaken: String(localized: "A newer sign-in took over from this one.")
     }
 }
 

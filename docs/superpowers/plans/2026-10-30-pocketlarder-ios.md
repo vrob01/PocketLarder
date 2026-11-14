@@ -644,7 +644,7 @@ Behavior and copy, from the design's "The main screen", "Sync feedback" and the 
   - `.listHidden`: "%@'s list is now hidden, so it's no longer on this iPhone.", plus " Your recent changes to it weren't saved." when `lostChanges`.
   - `.listReadOnly`: "%@'s list is now read-only. Your recent changes to it weren't saved."
   - `.renameConflict`: "Couldn't rename "%@" to "%@": that item already exists."
-- **Offline popover:** "Not connected. %lld changes will be sent when your server is reachable."
+- **Offline badge:** `exclamationmark.icloud`, shown after every failed sync. Its popover is `offlineText`: the failure text, then "%lld changes are waiting to be sent." (or "No changes are waiting to be sent.").
 
 - [ ] **Step 1: Write the failing kit tests**
 
@@ -803,7 +803,7 @@ Behavior, from `settings.html` cards 1–2:
   - "Copy invite", which writes the pasteboard with `.localOnly: true` and `.expirationDate` 10 minutes ahead.
   - The warning "Anyone with this invite can sign in as you until it's used or expires. Only send it to yourself."
   - "Cancel invite" (`cancelInvite(invite.id)`), which closes the sheet, as does a 404 `not_found`.
-- **Offline:** each network action shows "Needs a connection to your server".
+- **Offline:** when no answer came, each network action shows "Needs a connection to your server.", followed by the cause (`connectionFailureText`).
 - **`too_many_invites`:** Add a device shows "Maximum number of open invites reached. Cancel one under Invites, or wait until one is used or expires.", through `failureText`.
 
 - [ ] **Step 1: Write the failing test**
@@ -851,7 +851,7 @@ Behavior, from `settings.html` card 4 and the design:
 - **Errors:**
   - `conflict`: "Someone in the household already has that name."
   - `last_admin`: "The household needs at least one admin."
-  - Offline: "Needs a connection to your server".
+  - Offline: "Needs a connection to your server.", followed by the cause, only when no answer came.
   - `too_many_invites`: "Maximum number of open invites reached. Cancel one under Invites, or wait until one is used or expires."
 
 - [ ] **Step 1: Write the failing kit test**

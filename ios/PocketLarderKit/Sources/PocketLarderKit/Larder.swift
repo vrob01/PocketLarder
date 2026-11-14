@@ -7,7 +7,6 @@ import Observation
     public private(set) var pending: [PendingOp]
     /// `snapshot` with `pending` applied.
     public private(set) var view: Snapshot?
-    public private(set) var isOffline = false
     /// Why the last sync failed. Nil after a 200 and after the `unauthorized` wipe.
     public private(set) var lastSyncFailure: APIError?
     public private(set) var notices: [Notice] = []
@@ -113,34 +112,23 @@ import Observation
         try? files.save(queue: pending)
         notices += PocketLarderKit.notices(before: before, after: response.snapshot, sent: sent, rejected: response.rejected)
         view = applying(pending, to: response.snapshot)
-        isOffline = false
         lastSyncFailure = nil
     }
 
+    /// Whatever the cause, a failure keeps the queue for the next sync, except `unauthorized`: this device is signed out.
     private func fail(_ error: APIError) {
         lastSyncFailure = error
-        switch error {
-        case .server(code: "unauthorized"):
+        if error == .server(code: "unauthorized") {
             let lostChanges = pending.count
             files.wipe()
             snapshot = nil
             pending = []
             view = nil
             notices = []
-            isOffline = false
             lastSyncFailure = nil
             schedule?.cancel()
             schedule = nil
             onSignedOut?(lostChanges)
-        case .offline, .certificateRefused, .server(code: "internal"), .server(code: "missing_token"), .server(code: "rate_limited"),
-             .unexpected(status: 500...599):
-            // A refused certificate means no request reached the server, so it holds the queue like an outage.
-            // `missing_token` means a proxy may have dropped the header, not that this device is signed out.
-            // `rate_limited` holds the queue back like an outage, and the next scheduled sync retries it.
-            isOffline = true
-        default:
-            // The server answered, so this isn't a lack of connection.
-            isOffline = false
         }
     }
 }

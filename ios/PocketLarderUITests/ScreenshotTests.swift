@@ -593,7 +593,7 @@ final class ScreenshotTests: XCTestCase {
         let alert = app.alerts.firstMatch
         XCTAssertTrue(alert.waitForExistence(timeout: 20))
         XCTAssertTrue(alert.staticTexts["Couldn't create an invite."].exists)
-        XCTAssertTrue(alert.staticTexts["Needs a connection to your server. Can't reach fixture.invalid."].exists)
+        XCTAssertTrue(alert.staticTexts["Needs a connection to your server. fixture.invalid refused the connection."].exists)
         XCTAssertFalse(withID(app.images, "addDevice.qr").exists)
         app.terminate()
     }
@@ -703,7 +703,7 @@ final class ScreenshotTests: XCTestCase {
         invitesRow.tap()
         let failure = withID(app.staticTexts, "invites.loadFailure")
         XCTAssertTrue(failure.waitForExistence(timeout: 20))
-        XCTAssertEqual(failure.label, "Couldn't load the invites. Needs a connection to your server. Can't reach fixture.invalid.")
+        XCTAssertEqual(failure.label, "Couldn't load the invites. Needs a connection to your server. fixture.invalid refused the connection.")
         XCTAssertFalse(withID(app.staticTexts, "invites.empty").exists)
         app.terminate()
     }
@@ -884,8 +884,8 @@ final class ScreenshotTests: XCTestCase {
         let text = app.staticTexts["main.offlineText"]
         XCTAssertTrue(text.waitForExistence(timeout: 5))
         XCTAssertEqual(text.label, language == "en"
-            ? "Can't reach fixture.invalid. No changes are waiting to be sent."
-            : "fixture.invalid ist nicht erreichbar. Es warten keine Änderungen darauf, gesendet zu werden.")
+            ? "fixture.invalid refused the connection. No changes are waiting to be sent."
+            : "fixture.invalid hat die Verbindung abgelehnt. Es warten keine Änderungen darauf, gesendet zu werden.")
         // The bubble is still growing.
         Thread.sleep(forTimeInterval: 0.5)
         attach(app, name)

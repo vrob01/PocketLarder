@@ -151,22 +151,32 @@
         }
       }
     },
-    "Can't reach %@.": {
+    "Couldn't save the sign-in in this iPhone's Keychain: OSStatus %@.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ ist nicht erreichbar."
+            "value": "Die Anmeldung konnte nicht im Schlüsselbund dieses iPhones gespeichert werden: OSStatus %@."
           }
         }
       }
     },
-    "Couldn't sign in. Try again, or ask for a new invite.": {
+    "Couldn't save the sign-in in this iPhone's Keychain.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Die Anmeldung hat nicht geklappt. Versuch es noch einmal oder bitte um eine neue Einladung."
+            "value": "Die Anmeldung konnte nicht im Schlüsselbund dieses iPhones gespeichert werden."
+          }
+        }
+      }
+    },
+    "A newer sign-in took over from this one.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine neuere Anmeldung hat diese abgelöst."
           }
         }
       }
@@ -267,16 +277,6 @@
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "Can't reach your server. Sign out anyway? This deletes everything on this iPhone. Ask an admin to remove this device from the household.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dein Server ist nicht erreichbar. Trotzdem abmelden? Das löscht alles auf diesem iPhone. Bitte einen Admin, dieses Gerät aus dem Haushalt zu entfernen."
           }
         }
       }
@@ -617,6 +617,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$@ hat mit dem HTTP-Status %2$lld geantwortet."
+          }
+        }
+      }
+    },
+    "Can't find %@: looking up its name (DNS) failed.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ wurde nicht gefunden: Die Namensauflösung (DNS) ist fehlgeschlagen."
+          }
+        }
+      }
+    },
+    "%@ refused the connection.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ hat die Verbindung abgelehnt."
+          }
+        }
+      }
+    },
+    "The request to %@ timed out.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zeitüberschreitung bei der Anfrage an %@."
+          }
+        }
+      }
+    },
+    "This iPhone has no network connection, so it can't reach %@.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses iPhone hat keine Netzwerkverbindung und kann %@ deshalb nicht erreichen."
+          }
+        }
+      }
+    },
+    "The connection to %@ broke off.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Verbindung zu %@ ist abgebrochen."
+          }
+        }
+      }
+    },
+    "The secure connection (TLS) to %@ failed, for a reason other than its certificate.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die sichere Verbindung (TLS) zu %@ ist fehlgeschlagen, aber nicht wegen des Zertifikats."
+          }
+        }
+      }
+    },
+    "Can't reach %@ (URLError %@).": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ ist nicht erreichbar (URLError %2$@)."
+          }
+        }
+      }
+    },
+    "%@ answered with HTTP status %lld, but the answer isn't PocketLarder's. It may be a captive portal's or a proxy's page.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ hat mit dem HTTP-Status %2$lld geantwortet, aber die Antwort ist nicht von PocketLarder. Es könnte die Seite eines Captive Portals oder eines Proxys sein."
           }
         }
       }

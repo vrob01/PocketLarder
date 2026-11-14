@@ -64,6 +64,33 @@ extension URLError {
             false
         }
     }
+
+    /// Why no answer came, for an error that doesn't refuse the certificate.
+    var connectionFailure: ConnectionFailure {
+        switch code {
+        case .cannotFindHost, .dnsLookupFailed: .hostNotFound
+        case .cannotConnectToHost: .refused
+        case .timedOut: .timedOut
+        case .notConnectedToInternet, .dataNotAllowed, .internationalRoamingOff: .noNetwork
+        case .networkConnectionLost: .connectionLost
+        case .secureConnectionFailed: .tlsFailed
+        default: .other(code: code.rawValue)
+        }
+    }
+}
+
+/// Why no answer came from the server.
+public enum ConnectionFailure: Equatable, Sendable {
+    case hostNotFound
+    case refused
+    case timedOut
+    /// This phone has no network.
+    case noNetwork
+    case connectionLost
+    /// The TLS handshake failed for a reason other than the certificate.
+    case tlsFailed
+    /// Any other transport error, by its `URLError` code.
+    case other(code: Int)
 }
 
 /// What `URLSessionTransport` throws when the system refused the server's certificate. `reason` is the system's, and nil
@@ -95,11 +122,14 @@ private func trustFailure(_ error: URLError) -> String? {
 }
 
 public enum APIError: Error, Equatable, Sendable {
-    case offline
+    /// No answer came.
+    case offline(ConnectionFailure)
     /// The system refused the server's certificate, so nothing reached the server.
     case certificateRefused(reason: String?)
     case server(code: String)
     case unexpected(status: Int)
+    /// A 2xx whose body isn't the JSON PocketLarder sends, such as a captive portal's page.
+    case notPocketLarder(status: Int)
 }
 
 public struct Redemption: Decodable, Equatable, Sendable {
@@ -265,7 +295,7 @@ public struct APIClient: Sendable {
     ) async throws(APIError) -> Response {
         let (data, status) = try await send(method, path, query: query, body: body, authorized: authorized)
         guard let response = try? JSON.decoder.decode(Response.self, from: data) else {
-            throw .unexpected(status: status)
+            throw .notPocketLarder(status: status)
         }
         return response
     }
@@ -298,7 +328,7 @@ public struct APIClient: Sendable {
             // From a transport that doesn't evaluate the trust, so there is no reason.
             throw .certificateRefused(reason: nil)
         } catch {
-            throw .offline
+            throw .offline((error as? URLError)?.connectionFailure ?? .other(code: URLError.Code.unknown.rawValue))
         }
         guard (200..<300).contains(response.statusCode) || response.statusCode == passing else {
             // `unauthorized` wipes the phone, so a gateway's 403 or 500 with that body must not count as one.
