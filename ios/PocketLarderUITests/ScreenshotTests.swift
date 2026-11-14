@@ -73,6 +73,9 @@ final class ScreenshotTests: XCTestCase {
             XCTAssertTrue(error.waitForExistence(timeout: 10))
             let errorHelp = app.buttons["invite.error.certificateHelp"]
             XCTAssertTrue(errorHelp.exists)
+            // In German the button ends below the screen.
+            app.swipeUp()
+            XCTAssertTrue(errorHelp.isHittable)
             if checks {
                 XCTAssertEqual(error.label, "This iPhone refused the certificate of lists.example.com: “lists.example.com” certificate is not trusted")
             }
