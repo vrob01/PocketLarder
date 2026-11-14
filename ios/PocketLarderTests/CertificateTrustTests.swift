@@ -3,20 +3,26 @@ import Network
 import PocketLarderKit
 import Security
 import Testing
+@testable import PocketLarder
 
 /// A fully qualified public name whose DNS answer is the loopback address. ATS skips IP addresses, single-label names
 /// such as `localhost` and `.local` names, so a test connecting by one of those would pass even if ATS refused the
 /// override for real servers.
 private let host = "localtest.me"
+/// Resolves to the loopback address too, as every name under `localtest.me` does, but the certificate doesn't cover it.
+private let misnamed = "wrong.localtest.me"
 
 /// Runs in the app, under its App Transport Security, on one transport: without a trusted host, with another host trusted,
-/// with this one trusted, and without one again, which a connection the trusted session accepted must not serve.
+/// with this one trusted, and without one again, which a connection the trusted session accepted must not serve. Then
+/// with a trusted name that the certificate doesn't cover, which the check of the name still refuses.
 @Test func trustedHostPassesATS() async throws {
-    let addresses = try resolve(host)
-    try #require(
-        !addresses.isEmpty && addresses.allSatisfy { $0.hasPrefix("127.") || $0 == "::1" },
-        "\(host) resolves to \(addresses), not to the loopback address, so the request can't reach this test's server"
-    )
+    for name in [host, misnamed] {
+        let addresses = try resolve(name)
+        try #require(
+            !addresses.isEmpty && addresses.allSatisfy { $0.hasPrefix("127.") || $0 == "::1" },
+            "\(name) resolves to \(addresses), not to the loopback address, so the request can't reach this test's server"
+        )
+    }
     let server = try await HTTPSServer()
     defer { server.stop() }
     let url = try #require(URL(string: "https://\(host):\(server.port)"))
@@ -30,6 +36,21 @@ private let host = "localtest.me"
     #expect(await client.serverVersion() == .compatible(minimumServerVersion))
     transport.trust(host: nil)
     await expectCertificateRefused(transport, url, "With the trusted host cleared again")
+
+    transport.trust(host: misnamed)
+    let misnamedURL = try #require(URL(string: "https://\(misnamed):\(server.port)/v1/version"))
+    do {
+        let (_, response) = try await transport.send(URLRequest(url: misnamedURL))
+        Issue.record("With \(misnamed) trusted, the certificate for \(host) passed, and the server answered \(response.statusCode)")
+    } catch let refused as CertificateRefused {
+        let message = failureText(.certificateRefused(reason: refused.reason), host: refused.host)
+        print("With \(misnamed) trusted, the refusal reads: \(message)")
+        #expect(refused.host == misnamed)
+        // Both the system's description and its list of failed checks say "name" for this check.
+        #expect(refused.reason.localizedCaseInsensitiveContains("name"), "The reason doesn't name the failed check: \(refused.reason)")
+    } catch {
+        Issue.record("With \(misnamed) trusted, the request failed with \(error), not with CertificateRefused")
+    }
 
     // `SecPKCS12Import` keeps the identity in memory on iOS.
     for itemClass in [kSecClassIdentity, kSecClassCertificate, kSecClassKey] {
@@ -176,55 +197,4 @@ private func identity() throws -> SecIdentity {
     try #require(status == errSecSuccess, "SecPKCS12Import failed with OSStatus \(status)")
     let first = try #require((items as? [[String: Any]])?.first)
     return try #require(first[kSecImportItemIdentity as String]) as! SecIdentity
-}
-
-// shortcut: a diagnostic for whether ATS lets a delegate accept a self-signed certificate; remove once answered.
-@Test func diagnoseTrustOverride() async throws {
-    let server = try await HTTPSServer()
-    defer { server.stop() }
-    let url = try #require(URL(string: "https://\(host):\(server.port)/v1/version"))
-    for recorder in [Recorder(), AsyncRecorder()] as [any Recording] {
-        let session = URLSession(configuration: .ephemeral, delegate: recorder, delegateQueue: nil)
-        let outcome: String = await withCheckedContinuation { continuation in
-            session.dataTask(with: url) { _, response, error in
-                continuation.resume(returning: error.map { "failed: \($0)" } ?? "answered \((response as? HTTPURLResponse)?.statusCode ?? 0)")
-            }.resume()
-        }
-        session.invalidateAndCancel()
-        Issue.record("DIAGNOSTIC \(type(of: recorder)): \(outcome). Challenges: \(recorder.seen)")
-    }
-}
-
-private protocol Recording: URLSessionDelegate {
-    var seen: [String] { get }
-}
-
-private final class Recorder: NSObject, Recording, @unchecked Sendable {
-    private let lock = NSLock()
-    private var calls: [String] = []
-    var seen: [String] { lock.withLock { calls } }
-
-    func urlSession(
-        _ session: URLSession,
-        didReceive challenge: URLAuthenticationChallenge,
-        completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
-    ) {
-        let space = challenge.protectionSpace
-        lock.withLock { calls.append("\(space.authenticationMethod) \(space.host) trust: \(space.serverTrust != nil)") }
-        guard let trust = space.serverTrust else { return completionHandler(.performDefaultHandling, nil) }
-        completionHandler(.useCredential, URLCredential(trust: trust))
-    }
-}
-
-private final class AsyncRecorder: NSObject, Recording, @unchecked Sendable {
-    private let lock = NSLock()
-    private var calls: [String] = []
-    var seen: [String] { lock.withLock { calls } }
-
-    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
-        let space = challenge.protectionSpace
-        lock.withLock { calls.append("\(space.authenticationMethod) \(space.host) trust: \(space.serverTrust != nil)") }
-        guard let trust = space.serverTrust else { return (.performDefaultHandling, nil) }
-        return (.useCredential, URLCredential(trust: trust))
-    }
 }

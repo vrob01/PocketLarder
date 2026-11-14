@@ -6,6 +6,8 @@ import PocketLarderKit
 final class AppModel {
     enum SignInError: Error, Equatable {
         case invalidInvite, rateLimited, unreachable(host: String), alreadySignedIn(name: String), other
+        /// The certificate of a host the user chose to trust failed its check, for `reason`.
+        case certificateRefused(host: String, reason: String)
         /// Nothing was redeemed, because the invite's server is too old or too new for this app.
         case incompatible(Incompatibility, server: URL)
     }
@@ -198,6 +200,7 @@ final class AppModel {
             case .server(code: "invalid_invite"): return .invalidInvite
             case .server(code: "rate_limited"): return .rateLimited
             case .offline: return .unreachable(host: invite.server.host() ?? "")
+            case let .certificateRefused(reason): return .certificateRefused(host: invite.server.host() ?? "", reason: reason)
             default: return .other
             }
         }

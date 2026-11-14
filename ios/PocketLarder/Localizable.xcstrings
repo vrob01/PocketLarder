@@ -2070,6 +2070,16 @@
           }
         }
       }
+    },
+    "The certificate of %@ failed a check: %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Zertifikat von %1$@ hat eine Prüfung nicht bestanden: %2$@"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

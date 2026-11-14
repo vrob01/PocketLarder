@@ -312,6 +312,7 @@ extension KeychainSuite {
             (.answer(status: 401, json: #"{"error":"invalid_invite"}"#), .invalidInvite),
             (.answer(status: 429, json: #"{"error":"rate_limited"}"#), .rateLimited),
             (offline, .unreachable(host: "lists.example.test")),
+            (.error(CertificateRefused(host: "lists.example.test", reason: "R")), .certificateRefused(host: "lists.example.test", reason: "R")),
             (.answer(status: 500, json: #"{"error":"internal"}"#), .other),
         ]
         for (step, expected) in cases {
@@ -1130,6 +1131,9 @@ extension KeychainSuite {
     #expect(signInErrorText(.unreachable(host: "lists.example.test")) == "Can't reach lists.example.test.")
     #expect(signInErrorText(.alreadySignedIn(name: "Alex")) == "This iPhone is already signed in as Alex. Sign out first to use this invite.")
     #expect(signInErrorText(.other) == "Couldn't sign in. Try again, or ask for a new invite.")
+    let reason = "Certificate 0 “lists.example.test” has errors: SSL hostname does not match name(s) in certificate;"
+    #expect(signInErrorText(.certificateRefused(host: "lists.example.test", reason: reason)) == "The certificate of lists.example.test failed a check: \(reason)")
+    #expect(offlineText(failure: .certificateRefused(reason: reason), host: "lists.example.test", pending: 0) == "The certificate of lists.example.test failed a check: \(reason) No changes are waiting to be sent.")
     #expect(signedOutText(lostChanges: 0) == "This iPhone was signed out.")
     #expect(signedOutText(lostChanges: 1) == "This iPhone was signed out. 1 change that wasn't sent yet is lost.")
     #expect(signedOutText(lostChanges: 2) == "This iPhone was signed out. 2 changes that weren't sent yet are lost.")

@@ -50,6 +50,7 @@ func offlineText(failure: APIError, host: String, pending: Int) -> String {
 func failureText(_ failure: APIError, host: String) -> String {
     switch failure {
     case .offline: String(localized: "Can't reach \(host).")
+    case let .certificateRefused(reason): String(localized: "The certificate of \(host) failed a check: \(reason)")
     case .server(code: "rate_limited"): String(localized: "\(host) limited this iPhone's requests: too many in the past minute.")
     case .server(code: "too_many_invites"): String(localized: "Maximum number of open invites reached. Cancel one under Invites, or wait until one is used or expires.")
     case .server(code: "invite_redeemed"): String(localized: "This invite was already used.")

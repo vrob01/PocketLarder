@@ -244,6 +244,7 @@ func signInErrorText(_ error: AppModel.SignInError) -> String {
     case let .unreachable(host): String(localized: "Can't reach \(host).")
     case let .alreadySignedIn(name): String(localized: "This iPhone is already signed in as \(name). Sign out first to use this invite.")
     case .other: String(localized: "Couldn't sign in. Try again, or ask for a new invite.")
+    case let .certificateRefused(host, reason): failureText(.certificateRefused(reason: reason), host: host)
     case let .incompatible(incompatibility, server): incompatibleText(incompatibility, host: server.host() ?? "")
     }
 }
