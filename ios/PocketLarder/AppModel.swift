@@ -6,14 +6,13 @@ import PocketLarderKit
 final class AppModel {
     enum SignInError: Error, Equatable {
         case invalidInvite, rateLimited, unreachable(host: String), alreadySignedIn(name: String), other
-        /// The certificate of a host the user chose to trust failed its check, for `reason`.
-        case certificateRefused(host: String, reason: String)
+        case certificateRefused(host: String, reason: String?)
         /// Nothing was redeemed, because the invite's server is too old or too new for this app.
         case incompatible(Incompatibility, server: URL)
     }
 
     enum SignOutResult: Equatable {
-        case done, unsentChanges(Int), unreachable, rateLimited
+        case done, unsentChanges(Int), unreachable, rateLimited, certificateRefused(reason: String?)
     }
 
     var pendingInvite: Invite?
@@ -82,7 +81,6 @@ final class AppModel {
         usesKeychain = true
         self.saveAccount = saveAccount
         account = Keychain.load()
-        trustAccountHost()
         larder = account.map(makeLarder)
         #if DEBUG
         signedOutLostChanges = UserDefaults.standard.string(forKey: "signedOutLostChanges").flatMap { Int($0) }
@@ -92,7 +90,7 @@ final class AppModel {
     #if DEBUG
     /// Signed in on sample data, on a fake server and a new empty directory, so that nothing of a real account is touched.
     /// Offline, the server can't be reached, so the first sync never succeeds. Outdated, the server is from before
-    /// `GET /v1/version`. `-acceptsAnyCertificate YES` signs it in with that setting on.
+    /// `GET /v1/version`.
     static func fixture(offline: Bool = false, outdated: Bool = false) -> AppModel {
         let url = Bundle.main.url(forResource: "household", withExtension: "json")!
         let snapshot = try! JSON.decoder.decode(Snapshot.self, from: Data(contentsOf: url))
@@ -102,8 +100,7 @@ final class AppModel {
             server: URL(string: "https://fixture.invalid")!,
             token: "fixture",
             memberId: snapshot.me.memberId,
-            deviceId: snapshot.me.deviceId,
-            acceptsAnyCertificate: UserDefaults.standard.bool(forKey: "acceptsAnyCertificate")
+            deviceId: snapshot.me.deviceId
         )
         let transport: any Transport = offline ? UnreachableTransport() : FixtureTransport(snapshot, outdated: outdated)
         return AppModel(fixture: account, transport: transport, dataDirectory: directory)
@@ -127,7 +124,6 @@ final class AppModel {
         signInAttempts += 1
         larder = makeLarder(restored)
         account = restored
-        trustAccountHost()
         if pendingInvite != nil {
             pendingInvite = nil
             alreadySignedInAs = memberName
@@ -181,10 +177,8 @@ final class AppModel {
         }
     }
 
-    /// `acceptsAnyCertificate` is the user's own choice on Enter invite. It covers every request from the version check on.
-    func signIn(_ invite: Invite, deviceName: String, acceptsAnyCertificate: Bool = false) async -> SignInError? {
+    func signIn(_ invite: Invite, deviceName: String) async -> SignInError? {
         if account != nil { return .alreadySignedIn(name: memberName) }
-        transport.trust(host: acceptsAnyCertificate ? invite.server.host() : nil)
         signInAttempts += 1
         let attempt = signInAttempts
         let outcome = await checkServer(at: invite.server)
@@ -212,13 +206,7 @@ final class AppModel {
             Task { try? await client.signOut() }
             return account == nil ? .other : .alreadySignedIn(name: memberName)
         }
-        let account = Account(
-            server: invite.server,
-            token: redemption.token,
-            memberId: redemption.memberId,
-            deviceId: redemption.deviceId,
-            acceptsAnyCertificate: acceptsAnyCertificate
-        )
+        let account = Account(server: invite.server, token: redemption.token, memberId: redemption.memberId, deviceId: redemption.deviceId)
         do {
             if usesKeychain { try saveAccount(account) }
         } catch {
@@ -251,6 +239,7 @@ final class AppModel {
         // A 401 or a forced sign-out during the wait has wiped already, and a new account may have signed in since.
         guard self.larder === larder else { return .done }
         if larder.lastSyncFailure == .server(code: "rate_limited") { return .rateLimited }
+        if case let .certificateRefused(reason)? = larder.lastSyncFailure { return .certificateRefused(reason: reason) }
         if larder.isOffline { return .unreachable }
         if !larder.pending.isEmpty { return .unsentChanges(larder.pending.count) }
         var failure: APIError?
@@ -261,26 +250,11 @@ final class AppModel {
         }
         guard self.larder === larder else { return .done }
         if failure == .server(code: "rate_limited") { return .rateLimited }
+        if case let .certificateRefused(reason)? = failure { return .certificateRefused(reason: reason) }
         // `unauthorized` means the server already treats this device as signed out.
         if let failure, failure != .server(code: "unauthorized") { return .unreachable }
         wipe()
         return .done
-    }
-
-    /// Takes effect at once and stays off in memory even when saving fails, which then throws. Only signing in again turns
-    /// it back on.
-    func stopAcceptingAnyCertificate() throws {
-        guard var account, account.acceptsAnyCertificate else { return }
-        account.acceptsAnyCertificate = false
-        self.account = account
-        transport.trust(host: nil)
-        if usesKeychain { try saveAccount(account) }
-    }
-
-    /// After a sign-out the transport keeps its host until the next sign-in or restore, so that a forced sign-out's one
-    /// request still reaches a server whose certificate the user accepted.
-    private func trustAccountHost() {
-        transport.trust(host: account?.acceptsAnyCertificate == true ? account?.server.host() : nil)
     }
 
     private func makeLarder(_ account: Account) -> Larder {

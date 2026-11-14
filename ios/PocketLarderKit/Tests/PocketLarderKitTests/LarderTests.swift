@@ -144,7 +144,7 @@ private func sentOpIds(_ request: URLRequest) throws -> [String] {
 
 /// No request reached the server, so the queue waits as it does offline, and the badge has the reason.
 @Test @MainActor func refusedCertificateIsOffline() async throws {
-    let refused = CertificateRefused(host: "lists.example.test", reason: "R")
+    let refused = CertificateRefused(reason: "R")
     let (larder, _, files, _) = try makeLarder([.error(refused)])
     try larder.perform([add("A")], now: at)
     let queued = larder.pending

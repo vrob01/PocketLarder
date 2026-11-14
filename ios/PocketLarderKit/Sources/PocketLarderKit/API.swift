@@ -5,91 +5,41 @@ import FoundationNetworking
 #if canImport(Security)
 import Security
 #endif
-import Synchronization
 
 public protocol Transport: Sendable {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
-    /// From the next request on, `host`, ignoring case and port, is checked with the certificates it presents as the only
-    /// trust anchors, so that a self-signed certificate passes when it meets every other check. Nil trusts no host.
-    func trust(host: String?)
 }
 
-extension Transport {
-    public func trust(host: String?) {}
-}
-
-public final class URLSessionTransport: Transport {
-    /// Replaced, never changed, so that no request started after `trust(host:)` reuses a connection or TLS session that
-    /// the old setting accepted. Requests take it under the lock, so that none starts on a session already invalidated.
-    private let current: Mutex<URLSession>
+public struct URLSessionTransport: Transport {
+    private let session: URLSession
 
     public init() {
-        current = Mutex(Self.session(trusting: nil))
-    }
-
-    /// The session new requests start on.
-    var session: URLSession {
-        current.withLock { $0 }
-    }
-
-    public func trust(host: String?) {
-        current.withLock { session in
-            guard (session.delegate as? SessionDelegate)?.trustedHost != host else { return }
-            // Requests already running finish under the old setting.
-            session.finishTasksAndInvalidate()
-            session = Self.session(trusting: host)
-        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 30
+        // shortcut: the session holds its delegate until invalidated and this struct never does that, so each transport leaks both; upgrade if the app ever makes more than a few.
+        session = URLSession(configuration: configuration, delegate: RedirectRefuser(), delegateQueue: nil)
     }
 
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         try await withCheckedThrowingContinuation { continuation in
-            current.withLock { session in
-                let delegate = session.delegate as? SessionDelegate
-                session.dataTask(with: request) { data, response, error in
-                    if let error {
-                        // The delegate cancels the requests whose certificate it refuses, and nothing else cancels one.
-                        let refusal = (error as? URLError)?.code == .cancelled ? delegate?.refusal : nil
-                        continuation.resume(throwing: refusal ?? error)
-                    } else if let response = response as? HTTPURLResponse {
-                        continuation.resume(returning: (data ?? Data(), response))
-                    } else {
-                        continuation.resume(throwing: URLError(.badServerResponse))
-                    }
-                }.resume()
-            }
+            session.dataTask(with: request) { data, response, error in
+                if let error = error as? URLError, error.refusesCertificate {
+                    // Evaluated here, off the main thread, because the error carries the server's trust but not why it failed.
+                    continuation.resume(throwing: CertificateRefused(reason: trustFailure(error)))
+                } else if let error {
+                    continuation.resume(throwing: error)
+                } else if let response = response as? HTTPURLResponse {
+                    continuation.resume(returning: (data ?? Data(), response))
+                } else {
+                    continuation.resume(throwing: URLError(.badServerResponse))
+                }
+            }.resume()
         }
-    }
-
-    private static func session(trusting host: String?) -> URLSession {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 30
-        // shortcut: a session holds its delegate until invalidated, and only `trust(host:)` invalidates one, so each transport leaks its last session and delegate; upgrade if the app ever makes more than a few.
-        return URLSession(configuration: configuration, delegate: SessionDelegate(trustedHost: host), delegateQueue: nil)
     }
 }
 
-/// Keeps the bearer token from following a redirect to another host, and checks the one trusted host's certificate with
-/// the certificates it presents as the only anchors. `send` returns the 3xx as an ordinary response.
-final class SessionDelegate: NSObject, URLSessionTaskDelegate, Sendable {
-    let trustedHost: String?
-    private let refused = Mutex<CertificateRefused?>(nil)
-
-    /// The latest refusal of the trusted host's certificate.
-    // shortcut: not keyed by request, so two refusals at once that differ could swap reasons; key it by task if the trusted host ever presents different certificates at once.
-    var refusal: CertificateRefused? {
-        refused.withLock { $0 }
-    }
-
-    init(trustedHost: String?) {
-        self.trustedHost = trustedHost
-    }
-
-    /// Equal names only, so that no other host that starts or ends with the trusted one gets in. A challenge's host has
-    /// no port.
-    func trusts(_ host: String) -> Bool {
-        trustedHost?.lowercased() == host.lowercased()
-    }
-
+/// Keeps the bearer token from following a redirect to another host. `send` returns the 3xx as an ordinary response.
+private final class RedirectRefuser: NSObject, URLSessionTaskDelegate {
     func urlSession(
         _ session: URLSession,
         task: URLSessionTask,
@@ -99,54 +49,55 @@ final class SessionDelegate: NSObject, URLSessionTaskDelegate, Sendable {
     ) {
         completionHandler(nil)
     }
-
-    #if canImport(Security)
-    /// The trusted host's certificate passes only when it meets every check but the issuer's: the name, the dates, the
-    /// lifetime and the signature. Every other challenge is checked as the system checks it.
-    func urlSession(
-        _ session: URLSession,
-        didReceive challenge: URLAuthenticationChallenge,
-        completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
-    ) {
-        let space = challenge.protectionSpace
-        guard space.authenticationMethod == NSURLAuthenticationMethodServerTrust, trusts(space.host), let trust = space.serverTrust else {
-            completionHandler(.performDefaultHandling, nil)
-            return
-        }
-        if let presented = SecTrustCopyCertificateChain(trust) {
-            SecTrustSetAnchorCertificates(trust, presented)
-        }
-        SecTrustSetAnchorCertificatesOnly(trust, true)
-        var error: CFError?
-        if SecTrustEvaluateWithError(trust, &error) {
-            completionHandler(.useCredential, URLCredential(trust: trust))
-            return
-        }
-        // The underlying error lists the failed checks, such as "SSL hostname does not match name(s) in certificate".
-        let failure = error.map { $0 as Error as NSError }
-        let checks = (failure?.userInfo[NSUnderlyingErrorKey] as? NSError).map { " (\($0.localizedDescription))" } ?? ""
-        let reason = (failure?.localizedDescription ?? "the evaluation gave no reason") + checks
-        refused.withLock { $0 = CertificateRefused(host: space.host, reason: reason) }
-        completionHandler(.cancelAuthenticationChallenge, nil)
-    }
-    #endif
 }
 
-/// What `URLSessionTransport` throws when the trusted host's certificate fails its check. `reason` is the system's,
-/// which names the failed check.
-public struct CertificateRefused: Error, Equatable, Sendable {
-    public let host, reason: String
+extension URLError {
+    /// Whether the system refused the server's certificate. ATS reports its refusal as `.secureConnectionFailed` with the
+    /// server's trust attached.
+    var refusesCertificate: Bool {
+        switch code {
+        case .serverCertificateHasBadDate, .serverCertificateUntrusted, .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid:
+            true
+        case .secureConnectionFailed:
+            userInfo[NSURLErrorFailingURLPeerTrustErrorKey] != nil
+        default:
+            false
+        }
+    }
+}
 
-    public init(host: String, reason: String) {
-        self.host = host
+/// What `URLSessionTransport` throws when the system refused the server's certificate. `reason` is the system's, and nil
+/// where it gives none.
+public struct CertificateRefused: Error, Equatable, Sendable {
+    public let reason: String?
+
+    public init(reason: String?) {
         self.reason = reason
     }
 }
 
+/// The system's reason, plus the failed checks its underlying error lists, such as "SSL hostname does not match name(s)
+/// in certificate".
+func trustFailureText(_ failure: NSError) -> String {
+    let checks = (failure.userInfo[NSUnderlyingErrorKey] as? NSError).map { " (\($0.localizedDescription))" } ?? ""
+    return failure.localizedDescription + checks
+}
+
+/// Nil when the error carries no trust or the trust passes now. Never call it on the main thread, as Apple warns.
+private func trustFailure(_ error: URLError) -> String? {
+    #if canImport(Security)
+    var failure: CFError?
+    guard let trust = error.failureURLPeerTrust, !SecTrustEvaluateWithError(trust, &failure), let failure else { return nil }
+    return trustFailureText(failure as Error as NSError)
+    #else
+    return nil
+    #endif
+}
+
 public enum APIError: Error, Equatable, Sendable {
     case offline
-    /// The trusted host's certificate failed its check, so nothing reached the server.
-    case certificateRefused(reason: String)
+    /// The system refused the server's certificate, so nothing reached the server.
+    case certificateRefused(reason: String?)
     case server(code: String)
     case unexpected(status: Int)
 }
@@ -343,6 +294,9 @@ public struct APIClient: Sendable {
             (data, response) = try await transport.send(request)
         } catch let refused as CertificateRefused {
             throw .certificateRefused(reason: refused.reason)
+        } catch let error as URLError where error.refusesCertificate {
+            // From a transport that doesn't evaluate the trust, so there is no reason.
+            throw .certificateRefused(reason: nil)
         } catch {
             throw .offline
         }
