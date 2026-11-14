@@ -131,12 +131,32 @@
         }
       }
     },
-    "This invite can't be used. It may have expired or been used already. Ask for a new one.": {
+    "This invite can't be used. Ask for a new one.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diese Einladung kann nicht verwendet werden. Vielleicht ist sie abgelaufen oder wurde schon benutzt. Bitte um eine neue."
+            "value": "Diese Einladung kann nicht verwendet werden. Bitte um eine neue."
+          }
+        }
+      }
+    },
+    "This invite has expired. Ask for a new one.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Einladung ist abgelaufen. Bitte um eine neue."
+          }
+        }
+      }
+    },
+    "This invite was already used. Ask for a new one.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Einladung wurde schon benutzt. Bitte um eine neue."
           }
         }
       }
@@ -607,6 +627,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$@ hat mit dem Fehlercode %2$@ geantwortet."
+          }
+        }
+      }
+    },
+    "%@ answered with error code invalid (%@).": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ hat mit dem Fehlercode invalid (%2$@) geantwortet."
           }
         }
       }

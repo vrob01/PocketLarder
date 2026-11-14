@@ -29,6 +29,7 @@ import Testing
     #expect(failureText(.offline(.tlsFailed), host: host) == "The secure connection (TLS) to lists.example.test failed, for a reason other than its certificate.")
     #expect(failureText(.offline(.other(code: -1022)), host: host) == "Can't reach lists.example.test (URLError -1022).")
     #expect(failureText(.notPocketLarder(status: 200), host: host) == "lists.example.test answered with HTTP status 200, but the answer isn't PocketLarder's. It may be a captive portal's or a proxy's page.")
+    #expect(failureText(.invalid(detail: "too_many_ops"), host: host) == "lists.example.test answered with error code invalid (too_many_ops).")
 }
 
 @Test func connectionFailureTexts() {

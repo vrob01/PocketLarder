@@ -63,6 +63,7 @@ func failureText(_ failure: APIError, host: String) -> String {
     case .server(code: "too_many_invites"): String(localized: "Maximum number of open invites reached. Cancel one under Invites, or wait until one is used or expires.")
     case .server(code: "invite_redeemed"): String(localized: "This invite was already used.")
     case let .server(code): String(localized: "\(host) answered with error code \(code).")
+    case let .invalid(detail): String(localized: "\(host) answered with error code invalid (\(detail)).")
     case let .unexpected(status): String(localized: "\(host) answered with HTTP status \(status).")
     case let .notPocketLarder(status): String(localized: "\(host) answered with HTTP status \(status), but the answer isn't PocketLarder's. It may be a captive portal's or a proxy's page.")
     }
