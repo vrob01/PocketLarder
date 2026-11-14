@@ -222,12 +222,12 @@ License v3.0, the same as the server.
   - `const maxName = 100; maxQuantity = 32; maxNote = 200; maxDeviceName = 64`.
 - Produces, in `members.go`:
   - `type device struct { ID, MemberID string; IsAdmin bool }`.
-  - `var errInvalid, errForbidden, errNotFound, errConflict, errLastAdmin, errBadInvite, errUnauthorized = errors.New(...)`, each with its message equal to its API code: `invalid`, `forbidden`, `not_found`, `conflict`, `last_admin`, `invalid_invite`, `unauthorized`.
+  - `var errInvalid, errForbidden, errNotFound, errConflict, errLastAdmin, errBadInvite, errUnauthorized, errInviteRedeemed, errInviteExpired = errors.New(...)`, each with its message equal to its API code: `invalid`, `forbidden`, `not_found`, `conflict`, `last_admin`, `invalid_invite`, `unauthorized`, `invite_redeemed`, `invite_expired`.
   - `func createMember(tx *sql.Tx, name string, admin bool, now time.Time) (string, error)`: creates the member and their personal list. The name goes through `cleanName(name, maxName)`. Returns `errInvalid` for a bad name and `errConflict` for a taken one.
   - `func memberByName(tx *sql.Tx, name string) (string, error)`: cleans with `cleanName` and looks up by `nameKey`, so it matches only case and normalisation variants of the name. Returns `errNotFound` if there is none.
   - `func createInvite(tx *sql.Tx, memberID string, now time.Time) (code string, expires time.Time, err error)`, with `expires = now + 24h`.
   - `func revokeInvites(tx *sql.Tx, memberID string) (int, error)`: deletes the member's unredeemed invites (`used_at IS NULL`) and returns how many it deleted. Used invites stay. Returns `errNotFound` for an unknown member.
-  - `func redeemInvite(tx *sql.Tx, code, deviceName string, now time.Time) (token string, d device, err error)`: `deviceName` is cleaned with `cleanDeviceName`, so it never returns `errInvalid`. Unknown, wrong-secret, used and expired invites all return `errBadInvite`. An invite is expired from its `expires_at` second onwards (`now.Unix() >= expires_at`). Marks the invite with `UPDATE … SET used_at = ? WHERE id = ? AND used_at IS NULL` and proceeds only when exactly 1 row changed.
+  - `func redeemInvite(tx *sql.Tx, code, deviceName string, now time.Time) (token string, d device, err error)`: `deviceName` is cleaned with `cleanDeviceName`, so it never returns `errInvalid`. It checks in this order: a malformed code, an unknown id and a wrong secret return `errBadInvite`, whatever the invite's state. Only after the secret matched, a used invite returns `errInviteRedeemed`, then an expired one `errInviteExpired`, so a wrong secret never reveals whether an invite exists or what state it is in. An invite is expired from its `expires_at` second onwards (`now.Unix() >= expires_at`). Marks the invite with `UPDATE … SET used_at = ? WHERE id = ? AND used_at IS NULL` and proceeds only when exactly 1 row changed, else it returns `errInviteRedeemed`.
   - `func authenticate(tx *sql.Tx, token string, now time.Time) (device, error)`: returns `errUnauthorized` on any failed check and sets `last_seen_at = now` on success. Database errors pass through unchanged, so an outage never looks like a revoked token.
   - `func deleteDevice(tx *sql.Tx, deviceID string) error` returns `errNotFound` if the device doesn't exist.
   - `func setAdmin(tx *sql.Tx, memberID string, admin bool) error` and `func removeMember(tx *sql.Tx, memberID string) error`: both return `errLastAdmin` when the change would leave no admin, and `errNotFound` for an unknown member.
@@ -253,12 +253,12 @@ func TestIDs(t *testing.T) // validID(newID()); !validID("x"); !validID(strings.
 func TestInviteRedeemsOnceAndStoresOnlyHash(t *testing.T)
 // createMember "Alex" admin; createInvite; stored invites.secret_hash == sha256(secret part of code)
 // redeemInvite ok: d.MemberID == alex, d.IsAdmin; devices.secret_hash == sha256(secret part of token)
-// second redeemInvite with the same code -> errBadInvite
+// second redeemInvite with the same code -> errInviteRedeemed
 // device names stored as: "❤️ Phone" and "👨‍👩‍👧 iPad" unchanged; "A\u202eB" -> "AB"; "\x00" -> "Unnamed device";
 // a 70-rune name -> its first 64 runes
 
 func TestInviteExpiry(t *testing.T)
-// redeem at now+23h59m -> ok;  a second invite redeemed at now+24h+1s -> errBadInvite
+// redeem at now+23h59m -> ok;  a second invite redeemed at now+24h+1s -> errInviteExpired
 
 func TestInviteWrongSecret(t *testing.T) // same id, different 43-char secret -> errBadInvite
 
@@ -301,15 +301,15 @@ func TestMemberNamesUniqueIgnoringCase(t *testing.T)
 - Produces:
   - `type server struct { db *sql.DB; publicURL string; now func() time.Time; log *slog.Logger; redeemLimit *windowLimiter }`
   - `func newServer(db *sql.DB, publicURL string, log *slog.Logger) *server`, with `now = time.Now` and a limit of 10 redemptions per minute.
-  - `func (s *server) routes() http.Handler`: a `http.ServeMux` with method patterns, wrapped in a logging middleware that logs only method, `r.Pattern`, status and duration.
+  - `func (s *server) routes() http.Handler`: a `http.ServeMux` with method patterns, wrapped in a logging middleware that logs only method, `r.Pattern`, status and duration. An unmatched request (`r.Pattern == ""`, a 404 or 405) also logs `path`: `r.URL.EscapedPath()`, never the query, cut to 256 bytes.
   - `func (s *server) authed(adminOnly bool, h func(http.ResponseWriter, *http.Request, device)) http.HandlerFunc`: reads `Authorization: Bearer <token>`. It returns 401 `unauthorized` on failure and 403 `forbidden` when `adminOnly` and the member isn't an admin.
-  - `func readJSON(w http.ResponseWriter, r *http.Request, limit int64, v any) bool`: `MaxBytesReader` plus `DisallowUnknownFields`. Writes 413 `too_large` or 400 `invalid` and returns false.
+  - `func readJSON(w http.ResponseWriter, r *http.Request, limit int64, v any) bool`: `MaxBytesReader` plus `DisallowUnknownFields`. Writes 413 `too_large` or 400 `{"error":"invalid","detail":"malformed_body"}` and returns false. The handlers' own 400s go through `invalid(w, detail)` with the other details in `server/API.md`.
   - `func writeJSON(w http.ResponseWriter, status int, v any)`: sets `Content-Type: application/json` and `Cache-Control: no-store`.
-  - `func (s *server) fail(w http.ResponseWriter, err error)`: maps errors to statuses as below. Any other error becomes 500 `internal` and is logged as the error value only.
+  - `func (s *server) fail(w http.ResponseWriter, r *http.Request, err error)`: maps errors to statuses as below. Any other error becomes 500 `internal` and is logged with `r.Method`, `r.Pattern` and the error value.
   - `type windowLimiter struct{ max int; window time.Duration; start time.Time; n int; mu sync.Mutex }` with `func (l *windowLimiter) allow(now time.Time) bool`. `shortcut: one server-wide window, not per client IP, because codes are 256-bit; go per-IP if lockouts annoy`.
   - Tests: `type testEnv struct{ t *testing.T; db *sql.DB; srv *server; h http.Handler; now time.Time; logs *bytes.Buffer }` with `newTestEnv(t)`, `(e *testEnv) call(method, path, token string, body any) *httptest.ResponseRecorder` and `(e *testEnv) member(name string, admin bool) (memberID, token string)` (creates, invites and redeems through HTTP). `publicURL` is `https://lists.example.test`.
 
-Errors are returned as `{"error":"<code>"}`:
+Errors are returned as `{"error":"<code>"}`, and 400 `invalid` as `{"error":"invalid","detail":"<detail>"}`:
 
 | error | status |
 |---|---|
@@ -320,6 +320,8 @@ Errors are returned as `{"error":"<code>"}`:
 | `errNotFound` | 404 `not_found` |
 | `errConflict` | 409 `conflict` |
 | `errLastAdmin` | 409 `last_admin` |
+| `errInviteRedeemed` | 409 `invite_redeemed` |
+| `errInviteExpired` | 410 `invite_expired` |
 | (body over limit) | 413 `too_large` |
 | (rate limit) | 429 `rate_limited` |
 

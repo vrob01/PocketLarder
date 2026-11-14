@@ -29,7 +29,7 @@ the admin area.
 - **Body size.** A request body may be at most 64 KiB, or 1 MiB for
   `POST /v1/sync`. A larger one gives 413 `too_large`. A body that isn't valid
   JSON, has a field of the wrong type, has a field the endpoint doesn't know,
-  or is empty gives 400 `invalid`.
+  or is empty gives 400 `invalid` with the detail `malformed_body`.
 - **IDs** are lowercase UUIDs such as `3f367fb6-d649-4507-8a37-a0813a0cdfb7`.
   An id in a path that isn't in this form gives 404 `not_found`.
 - **Timestamps** are RFC 3339 strings in UTC without fractions, such as
@@ -39,25 +39,42 @@ the admin area.
 
 ## Errors
 
-Every error with a JSON body has this form, and the body never carries
-anything else:
+Every error with a JSON body has one of these two forms, and the body never
+carries anything else:
 
 ```json
 {"error": "<code>"}
 ```
 
+```json
+{"error": "invalid", "detail": "<detail>"}
+```
+
+Only 400 `invalid` carries `detail`, and it always does. A detail is a
+machine-readable code, never prose, and it never quotes the request, so
+clients show it as it is. The details are:
+
+| Detail | Cause |
+|---|---|
+| `malformed_body` | The body isn't valid JSON, is empty, has a field of the wrong type or has a field the endpoint doesn't know. |
+| `member_id_and_new_member_name` | `POST /v1/invites` got both `member_id` and `new_member_name`. |
+| `bad_member_name` | The `new_member_name` of `POST /v1/invites` breaks the name rule. |
+| `missing_is_admin` | `PATCH /v1/admin/members/{id}` has no `is_admin`, or it is `null`. |
+| `too_many_ops` | `POST /v1/sync` has more than 500 ops. |
+
 | Status | Code | Meaning |
 |---|---|---|
-| 400 | `invalid` | The body is malformed, a value in it isn't allowed, or a sync request has more than 500 ops. |
+| 400 | `invalid` | The body is malformed, a value in it isn't allowed, or a sync request has more than 500 ops. `detail` says which. |
 | 401 | `unauthorized` | The device token is malformed, unknown or revoked. Treat the device as signed out. |
 | 401 | `missing_token` | The request has no `Authorization` header with a `Bearer ` prefix. A proxy may have dropped or replaced the header. The device isn't signed out: it keeps its data and tries again later. |
-| 401 | `invalid_invite` | The invite code can't be redeemed. |
+| 401 | `invalid_invite` | The invite code is malformed, no invite has its id (it never existed, or it was revoked, cancelled or cleared), or its secret is wrong. |
 | 403 | `forbidden` | The request needs an admin. |
 | 404 | `not_found` | The member, device or invite doesn't exist, or the id isn't a lowercase UUID. |
 | 409 | `conflict` | Another member already has that name. |
 | 409 | `last_admin` | The request would leave the household without an admin. |
 | 409 | `too_many_invites` | The member the invite is for already has 10 open invites, the most the server allows. |
-| 409 | `invite_redeemed` | The invite was already redeemed, so it can't be cancelled. |
+| 409 | `invite_redeemed` | The invite was already redeemed, so it can't be redeemed again or cancelled. |
+| 410 | `invite_expired` | The invite expired before it was redeemed. |
 | 413 | `too_large` | The body is over 64 KiB, or over 1 MiB for `POST /v1/sync`. |
 | 429 | `rate_limited` | Too many redemption attempts from this client, or too many signed-in requests from this device, in the current one-minute window. |
 | 500 | `internal` | The server failed. Nothing about the cause is sent. |
@@ -94,8 +111,20 @@ member: redeeming it adds a device for that member.
   (`POST /v1/invites/revoke`, or signing out the device that made it),
   cancelled (`DELETE /v1/invites/{id}`) or expired. `pocketlarder invite`
   itself is not capped.
-- **One answer for every bad code.** An unknown, used, expired or revoked code
-  and a code with the wrong secret all give the same 401 `invalid_invite`.
+- **The secret first.** The server checks a code in this order:
+  1. A malformed code gives 401 `invalid_invite`.
+  2. So does a code whose id no invite has: it never existed, or it was
+     revoked, cancelled or cleared, which deletes it.
+  3. So does a code with the wrong secret, whatever state the invite is in.
+  4. Only once the secret matched, an invite that was already redeemed gives
+     409 `invite_redeemed`, also when it has expired since. So does a
+     redemption that loses the race against another one of the same code.
+  5. Then an expired invite gives 410 `invite_expired`.
+
+  A wrong secret never reveals whether an invite with that id exists, or
+  whether it was redeemed or expired: someone who knows an invite's id, but
+  not its secret, learns nothing by trying it. Only the code's holder learns
+  why it can't be used.
 - **Rate limit.** Each client gets 10 redemption attempts per minute, counted
   in fixed one-minute windows. Every attempt counts, successful ones included.
   Further attempts get 429 `rate_limited`. The limit is checked before the
@@ -204,7 +233,8 @@ lost token can't be recovered: the device needs a new invite. A token doesn't
 expire. It stops working when the device signs out, when an admin revokes the
 device, or when the member is removed.
 
-Errors: 400 `invalid`, 401 `invalid_invite`, 413 `too_large`,
+Errors: 400 `invalid` (`malformed_body`), 401 `invalid_invite`,
+409 `invite_redeemed`, 410 `invite_expired`, 413 `too_large`,
 429 `rate_limited`.
 
 ### POST /v1/invites
@@ -219,12 +249,14 @@ Creates an invite. The body takes one of three forms:
   only.
 
 A field counts as given when it is in the body, even as `""`. A non-admin who
-gives either field gets 403 `forbidden`, and giving both gives 400 `invalid`.
+gives either field gets 403 `forbidden`, and giving both gives 400 `invalid`
+with the detail `member_id_and_new_member_name`.
 
 A new member's name is cleaned first: Unicode compatibility normalisation
 (NFKC), leading and trailing whitespace removed and runs of whitespace
 collapsed to one space. What's left must be 1 to 100 characters with no
-control or invisible characters, or the request gets 400 `invalid`. Names are
+control or invisible characters, or the request gets 400 `invalid` with the
+detail `bad_member_name`. Names are
 unique ignoring case, so a name another member already has, in any case, gets
 409 `conflict`.
 
@@ -256,7 +288,8 @@ device, so a sign-out never cancels them.
 When the member the invite is for already has 10 open invites, the request
 gets 409 `too_many_invites` and creates nothing. A new member starts with none.
 
-Errors: 400 `invalid`, 401 `unauthorized`, 403 `forbidden`, 404 `not_found`
+Errors: 400 `invalid` (`malformed_body`, `member_id_and_new_member_name` or
+`bad_member_name`), 401 `unauthorized`, 403 `forbidden`, 404 `not_found`
 (no member with that `member_id`), 409 `conflict`, 409 `too_many_invites`,
 413 `too_large`, 429 `rate_limited`.
 
@@ -284,8 +317,8 @@ Content-Type: application/json
 
 `revoked` is how many invites were deleted, expired ones included.
 
-Errors: 400 `invalid`, 401 `unauthorized`, 403 `forbidden`, 404 `not_found`,
-413 `too_large`, 429 `rate_limited`.
+Errors: 400 `invalid` (`malformed_body`), 401 `unauthorized`, 403 `forbidden`,
+404 `not_found`, 413 `too_large`, 429 `rate_limited`.
 
 ### GET /v1/invites
 
@@ -381,8 +414,8 @@ Content-Type: application/json
 
 `cleared` is how many invites were deleted.
 
-Errors: 400 `invalid`, 401 `unauthorized`, 403 `forbidden`, 404 `not_found`,
-413 `too_large`, 429 `rate_limited`.
+Errors: 400 `invalid` (`malformed_body`), 401 `unauthorized`, 403 `forbidden`,
+404 `not_found`, 413 `too_large`, 429 `rate_limited`.
 
 ### POST /v1/signout
 
@@ -478,7 +511,8 @@ Content-Type: application/json
 HTTP/1.1 204 No Content
 ```
 
-Errors: 400 `invalid` (no `is_admin`, or not a boolean), 401 `unauthorized`,
+Errors: 400 `invalid` (`missing_is_admin` for no `is_admin` or a `null` one,
+`malformed_body` for one that isn't a boolean), 401 `unauthorized`,
 403 `forbidden`, 404 `not_found`, 409 `last_admin` (the only admin can't
 remove their own admin rights), 413 `too_large`, 429 `rate_limited`.
 
@@ -538,7 +572,7 @@ several requests, in queue order, each sent after the one before got its
 response. `{"ops": []}` applies nothing and just fetches a snapshot. Each op
 carries an `op_id`, a `type` and the fields its type lists under
 [Operations](#operations). Send no other fields: one the API doesn't know
-makes the whole request 400 `invalid`.
+makes the whole request 400 `invalid` with the detail `malformed_body`.
 
 ```http
 POST /v1/sync
@@ -593,7 +627,8 @@ Content-Type: application/json
 `reason`: `invalid`, `forbidden`, `not_found` or `conflict`. It is `[]` when
 every op applied.
 
-Errors: 400 `invalid` (a malformed body or more than 500 ops),
+Errors: 400 `invalid` (`malformed_body`, or `too_many_ops` for more than 500
+ops),
 401 `unauthorized`, 413 `too_large` (over 1 MiB), 429 `rate_limited`. On any
 error nothing in the request was applied.
 
