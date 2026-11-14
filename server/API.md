@@ -121,10 +121,13 @@ member: redeeming it adds a device for that member.
      redemption that loses the race against another one of the same code.
   5. Then an expired invite gives 410 `invite_expired`.
 
-  A wrong secret never reveals whether an invite with that id exists, or
-  whether it was redeemed or expired: someone who knows an invite's id, but
-  not its secret, learns nothing by trying it. Only the code's holder learns
-  why it can't be used.
+  A wrong secret gets the same 401 `invalid_invite` whether an invite with
+  that id exists, was redeemed or has expired: someone who knows an invite's
+  id, but not its secret, can't tell its state from the answer. Only the
+  code's holder learns why it can't be used. The answer's timing can differ:
+  an unknown id is answered before any secret is compared, so in principle
+  timing could tell an existing id from an unknown one. The rate limit below
+  makes that impractical.
 - **Rate limit.** Each client gets 10 redemption attempts per minute, counted
   in fixed one-minute windows. Every attempt counts, successful ones included.
   Further attempts get 429 `rate_limited`. The limit is checked before the
