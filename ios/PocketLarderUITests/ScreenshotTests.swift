@@ -77,7 +77,7 @@ final class ScreenshotTests: XCTestCase {
             app.swipeUp()
             XCTAssertTrue(errorHelp.isHittable)
             if checks {
-                XCTAssertEqual(error.label, "This iPhone refused the certificate of lists.example.com: “lists.example.com” certificate is not trusted")
+                XCTAssertEqual(error.label, "This iPhone refused the certificate of lists.example.com: “lists.example.com” certificate is not trusted.")
             }
             attach(app, "enter-invite-certificate-\(language)-\(appearance)")
 

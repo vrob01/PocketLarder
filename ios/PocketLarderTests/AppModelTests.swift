@@ -1027,9 +1027,9 @@ extension KeychainSuite {
     #expect(unsentChangesText(2) == "2 changes haven't been sent yet. Sign out and lose them?")
     #expect(signOutAnywayText(.server(code: "rate_limited"), host: "lists.example.test") == "lists.example.test limited this iPhone's requests: too many in the past minute. Sign out anyway? This deletes everything on this iPhone. Ask an admin to remove this device from the household.")
     let reason = "“lists.example.test” certificate is not trusted"
-    #expect(signInErrorText(.certificateRefused(host: "lists.example.test", reason: reason)) == "This iPhone refused the certificate of lists.example.test: “lists.example.test” certificate is not trusted")
+    #expect(signInErrorText(.certificateRefused(host: "lists.example.test", reason: reason)) == "This iPhone refused the certificate of lists.example.test: “lists.example.test” certificate is not trusted.")
     #expect(signInErrorText(.certificateRefused(host: "lists.example.test", reason: nil)) == "This iPhone refused the certificate of lists.example.test.")
-    #expect(offlineText(failure: .certificateRefused(reason: reason), host: "lists.example.test", pending: 0) == "This iPhone refused the certificate of lists.example.test: “lists.example.test” certificate is not trusted No changes are waiting to be sent.")
+    #expect(offlineText(failure: .certificateRefused(reason: reason), host: "lists.example.test", pending: 0) == "This iPhone refused the certificate of lists.example.test: “lists.example.test” certificate is not trusted. No changes are waiting to be sent.")
     #expect(offlineText(failure: .certificateRefused(reason: nil), host: "lists.example.test", pending: 2) == "This iPhone refused the certificate of lists.example.test. 2 changes are waiting to be sent.")
     #expect(signOutAnywayText(.certificateRefused(reason: nil), host: "lists.example.test") == "This iPhone refused the certificate of lists.example.test. Sign out anyway? This deletes everything on this iPhone. Ask an admin to remove this device from the household.")
 }

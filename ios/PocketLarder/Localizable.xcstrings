@@ -1971,12 +1971,12 @@
         }
       }
     },
-    "This iPhone refused the certificate of %@: %@": {
+    "This iPhone refused the certificate of %@: %@.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dieses iPhone hat das Zertifikat von %1$@ abgelehnt: %2$@"
+            "value": "Dieses iPhone hat das Zertifikat von %1$@ abgelehnt: %2$@."
           }
         }
       }
