@@ -74,7 +74,7 @@ private func resolve(_ name: String) throws -> [String] {
     while let current = entry {
         var text = [CChar](repeating: 0, count: Int(NI_MAXHOST))
         if getnameinfo(current.pointee.ai_addr, current.pointee.ai_addrlen, &text, socklen_t(text.count), nil, 0, NI_NUMERICHOST) == 0 {
-            addresses.append(String(cString: text))
+            addresses.append(text.withUnsafeBufferPointer { String(cString: $0.baseAddress!) })
         }
         entry = current.pointee.ai_next
     }
@@ -176,4 +176,55 @@ private func identity() throws -> SecIdentity {
     try #require(status == errSecSuccess, "SecPKCS12Import failed with OSStatus \(status)")
     let first = try #require((items as? [[String: Any]])?.first)
     return try #require(first[kSecImportItemIdentity as String]) as! SecIdentity
+}
+
+// shortcut: a diagnostic for whether ATS lets a delegate accept a self-signed certificate; remove once answered.
+@Test func diagnoseTrustOverride() async throws {
+    let server = try await HTTPSServer()
+    defer { server.stop() }
+    let url = try #require(URL(string: "https://\(host):\(server.port)/v1/version"))
+    for recorder in [Recorder(), AsyncRecorder()] as [any Recording] {
+        let session = URLSession(configuration: .ephemeral, delegate: recorder, delegateQueue: nil)
+        let outcome: String = await withCheckedContinuation { continuation in
+            session.dataTask(with: url) { _, response, error in
+                continuation.resume(returning: error.map { "failed: \($0)" } ?? "answered \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+            }.resume()
+        }
+        session.invalidateAndCancel()
+        Issue.record("DIAGNOSTIC \(type(of: recorder)): \(outcome). Challenges: \(recorder.seen)")
+    }
+}
+
+private protocol Recording: URLSessionDelegate {
+    var seen: [String] { get }
+}
+
+private final class Recorder: NSObject, Recording, @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls: [String] = []
+    var seen: [String] { lock.withLock { calls } }
+
+    func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        let space = challenge.protectionSpace
+        lock.withLock { calls.append("\(space.authenticationMethod) \(space.host) trust: \(space.serverTrust != nil)") }
+        guard let trust = space.serverTrust else { return completionHandler(.performDefaultHandling, nil) }
+        completionHandler(.useCredential, URLCredential(trust: trust))
+    }
+}
+
+private final class AsyncRecorder: NSObject, Recording, @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls: [String] = []
+    var seen: [String] { lock.withLock { calls } }
+
+    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        let space = challenge.protectionSpace
+        lock.withLock { calls.append("\(space.authenticationMethod) \(space.host) trust: \(space.serverTrust != nil)") }
+        guard let trust = space.serverTrust else { return (.performDefaultHandling, nil) }
+        return (.useCredential, URLCredential(trust: trust))
+    }
 }
