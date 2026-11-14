@@ -1,7 +1,7 @@
 import Foundation
 
 // The compatibility setting. Change it only by the rules under "Versioning" in AGENTS.md.
-public let minimumServerVersion = Version(0, 1, 0)
+public let minimumServerVersion = Version(0, 2, 0)
 public let supportedServerMajor = 0
 
 /// A semantic version's MAJOR.MINOR.PATCH, without a pre-release or build suffix.

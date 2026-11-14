@@ -32,7 +32,8 @@ enum Contract {
         return (try await signIn(created.url), created.memberId, name)
     }
 
-    fileprivate static func redeemAdmin() async throws -> APIClient {
+    /// Redeems the test invite. `admin()` calls it once; called again after `admin()`, it redeems a used invite.
+    static func redeemAdmin() async throws -> APIClient {
         guard let url = environment("POCKETLARDER_TEST_INVITE") else { throw Failure.notConfigured }
         return try await signIn(url)
     }

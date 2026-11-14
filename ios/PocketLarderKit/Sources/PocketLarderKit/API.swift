@@ -127,6 +127,8 @@ public enum APIError: Error, Equatable, Sendable {
     /// The system refused the server's certificate, so nothing reached the server.
     case certificateRefused(reason: String?)
     case server(code: String)
+    /// A 400 `invalid` with the server's detail code, such as `too_many_ops`.
+    case invalid(detail: String)
     case unexpected(status: Int)
     /// A 2xx whose body isn't the JSON PocketLarder sends, such as a captive portal's page.
     case notPocketLarder(status: Int)
@@ -185,6 +187,7 @@ private struct Body: Encodable {
 
 private struct ErrorBody: Decodable {
     let error: String
+    let detail: String?
 }
 
 private struct Revoked: Decodable {
@@ -334,6 +337,9 @@ public struct APIClient: Sendable {
             // `unauthorized` wipes the phone, so a gateway's 403 or 500 with that body must not count as one.
             if let failure = try? JSON.decoder.decode(ErrorBody.self, from: data),
                failure.error != "unauthorized" || response.statusCode == 401 {
+                if failure.error == "invalid", let detail = failure.detail {
+                    throw .invalid(detail: detail)
+                }
                 throw .server(code: failure.error)
             }
             throw .unexpected(status: response.statusCode)
