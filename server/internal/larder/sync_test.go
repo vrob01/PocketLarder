@@ -406,7 +406,7 @@ func TestSyncLimits(t *testing.T) {
 	for i := range ops {
 		ops[i] = op{OpID: newID(), Type: "nope"}
 	}
-	e.wantError(e.call("POST", "/v1/sync", token, map[string][]op{"ops": ops}), http.StatusBadRequest, "invalid")
+	e.wantInvalid(e.call("POST", "/v1/sync", token, map[string][]op{"ops": ops}), "too_many_ops")
 	big := map[string][]op{"ops": {{OpID: strings.Repeat("x", 2<<20)}}}
 	e.wantError(e.call("POST", "/v1/sync", token, big), http.StatusRequestEntityTooLarge, "too_large")
 

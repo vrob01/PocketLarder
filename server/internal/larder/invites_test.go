@@ -266,3 +266,68 @@ func TestClearInvitesRefusals(t *testing.T) {
 		t.Errorf("Alex has %d invites after clearing Sam's, want 1", n)
 	}
 }
+
+// A wrong secret answers invalid_invite whatever the invite's state, so only the code's holder learns that it is used or expired.
+func TestRedeemOutcomes(t *testing.T) {
+	e := newTestEnv(t)
+	var alex string
+	err := withTx(e.db, func(tx *sql.Tx) (err error) {
+		alex, err = createMember(tx, "Alex", true, testNow)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	open := e.inviteAt(alex, testNow)
+	used := e.inviteAt(alex, testNow)
+	expired := e.inviteAt(alex, testNow.Add(-25*time.Hour))
+	both := e.inviteAt(alex, testNow.Add(-25*time.Hour))
+	err = withTx(e.db, func(tx *sql.Tx) error {
+		mustRedeemInvite(t, tx, used, testNow)
+		mustRedeemInvite(t, tx, both, testNow.Add(-2*time.Hour))
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrong := func(code string) string {
+		other, _ := newSecret()
+		return inviteID(code) + "." + other
+	}
+
+	for _, c := range []struct {
+		name, code string
+		err        error
+		status     int
+	}{
+		{"malformed code", "nope", errBadInvite, http.StatusUnauthorized},
+		{"unknown id", wrong(newID() + ".x"), errBadInvite, http.StatusUnauthorized},
+		{"wrong secret, open", wrong(open), errBadInvite, http.StatusUnauthorized},
+		{"wrong secret, used", wrong(used), errBadInvite, http.StatusUnauthorized},
+		{"wrong secret, expired", wrong(expired), errBadInvite, http.StatusUnauthorized},
+		{"wrong secret, used and expired", wrong(both), errBadInvite, http.StatusUnauthorized},
+		{"used", used, errInviteRedeemed, http.StatusConflict},
+		{"expired", expired, errInviteExpired, http.StatusGone},
+		{"used and expired", both, errInviteRedeemed, http.StatusConflict},
+	} {
+		err := withTx(e.db, func(tx *sql.Tx) error {
+			_, _, err := redeemInvite(tx, c.code, "Phone", testNow)
+			return err
+		})
+		if err != c.err {
+			t.Errorf("%s: redeemInvite = %v, want %v", c.name, err, c.err)
+		}
+		w := e.call("POST", "/v1/invites/redeem", "", redeemBody(c.code))
+		if body := strings.TrimSpace(w.Body.String()); w.Code != c.status || body != `{"error":"`+c.err.Error()+`"}` {
+			t.Errorf("%s: %d %s, want %d %q", c.name, w.Code, body, c.status, c.err.Error())
+		}
+	}
+	// None of the wrong secrets spoilt the open invite.
+	e.wantStatus(e.call("POST", "/v1/invites/redeem", "", redeemBody(open)), http.StatusOK)
+
+	// The limit still comes first, so a 429 says nothing about the invite's state.
+	const remote = "198.51.100.7:1234"
+	e.exhaust(remote)
+	e.wantError(e.redeemFrom(remote, used), http.StatusTooManyRequests, "rate_limited")
+	e.wantError(e.redeemFrom(remote, expired), http.StatusTooManyRequests, "rate_limited")
+}

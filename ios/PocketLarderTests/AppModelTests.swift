@@ -179,6 +179,8 @@ extension KeychainSuite {
         defer { Keychain.delete() }
         let cases: [(FakeTransport.Step, AppModel.SignInError)] = [
             (.answer(status: 401, json: #"{"error":"invalid_invite"}"#), .invalidInvite),
+            (.answer(status: 410, json: #"{"error":"invite_expired"}"#), .inviteExpired),
+            (.answer(status: 409, json: #"{"error":"invite_redeemed"}"#), .inviteRedeemed),
             (.answer(status: 429, json: #"{"error":"rate_limited"}"#), .rateLimited),
             (.error(CertificateRefused(reason: "R")), .certificateRefused(host: "lists.example.test", reason: "R")),
             (.error(URLError(.serverCertificateUntrusted)), .certificateRefused(host: "lists.example.test", reason: nil)),
@@ -1055,7 +1057,9 @@ extension KeychainSuite {
 
 /// A missing catalog key would otherwise show "1 changes" with no failure.
 @Test func copyTexts() {
-    #expect(signInErrorText(.invalidInvite) == "This invite can't be used. It may have expired or been used already. Ask for a new one.")
+    #expect(signInErrorText(.invalidInvite) == "This invite can't be used. Ask for a new one.")
+    #expect(signInErrorText(.inviteExpired) == "This invite has expired. Ask for a new one.")
+    #expect(signInErrorText(.inviteRedeemed) == "This invite was already used. Ask for a new one.")
     #expect(signInErrorText(.rateLimited) == "Too many sign-in attempts on this server. Try again in a minute.")
     #expect(signInErrorText(.alreadySignedIn(name: "Alex")) == "This iPhone is already signed in as Alex. Sign out first to use this invite.")
     #expect(signInErrorText(.failed(.offline(.refused), host: "lists.example.test")) == "lists.example.test refused the connection.")

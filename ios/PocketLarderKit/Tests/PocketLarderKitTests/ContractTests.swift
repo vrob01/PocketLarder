@@ -32,6 +32,20 @@ import Testing
     }
 }
 
+@Test(.enabled(if: Contract.isConfigured)) func usedInviteIsRedeemed() async throws {
+    _ = try await Contract.admin()
+    await #expect(throws: APIError.server(code: "invite_redeemed")) {
+        _ = try await Contract.redeemAdmin()
+    }
+}
+
+@Test(.enabled(if: Contract.isConfigured)) func badMemberNameIsInvalid() async throws {
+    let admin = try await Contract.admin()
+    await #expect(throws: APIError.invalid(detail: "bad_member_name")) {
+        _ = try await admin.createInvite(newMemberName: "")
+    }
+}
+
 @Test(.enabled(if: Contract.isConfigured)) func everyOpTypeIsAccepted() async throws {
     let list = newID(), store = newID(), otherStore = newID(), category = newID()
     let unfiled = newID(), filed = newID(), item = newID()

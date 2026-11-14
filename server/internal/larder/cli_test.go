@@ -79,8 +79,13 @@ func TestCLIInviteExisting(t *testing.T) {
 		t.Fatalf("alex: exit %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
 	code, stdout, stderr = runCLI(t, env, "invite", "Zed")
-	if code != 1 || stdout != "" || !strings.Contains(stderr, "Zed") {
+	want := `pocketlarder: no member named "Zed". To add a new admin, run pocketlarder invite --new-admin <name>. To add any other member, an admin invites them in the app under My account > Members.` + "\n"
+	if code != 1 || stdout != "" || stderr != want {
 		t.Fatalf("Zed: exit %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	code, _, stderr = runCLI(t, env, "invite", "--new-admin", "")
+	if want := `pocketlarder: "" is not a valid member name: it must be 1 to 100 characters, with no control or invisible characters.` + "\n"; code != 1 || stderr != want {
+		t.Fatalf("empty name: exit %d, stderr %q", code, stderr)
 	}
 	if code, _, stderr := runCLI(t, env, "invite", "--new-admin", "alex"); code != 1 || stderr == "" {
 		t.Fatalf("taken name: exit %d, stderr %q", code, stderr)
@@ -100,7 +105,7 @@ func TestCLIInviteRevoke(t *testing.T) {
 	if err := cliDB(t, env).QueryRow("SELECT count(*) FROM invites i JOIN members m ON m.id = i.member_id WHERE m.name = 'Alex' AND i.used_at IS NULL").Scan(&pending); err != nil || pending != 0 {
 		t.Fatalf("pending invites = %d, %v", pending, err)
 	}
-	if code, _, stderr := runCLI(t, env, "invite", "--revoke", "Zed"); code != 1 || !strings.Contains(stderr, "Zed") {
+	if code, _, stderr := runCLI(t, env, "invite", "--revoke", "Zed"); code != 1 || stderr != `pocketlarder: no member named "Zed"`+"\n" {
 		t.Fatalf("Zed: exit %d, stderr %q", code, stderr)
 	}
 }
@@ -176,8 +181,8 @@ func TestCLIBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if code, _, _ := runCLI(t, env, "backup", target); code != 1 {
-		t.Fatalf("backup onto an existing file: exit %d, want 1", code)
+	if code, _, stderr := runCLI(t, env, "backup", target); code != 1 || stderr != "pocketlarder: creating the backup file: open "+target+": file exists\n" {
+		t.Fatalf("backup onto an existing file: exit %d, stderr %q", code, stderr)
 	}
 	if after, err := os.ReadFile(target); err != nil || !bytes.Equal(before, after) {
 		t.Fatalf("existing backup changed: %v", err)
@@ -200,6 +205,38 @@ func TestCLIBackupFileMode(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("backup mode %v, want 0600", info.Mode().Perm())
+	}
+}
+
+// Each failure names its step before the cause.
+func TestCLIStepErrors(t *testing.T) {
+	notDir := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(notDir, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dbIsDir, garbage := t.TempDir(), t.TempDir()
+	if err := os.Mkdir(filepath.Join(dbIsDir, "pocketlarder.db"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(garbage, "pocketlarder.db"), bytes.Repeat([]byte("not sqlite "), 100), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		dir, listen string
+		args        []string
+		want        string
+	}{
+		{notDir + "/x", "", []string{"invite", "--new-admin", "A"}, "pocketlarder: creating the data directory: mkdir " + notDir + ": not a directory\n"},
+		{dbIsDir, "", []string{"invite", "--new-admin", "A"}, "pocketlarder: creating the database file: open " + filepath.Join(dbIsDir, "pocketlarder.db") + ": is a directory\n"},
+		{garbage, "", []string{"invite", "--new-admin", "A"}, "pocketlarder: opening the database: "},
+		{t.TempDir(), "127.0.0.1:99999", []string{"serve"}, "pocketlarder: listening on 127.0.0.1:99999: listen tcp: address 99999: invalid port\n"},
+	} {
+		env := cliEnv(t)
+		env["POCKETLARDER_DATA_DIR"], env["POCKETLARDER_LISTEN"] = c.dir, c.listen
+		// want is the whole message, or for the database only its start: SQLite's text follows.
+		if code, _, stderr := runCLI(t, env, c.args...); code != 1 || !strings.HasPrefix(stderr, c.want) || stderr == c.want && !strings.HasSuffix(c.want, "\n") {
+			t.Errorf("%q in %s: exit %d, stderr %q, want %q", c.args, c.dir, code, stderr, c.want)
+		}
 	}
 }
 

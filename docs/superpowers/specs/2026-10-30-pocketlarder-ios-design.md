@@ -157,8 +157,10 @@ Shown on launch whenever the device has no token.
   iPhone"." **[Claude's call]**.
 - Sign in stays disabled until server and code are filled in.
 - Errors, shown under the form **[Claude's call]**:
-  - `invalid_invite`: "This invite can't be used. It may have expired or been
-    used already. Ask for a new one."
+  - `invalid_invite` (a malformed code, an unknown invite or a wrong secret):
+    "This invite can't be used. Ask for a new one."
+  - `invite_expired`: "This invite has expired. Ask for a new one."
+  - `invite_redeemed`: "This invite was already used. Ask for a new one."
   - `rate_limited`: "Too many sign-in attempts on this server. Try again in a
     minute."
   - A refused certificate: iOS's reason, such as "This iPhone refused the

@@ -205,7 +205,9 @@ struct EnterInviteView: View {
 
 func signInErrorText(_ error: AppModel.SignInError) -> String {
     switch error {
-    case .invalidInvite: String(localized: "This invite can't be used. It may have expired or been used already. Ask for a new one.")
+    case .invalidInvite: String(localized: "This invite can't be used. Ask for a new one.")
+    case .inviteExpired: String(localized: "This invite has expired. Ask for a new one.")
+    case .inviteRedeemed: String(localized: "This invite was already used. Ask for a new one.")
     case .rateLimited: String(localized: "Too many sign-in attempts on this server. Try again in a minute.")
     case let .alreadySignedIn(name): String(localized: "This iPhone is already signed in as \(name). Sign out first to use this invite.")
     case let .certificateRefused(host, reason): failureText(.certificateRefused(reason: reason), host: host)

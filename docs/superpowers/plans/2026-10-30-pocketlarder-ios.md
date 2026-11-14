@@ -527,7 +527,9 @@ func testEnterInvite()          // empty form: enter-invite-<lang>-<appearance>;
   - Sync triggers: becoming active, and every 60 seconds while active (a `.task` loop keyed on `scenePhase`). The loop calls `restoreFromKeychain()` once before its first sync.
 
 Copy (exact English):
-- `invalidInvite`: "This invite can't be used. It may have expired or been used already. Ask for a new one."
+- `invalidInvite`: "This invite can't be used. Ask for a new one."
+- `inviteExpired`: "This invite has expired. Ask for a new one."
+- `inviteRedeemed`: "This invite was already used. Ask for a new one."
 - `rateLimited`: "Too many sign-in attempts on this server. Try again in a minute."
 - `unreachable`: "Can't reach %@."
 - Already signed in: "This iPhone is already signed in as %@. Sign out first to use this invite."
@@ -543,7 +545,8 @@ Copy (exact English):
 // fake: redeem 200 {token, member_id, device_id}, sync 200 (TestData-like snapshot) → Keychain.load() == model.account,
 // model.larder?.snapshot != nil, the redeem body's device_name == "Kitchen iPhone"
 @Test @MainActor func signInErrors()
-// 401 invalid_invite → .invalidInvite; 429 → .rateLimited; transport throws → .unreachable(host: "lists.example.test")
+// 401 invalid_invite → .invalidInvite; 410 invite_expired → .inviteExpired; 409 invite_redeemed → .inviteRedeemed;
+// 429 → .rateLimited; transport throws → .unreachable(host: "lists.example.test")
 @Test @MainActor func unauthorizedSyncSignsOut()
 // signed in, 2 ops pending, sync answers 401 → account nil, Keychain.load() nil, data directory empty, signedOutLostChanges == 2
 @Test @MainActor func signOutPaths()

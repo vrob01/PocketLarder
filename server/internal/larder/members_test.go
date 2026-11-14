@@ -86,8 +86,8 @@ func TestInviteRedeemsOnceAndStoresOnlyHash(t *testing.T) {
 	if !bytes.Equal(storedHash(t, tx, "devices", token), secretSHA(token)) {
 		t.Error("devices.secret_hash is not the SHA-256 of the token's secret")
 	}
-	if _, _, err := redeemInvite(tx, code, "Phone", testNow); err != errBadInvite {
-		t.Errorf("second redemption: %v, want errBadInvite", err)
+	if _, _, err := redeemInvite(tx, code, "Phone", testNow); err != errInviteRedeemed {
+		t.Errorf("second redemption: %v, want errInviteRedeemed", err)
 	}
 
 	// A device name never blocks pairing: it is cleaned, not refused.
@@ -130,8 +130,8 @@ func TestInviteExpiry(t *testing.T) {
 	alex := mustCreateMember(t, tx, "Alex", true)
 	mustRedeemInvite(t, tx, mustCreateInvite(t, tx, alex), testNow.Add(23*time.Hour+59*time.Minute))
 	late := testNow.Add(24*time.Hour + time.Second)
-	if _, _, err := redeemInvite(tx, mustCreateInvite(t, tx, alex), "Phone", late); err != errBadInvite {
-		t.Errorf("redeem after 24h: %v, want errBadInvite", err)
+	if _, _, err := redeemInvite(tx, mustCreateInvite(t, tx, alex), "Phone", late); err != errInviteExpired {
+		t.Errorf("redeem after 24h: %v, want errInviteExpired", err)
 	}
 }
 
