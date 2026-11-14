@@ -291,7 +291,8 @@ private extension View {
 /// Turning it off still holds until the app quits, but the Keychain keeps the old account.
 func certificateSaveFailureText(_ error: any Error) -> String {
     let failure = if let error = error as? Keychain.SaveError {
-        String(localized: "Couldn't save the change in the Keychain on this iPhone: status \(Int(error.status)).")
+        // A String, because a number would be grouped: -25,308.
+        String(localized: "Couldn't save the change in the Keychain on this iPhone: status \(String(error.status)).")
     } else {
         String(localized: "Couldn't save the change in the Keychain on this iPhone: \(error.localizedDescription)")
     }

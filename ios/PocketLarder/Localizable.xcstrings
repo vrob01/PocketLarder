@@ -2041,12 +2041,12 @@
         }
       }
     },
-    "Couldn't save the change in the Keychain on this iPhone: status %lld.": {
+    "Couldn't save the change in the Keychain on this iPhone: status %@.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Die Änderung konnte nicht im Schlüsselbund dieses iPhones gespeichert werden: Status %lld."
+            "value": "Die Änderung konnte nicht im Schlüsselbund dieses iPhones gespeichert werden: Status %@."
           }
         }
       }

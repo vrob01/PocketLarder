@@ -85,7 +85,7 @@ final class ScreenshotTests: XCTestCase {
             XCTAssertTrue(named.exists, "The warning doesn't name the host")
             if language == "en" {
                 XCTAssertTrue(alert.staticTexts["Warning!"].exists)
-                XCTAssertTrue(alert.staticTexts[warning].exists)
+                XCTAssertTrue(alert.staticTexts.matching(NSPredicate(format: "label == %@", warning)).firstMatch.exists)
             }
             // The alert is still fading in.
             Thread.sleep(forTimeInterval: 0.5)
@@ -901,11 +901,12 @@ final class ScreenshotTests: XCTestCase {
         item.tap()
     }
 
-    /// Expects an alert with exactly `text`, and taps `button`. It may follow a request to the fixture.
+    /// Expects an alert with exactly `text`, and taps `button`. It may follow a request to the fixture. By label, because a
+    /// subscript refuses text over 128 characters.
     private func answer(_ app: XCUIApplication, _ text: String, with button: String) {
         let alert = app.alerts.firstMatch
         XCTAssertTrue(alert.waitForExistence(timeout: 20))
-        XCTAssertTrue(alert.staticTexts[text].exists, "No alert reads \(text)")
+        XCTAssertTrue(alert.staticTexts.matching(NSPredicate(format: "label == %@", text)).firstMatch.exists, "No alert reads \(text)")
         alert.buttons[button].tap()
         XCTAssertTrue(alert.waitForNonExistence(timeout: 5))
     }
