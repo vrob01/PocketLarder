@@ -16,7 +16,7 @@ import (
 )
 
 // version is the server's version, bumped by hand by the rules under Versioning in AGENTS.md.
-const version = "0.1.0"
+const version = "0.2.0"
 
 const usage = `usage:
   pocketlarder serve
@@ -70,20 +70,20 @@ func Run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	}
 
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		fmt.Fprintln(stderr, "pocketlarder:", err)
+		fmt.Fprintln(stderr, "pocketlarder: creating the data directory:", err)
 		return 1
 	}
 	// Created 0600 first because SQLite gives the -wal and -shm files the database file's mode.
 	path := filepath.Join(dir, "pocketlarder.db")
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
-		fmt.Fprintln(stderr, "pocketlarder:", err)
+		fmt.Fprintln(stderr, "pocketlarder: creating the database file:", err)
 		return 1
 	}
 	f.Close()
 	db, err := openDB(path)
 	if err != nil {
-		fmt.Fprintln(stderr, "pocketlarder:", err)
+		fmt.Fprintln(stderr, "pocketlarder: opening the database:", err)
 		return 1
 	}
 	defer db.Close()
@@ -144,14 +144,14 @@ func serve(ctx context.Context, db *sql.DB, publicURL string, trustProxy bool, l
 	go func() { failed <- srv.ListenAndServe() }()
 	select {
 	case err := <-failed:
-		fmt.Fprintln(stderr, "pocketlarder:", err)
+		fmt.Fprintf(stderr, "pocketlarder: listening on %s: %v\n", listen, err)
 		return 1
 	case <-ctx.Done():
 	}
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		fmt.Fprintln(stderr, "pocketlarder:", err)
+		fmt.Fprintln(stderr, "pocketlarder: shutting down:", err)
 		return 1
 	}
 	return 0
@@ -184,17 +184,23 @@ func invite(db *sql.DB, cmd, name, publicURL string, stdout, stderr io.Writer) i
 		return tx.QueryRow("SELECT name FROM members WHERE id = ?", id).Scan(&stored)
 	})
 	switch {
-	case errors.Is(err, errNotFound):
+	case errors.Is(err, errNotFound) && cmd == "--revoke":
 		fmt.Fprintf(stderr, "pocketlarder: no member named %q\n", name)
+		return 1
+	case errors.Is(err, errNotFound):
+		fmt.Fprintf(stderr, "pocketlarder: no member named %q. To add a new admin, run pocketlarder invite --new-admin <name>. To add any other member, an admin invites them in the app under My account > Members.\n", name)
 		return 1
 	case errors.Is(err, errConflict):
 		fmt.Fprintf(stderr, "pocketlarder: a member named %q already exists\n", name)
 		return 1
 	case errors.Is(err, errInvalid):
-		fmt.Fprintf(stderr, "pocketlarder: %q is not a valid member name\n", name)
+		fmt.Fprintf(stderr, "pocketlarder: %q is not a valid member name: it must be 1 to %d characters, with no control or invisible characters.\n", name, maxName)
+		return 1
+	case err != nil && cmd == "--revoke":
+		fmt.Fprintln(stderr, "pocketlarder: revoking the invites:", err)
 		return 1
 	case err != nil:
-		fmt.Fprintln(stderr, "pocketlarder:", err)
+		fmt.Fprintln(stderr, "pocketlarder: creating the invite:", err)
 		return 1
 	}
 	if cmd == "--revoke" {
@@ -210,13 +216,13 @@ func invite(db *sql.DB, cmd, name, publicURL string, stdout, stderr io.Writer) i
 func backup(db *sql.DB, path string, stderr io.Writer) int {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		fmt.Fprintln(stderr, "pocketlarder:", err)
+		fmt.Fprintln(stderr, "pocketlarder: creating the backup file:", err)
 		return 1
 	}
 	f.Close()
 	if _, err := db.Exec("VACUUM INTO ?", path); err != nil {
 		os.Remove(path)
-		fmt.Fprintln(stderr, "pocketlarder:", err)
+		fmt.Fprintln(stderr, "pocketlarder: writing the backup:", err)
 		return 1
 	}
 	return 0
