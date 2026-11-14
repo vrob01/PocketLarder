@@ -57,6 +57,51 @@ final class ScreenshotTests: XCTestCase {
         }
     }
 
+    func testCertificateHelp() {
+        let texts = [
+            "This iPhone only connects to servers it trusts. To trust a server with its own certificate, install its root certificate:",
+            "Get the root certificate from the server's admin and open it on this iPhone.",
+            "In Settings › General › VPN & Device Management, install it.",
+            "In Settings › General › About › Certificate Trust Settings, turn it on.",
+            "This iPhone then trusts the certificate for every website. Anyone with its key could pose as any website. Only do this for testing.",
+        ]
+        for (language, appearance) in variants {
+            let checks = language == "en" && appearance == "light"
+            let app = launch(language, appearance, "-inviteError", "certificate")
+            app.buttons["welcome.enterInvite"].tap()
+            let error = app.staticTexts["invite.error"]
+            XCTAssertTrue(error.waitForExistence(timeout: 10))
+            let errorHelp = app.buttons["invite.error.certificateHelp"]
+            XCTAssertTrue(errorHelp.exists)
+            // In German the button ends below the screen.
+            app.swipeUp()
+            XCTAssertTrue(errorHelp.isHittable)
+            if checks {
+                XCTAssertEqual(error.label, "This iPhone refused the certificate of lists.example.com: “lists.example.com” certificate is not trusted.")
+            }
+            attach(app, "enter-invite-certificate-\(language)-\(appearance)")
+
+            errorHelp.tap()
+            let help = app.descendants(matching: .any).matching(identifier: "certificateHelp").firstMatch
+            XCTAssertTrue(help.waitForExistence(timeout: 10))
+            attach(app, "certificate-help-\(language)-\(appearance)")
+            if checks {
+                XCTAssertTrue(app.navigationBars["Servers with their own certificate"].exists)
+                // A step and its number are one element.
+                for text in texts {
+                    let shown = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
+                    XCTAssertTrue(shown.exists, "The help doesn't show \(text)")
+                }
+                goBack(app)
+                XCTAssertTrue(help.waitForNonExistence(timeout: 5))
+                XCTAssertTrue(error.exists)
+                app.buttons["invite.certificateHelp"].tap()
+                XCTAssertTrue(help.waitForExistence(timeout: 10))
+            }
+            app.terminate()
+        }
+    }
+
     func testMain() {
         for (language, appearance) in variants {
             let app = launch(language, appearance, "-fixture", "household", "-layout", "rows")

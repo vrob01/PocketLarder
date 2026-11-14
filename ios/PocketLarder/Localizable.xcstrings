@@ -1970,6 +1970,86 @@
           }
         }
       }
+    },
+    "This iPhone refused the certificate of %@: %@.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses iPhone hat das Zertifikat von %1$@ abgelehnt: %2$@."
+          }
+        }
+      }
+    },
+    "This iPhone refused the certificate of %@.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses iPhone hat das Zertifikat von %@ abgelehnt."
+          }
+        }
+      }
+    },
+    "Servers with their own certificate": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server mit eigenem Zertifikat"
+          }
+        }
+      }
+    },
+    "This iPhone only connects to servers it trusts. To trust a server with its own certificate, install its root certificate:": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses iPhone verbindet sich nur mit Servern, denen es vertraut. Damit es einem Server mit eigenem Zertifikat vertraut, installiere dessen Root-Zertifikat:"
+          }
+        }
+      }
+    },
+    "Get the root certificate from the server's admin and open it on this iPhone.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hol dir das Root-Zertifikat vom Admin des Servers und öffne es auf diesem iPhone."
+          }
+        }
+      }
+    },
+    "In Settings › General › VPN & Device Management, install it.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installiere es unter Einstellungen › Allgemein › VPN und Geräteverwaltung."
+          }
+        }
+      }
+    },
+    "In Settings › General › About › Certificate Trust Settings, turn it on.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktiviere es unter Einstellungen › Allgemein › Info › Zertifikatsvertrauenseinstellungen."
+          }
+        }
+      }
+    },
+    "This iPhone then trusts the certificate for every website. Anyone with its key could pose as any website. Only do this for testing.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses iPhone vertraut dem Zertifikat dann bei jeder Website. Wer seinen Schlüssel hat, könnte sich als jede beliebige Website ausgeben. Mach das nur zum Testen."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

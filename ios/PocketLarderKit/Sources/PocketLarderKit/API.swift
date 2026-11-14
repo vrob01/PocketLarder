@@ -2,6 +2,9 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
+#if canImport(Security)
+import Security
+#endif
 
 public protocol Transport: Sendable {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
@@ -20,7 +23,10 @@ public struct URLSessionTransport: Transport {
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         try await withCheckedThrowingContinuation { continuation in
             session.dataTask(with: request) { data, response, error in
-                if let error {
+                if let error = error as? URLError, error.refusesCertificate {
+                    // Evaluated here, off the main thread, because the error carries the server's trust but not why it failed.
+                    continuation.resume(throwing: CertificateRefused(reason: trustFailure(error)))
+                } else if let error {
                     continuation.resume(throwing: error)
                 } else if let response = response as? HTTPURLResponse {
                     continuation.resume(returning: (data ?? Data(), response))
@@ -45,8 +51,53 @@ private final class RedirectRefuser: NSObject, URLSessionTaskDelegate {
     }
 }
 
+extension URLError {
+    /// Whether the system refused the server's certificate. ATS reports its refusal as `.secureConnectionFailed` with the
+    /// server's trust attached.
+    var refusesCertificate: Bool {
+        switch code {
+        case .serverCertificateHasBadDate, .serverCertificateUntrusted, .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid:
+            true
+        case .secureConnectionFailed:
+            userInfo[NSURLErrorFailingURLPeerTrustErrorKey] != nil
+        default:
+            false
+        }
+    }
+}
+
+/// What `URLSessionTransport` throws when the system refused the server's certificate. `reason` is the system's, and nil
+/// where it gives none.
+public struct CertificateRefused: Error, Equatable, Sendable {
+    public let reason: String?
+
+    public init(reason: String?) {
+        self.reason = reason
+    }
+}
+
+/// The system's reason, plus the failed checks its underlying error lists, such as "SSL hostname does not match name(s)
+/// in certificate".
+func trustFailureText(_ failure: NSError) -> String {
+    let checks = (failure.userInfo[NSUnderlyingErrorKey] as? NSError).map { " (\($0.localizedDescription))" } ?? ""
+    return failure.localizedDescription + checks
+}
+
+/// Nil when the error carries no trust or the trust passes now. Never call it on the main thread, as Apple warns.
+private func trustFailure(_ error: URLError) -> String? {
+    #if canImport(Security)
+    var failure: CFError?
+    guard let trust = error.failureURLPeerTrust, !SecTrustEvaluateWithError(trust, &failure), let failure else { return nil }
+    return trustFailureText(failure as Error as NSError)
+    #else
+    return nil
+    #endif
+}
+
 public enum APIError: Error, Equatable, Sendable {
     case offline
+    /// The system refused the server's certificate, so nothing reached the server.
+    case certificateRefused(reason: String?)
     case server(code: String)
     case unexpected(status: Int)
 }
@@ -238,7 +289,17 @@ public struct APIClient: Sendable {
             request.httpBody = data
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
-        guard let (data, response) = try? await transport.send(request) else { throw .offline }
+        let data: Data, response: HTTPURLResponse
+        do {
+            (data, response) = try await transport.send(request)
+        } catch let refused as CertificateRefused {
+            throw .certificateRefused(reason: refused.reason)
+        } catch let error as URLError where error.refusesCertificate {
+            // From a transport that doesn't evaluate the trust, so there is no reason.
+            throw .certificateRefused(reason: nil)
+        } catch {
+            throw .offline
+        }
         guard (200..<300).contains(response.statusCode) || response.statusCode == passing else {
             // `unauthorized` wipes the phone, so a gateway's 403 or 500 with that body must not count as one.
             if let failure = try? JSON.decoder.decode(ErrorBody.self, from: data),

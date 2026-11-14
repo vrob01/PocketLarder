@@ -180,6 +180,8 @@ extension KeychainSuite {
             (.answer(status: 401, json: #"{"error":"invalid_invite"}"#), .invalidInvite),
             (.answer(status: 429, json: #"{"error":"rate_limited"}"#), .rateLimited),
             (offline, .unreachable(host: "lists.example.test")),
+            (.error(CertificateRefused(reason: "R")), .certificateRefused(host: "lists.example.test", reason: "R")),
+            (.error(URLError(.serverCertificateUntrusted)), .certificateRefused(host: "lists.example.test", reason: nil)),
             (.answer(status: 500, json: #"{"error":"internal"}"#), .other),
         ]
         for (step, expected) in cases {
@@ -597,6 +599,26 @@ extension KeychainSuite {
         #expect(await refused.transport.requests.last?.url?.path == "/v1/signout")
     }
 
+    @Test @MainActor func signOutCertificateRefused() async throws {
+        defer { Keychain.delete() }
+        let refusal = FakeTransport.Step.error(CertificateRefused(reason: "R"))
+
+        let (model, transport, _) = try await signedIn([refusal])
+        #expect(await model.signOut(force: false) == .certificateRefused(reason: "R"))
+        #expect(model.account == account)
+        #expect(Keychain.load() == account)
+        #expect(!(await paths(transport)).contains("/v1/signout"))
+
+        let refused = try await signedIn([synced, .error(URLError(.serverCertificateUntrusted))])
+        #expect(await refused.model.signOut(force: false) == .certificateRefused(reason: nil))
+        #expect(refused.model.account == account)
+        #expect(await refused.transport.requests.last?.url?.path == "/v1/signout")
+
+        let unreachable = try await signedIn([synced, offline])
+        #expect(await unreachable.model.signOut(force: false) == .unreachable)
+        #expect(await unreachable.transport.requests.last?.url?.path == "/v1/signout")
+    }
+
     // A model built with an empty Keychain stands in for a locked launch, because `load()` returns nil in both cases
     // and a test can't lock the simulator. `Keychain.save` after `init` stands in for the phone unlocking.
 
@@ -1003,7 +1025,13 @@ extension KeychainSuite {
     #expect(signedOutText(lostChanges: 2) == "This iPhone was signed out. 2 changes that weren't sent yet are lost.")
     #expect(unsentChangesText(1) == "1 change hasn't been sent yet. Sign out and lose it?")
     #expect(unsentChangesText(2) == "2 changes haven't been sent yet. Sign out and lose them?")
-    #expect(rateLimitedSignOutText(host: "lists.example.test") == "lists.example.test limited this iPhone's requests: too many in the past minute. Sign out anyway? This deletes everything on this iPhone. Ask an admin to remove this device from the household.")
+    #expect(signOutAnywayText(.server(code: "rate_limited"), host: "lists.example.test") == "lists.example.test limited this iPhone's requests: too many in the past minute. Sign out anyway? This deletes everything on this iPhone. Ask an admin to remove this device from the household.")
+    let reason = "“lists.example.test” certificate is not trusted"
+    #expect(signInErrorText(.certificateRefused(host: "lists.example.test", reason: reason)) == "This iPhone refused the certificate of lists.example.test: “lists.example.test” certificate is not trusted.")
+    #expect(signInErrorText(.certificateRefused(host: "lists.example.test", reason: nil)) == "This iPhone refused the certificate of lists.example.test.")
+    #expect(offlineText(failure: .certificateRefused(reason: reason), host: "lists.example.test", pending: 0) == "This iPhone refused the certificate of lists.example.test: “lists.example.test” certificate is not trusted. No changes are waiting to be sent.")
+    #expect(offlineText(failure: .certificateRefused(reason: nil), host: "lists.example.test", pending: 2) == "This iPhone refused the certificate of lists.example.test. 2 changes are waiting to be sent.")
+    #expect(signOutAnywayText(.certificateRefused(reason: nil), host: "lists.example.test") == "This iPhone refused the certificate of lists.example.test. Sign out anyway? This deletes everything on this iPhone. Ask an admin to remove this device from the household.")
 }
 
 @Test func compatibilityTexts() {

@@ -134,6 +134,55 @@ private func expectRequest(
     }
 }
 
+/// ATS reports its refusal as a -1200 with the server's trust. The key alone decides, so a string stands in for the
+/// `SecTrust` that Linux lacks.
+@Test func certificateErrors() async {
+    let peerTrust = [NSURLErrorFailingURLPeerTrustErrorKey: "not a trust"]
+    let cases: [(URLError, APIError)] = [
+        (URLError(.serverCertificateHasBadDate), .certificateRefused(reason: nil)),
+        (URLError(.serverCertificateUntrusted), .certificateRefused(reason: nil)),
+        (URLError(.serverCertificateHasUnknownRoot), .certificateRefused(reason: nil)),
+        (URLError(.serverCertificateNotYetValid), .certificateRefused(reason: nil)),
+        (URLError(.secureConnectionFailed, userInfo: peerTrust), .certificateRefused(reason: nil)),
+        (URLError(.secureConnectionFailed), .offline),
+        (URLError(.clientCertificateRejected), .offline),
+        (URLError(.clientCertificateRequired), .offline),
+        (URLError(.notConnectedToInternet), .offline),
+    ]
+    for (error, expected) in cases {
+        let (client, _) = fakeClient(.error(error))
+        await #expect(throws: expected, "\(error.code)") {
+            _ = try await client.sync([])
+        }
+        let (checking, _) = fakeClient(.error(error))
+        #expect(await checking.serverVersion() == .couldNotCheck(expected), "\(error.code)")
+    }
+}
+
+/// The reason `URLSessionTransport` found survives to the caller.
+@Test func refusedCertificateKeepsItsReason() async {
+    let reason = "“lists.example.test” certificate is not trusted"
+    let (client, _) = fakeClient(.error(CertificateRefused(reason: reason)))
+    await #expect(throws: APIError.certificateRefused(reason: reason)) {
+        _ = try await client.sync([])
+    }
+    let (checking, _) = fakeClient(.error(CertificateRefused(reason: reason)))
+    #expect(await checking.serverVersion() == .couldNotCheck(.certificateRefused(reason: reason)))
+}
+
+@Test func trustFailureTexts() {
+    let checks = NSError(domain: "NSOSStatusErrorDomain", code: -67602, userInfo: [
+        NSLocalizedDescriptionKey: "Certificate 0 “localhost” has errors: SSL hostname does not match name(s) in certificate;",
+    ])
+    let failure = NSError(domain: "NSOSStatusErrorDomain", code: -67602, userInfo: [
+        NSLocalizedDescriptionKey: "“localhost” certificate name does not match input",
+        NSUnderlyingErrorKey: checks,
+    ])
+    #expect(trustFailureText(failure) == "“localhost” certificate name does not match input (Certificate 0 “localhost” has errors: SSL hostname does not match name(s) in certificate;)")
+    let alone = NSError(domain: "NSOSStatusErrorDomain", code: -67843, userInfo: [NSLocalizedDescriptionKey: "“localhost” certificate is not trusted"])
+    #expect(trustFailureText(alone) == "“localhost” certificate is not trusted")
+}
+
 /// Its own minimum and major, so that raising the app's setting changes nothing here.
 @Test func serverVersionOutcomes() async {
     let cases: [(FakeTransport.Step, ServerCompatibility)] = [

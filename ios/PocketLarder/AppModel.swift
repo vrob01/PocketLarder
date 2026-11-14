@@ -6,12 +6,13 @@ import PocketLarderKit
 final class AppModel {
     enum SignInError: Error, Equatable {
         case invalidInvite, rateLimited, unreachable(host: String), alreadySignedIn(name: String), other
+        case certificateRefused(host: String, reason: String?)
         /// Nothing was redeemed, because the invite's server is too old or too new for this app.
         case incompatible(Incompatibility, server: URL)
     }
 
     enum SignOutResult: Equatable {
-        case done, unsentChanges(Int), unreachable, rateLimited
+        case done, unsentChanges(Int), unreachable, rateLimited, certificateRefused(reason: String?)
     }
 
     var pendingInvite: Invite?
@@ -193,6 +194,7 @@ final class AppModel {
             case .server(code: "invalid_invite"): return .invalidInvite
             case .server(code: "rate_limited"): return .rateLimited
             case .offline: return .unreachable(host: invite.server.host() ?? "")
+            case let .certificateRefused(reason): return .certificateRefused(host: invite.server.host() ?? "", reason: reason)
             default: return .other
             }
         }
@@ -237,6 +239,7 @@ final class AppModel {
         // A 401 or a forced sign-out during the wait has wiped already, and a new account may have signed in since.
         guard self.larder === larder else { return .done }
         if larder.lastSyncFailure == .server(code: "rate_limited") { return .rateLimited }
+        if case let .certificateRefused(reason)? = larder.lastSyncFailure { return .certificateRefused(reason: reason) }
         if larder.isOffline { return .unreachable }
         if !larder.pending.isEmpty { return .unsentChanges(larder.pending.count) }
         var failure: APIError?
@@ -247,6 +250,7 @@ final class AppModel {
         }
         guard self.larder === larder else { return .done }
         if failure == .server(code: "rate_limited") { return .rateLimited }
+        if case let .certificateRefused(reason)? = failure { return .certificateRefused(reason: reason) }
         // `unauthorized` means the server already treats this device as signed out.
         if let failure, failure != .server(code: "unauthorized") { return .unreachable }
         wipe()
