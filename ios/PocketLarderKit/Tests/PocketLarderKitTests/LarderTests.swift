@@ -142,6 +142,20 @@ private func sentOpIds(_ request: URLRequest) throws -> [String] {
     #expect(files.load().queue == [])
 }
 
+/// No request reached the server, so the queue waits as it does offline, and the badge has the reason.
+@Test @MainActor func refusedCertificateIsOffline() async throws {
+    let refused = CertificateRefused(host: "lists.example.test", reason: "R")
+    let (larder, _, files, _) = try makeLarder([.error(refused)])
+    try larder.perform([add("A")], now: at)
+    let queued = larder.pending
+
+    await larder.sync()
+    #expect(larder.isOffline)
+    #expect(larder.lastSyncFailure == .certificateRefused(reason: "R"))
+    #expect(larder.pending == queued)
+    #expect(files.load().queue == queued)
+}
+
 @Test @MainActor func failedSyncKeepsSameOps() async throws {
     let (larder, _, files, _) = try makeLarder([offline, try synced()])
     try larder.perform([add("A"), add("B")], now: at)

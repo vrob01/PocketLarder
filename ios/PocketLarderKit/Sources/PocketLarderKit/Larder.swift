@@ -132,7 +132,9 @@ import Observation
             schedule?.cancel()
             schedule = nil
             onSignedOut?(lostChanges)
-        case .offline, .server(code: "internal"), .server(code: "missing_token"), .server(code: "rate_limited"), .unexpected(status: 500...599):
+        case .offline, .certificateRefused, .server(code: "internal"), .server(code: "missing_token"), .server(code: "rate_limited"),
+             .unexpected(status: 500...599):
+            // A refused certificate means no request reached the server, so it holds the queue like an outage.
             // `missing_token` means a proxy may have dropped the header, not that this device is signed out.
             // `rate_limited` holds the queue back like an outage, and the next scheduled sync retries it.
             isOffline = true

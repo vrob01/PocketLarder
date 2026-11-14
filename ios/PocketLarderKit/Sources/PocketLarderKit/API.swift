@@ -9,7 +9,8 @@ import Synchronization
 
 public protocol Transport: Sendable {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
-    /// From the next request on, accepts any certificate from `host`, ignoring case and port. Nil trusts no host.
+    /// From the next request on, `host`, ignoring case and port, is checked with the certificates it presents as the only
+    /// trust anchors, so that a self-signed certificate passes when it meets every other check. Nil trusts no host.
     func trust(host: String?)
 }
 
@@ -43,9 +44,12 @@ public final class URLSessionTransport: Transport {
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         try await withCheckedThrowingContinuation { continuation in
             current.withLock { session in
+                let delegate = session.delegate as? SessionDelegate
                 session.dataTask(with: request) { data, response, error in
                     if let error {
-                        continuation.resume(throwing: error)
+                        // The delegate cancels the requests whose certificate it refuses, and nothing else cancels one.
+                        let refusal = (error as? URLError)?.code == .cancelled ? delegate?.refusal : nil
+                        continuation.resume(throwing: refusal ?? error)
                     } else if let response = response as? HTTPURLResponse {
                         continuation.resume(returning: (data ?? Data(), response))
                     } else {
@@ -64,10 +68,17 @@ public final class URLSessionTransport: Transport {
     }
 }
 
-/// Keeps the bearer token from following a redirect to another host, and accepts any certificate from the one trusted
-/// host. `send` returns the 3xx as an ordinary response.
-final class SessionDelegate: NSObject, URLSessionTaskDelegate {
+/// Keeps the bearer token from following a redirect to another host, and checks the one trusted host's certificate with
+/// the certificates it presents as the only anchors. `send` returns the 3xx as an ordinary response.
+final class SessionDelegate: NSObject, URLSessionTaskDelegate, Sendable {
     let trustedHost: String?
+    private let refused = Mutex<CertificateRefused?>(nil)
+
+    /// The latest refusal of the trusted host's certificate.
+    // shortcut: not keyed by request, so two refusals at once that differ could swap reasons; key it by task if the trusted host ever presents different certificates at once.
+    var refusal: CertificateRefused? {
+        refused.withLock { $0 }
+    }
 
     init(trustedHost: String?) {
         self.trustedHost = trustedHost
@@ -90,7 +101,8 @@ final class SessionDelegate: NSObject, URLSessionTaskDelegate {
     }
 
     #if canImport(Security)
-    /// The trusted host's certificate is accepted unevaluated. Every other challenge is checked as the system checks it.
+    /// The trusted host's certificate passes only when it meets every check but the issuer's: the name, the dates, the
+    /// lifetime and the signature. Every other challenge is checked as the system checks it.
     func urlSession(
         _ session: URLSession,
         didReceive challenge: URLAuthenticationChallenge,
@@ -101,13 +113,40 @@ final class SessionDelegate: NSObject, URLSessionTaskDelegate {
             completionHandler(.performDefaultHandling, nil)
             return
         }
-        completionHandler(.useCredential, URLCredential(trust: trust))
+        if let presented = SecTrustCopyCertificateChain(trust) {
+            SecTrustSetAnchorCertificates(trust, presented)
+        }
+        SecTrustSetAnchorCertificatesOnly(trust, true)
+        var error: CFError?
+        if SecTrustEvaluateWithError(trust, &error) {
+            completionHandler(.useCredential, URLCredential(trust: trust))
+            return
+        }
+        // The underlying error lists the failed checks, such as "SSL hostname does not match name(s) in certificate".
+        let failure = error.map { $0 as Error as NSError }
+        let checks = (failure?.userInfo[NSUnderlyingErrorKey] as? NSError).map { " (\($0.localizedDescription))" } ?? ""
+        let reason = (failure?.localizedDescription ?? "the evaluation gave no reason") + checks
+        refused.withLock { $0 = CertificateRefused(host: space.host, reason: reason) }
+        completionHandler(.cancelAuthenticationChallenge, nil)
     }
     #endif
 }
 
+/// What `URLSessionTransport` throws when the trusted host's certificate fails its check. `reason` is the system's,
+/// which names the failed check.
+public struct CertificateRefused: Error, Equatable, Sendable {
+    public let host, reason: String
+
+    public init(host: String, reason: String) {
+        self.host = host
+        self.reason = reason
+    }
+}
+
 public enum APIError: Error, Equatable, Sendable {
     case offline
+    /// The trusted host's certificate failed its check, so nothing reached the server.
+    case certificateRefused(reason: String)
     case server(code: String)
     case unexpected(status: Int)
 }
@@ -299,7 +338,14 @@ public struct APIClient: Sendable {
             request.httpBody = data
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
-        guard let (data, response) = try? await transport.send(request) else { throw .offline }
+        let data: Data, response: HTTPURLResponse
+        do {
+            (data, response) = try await transport.send(request)
+        } catch let refused as CertificateRefused {
+            throw .certificateRefused(reason: refused.reason)
+        } catch {
+            throw .offline
+        }
         guard (200..<300).contains(response.statusCode) || response.statusCode == passing else {
             // `unauthorized` wipes the phone, so a gateway's 403 or 500 with that body must not count as one.
             if let failure = try? JSON.decoder.decode(ErrorBody.self, from: data),

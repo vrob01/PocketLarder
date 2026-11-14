@@ -134,6 +134,23 @@ private func expectRequest(
     }
 }
 
+/// The trusted host's refusal keeps its reason. Any other transport error, including an untrusted host's certificate
+/// error, is still offline.
+@Test func refusedCertificateKeepsItsReason() async {
+    let reason = "Certificate 0 “lists.example.test” has errors: SSL hostname does not match name(s) in certificate;"
+    let refused = FakeTransport.Step.error(CertificateRefused(host: "lists.example.test", reason: reason))
+    let (client, _) = fakeClient(refused)
+    await #expect(throws: APIError.certificateRefused(reason: reason)) {
+        _ = try await client.sync([])
+    }
+    let (checking, _) = fakeClient(refused)
+    #expect(await checking.serverVersion() == .couldNotCheck(.certificateRefused(reason: reason)))
+    let (untrusted, _) = fakeClient(.error(URLError(.serverCertificateUntrusted)))
+    await #expect(throws: APIError.offline) {
+        _ = try await untrusted.sync([])
+    }
+}
+
 /// Its own minimum and major, so that raising the app's setting changes nothing here.
 @Test func serverVersionOutcomes() async {
     let cases: [(FakeTransport.Step, ServerCompatibility)] = [
