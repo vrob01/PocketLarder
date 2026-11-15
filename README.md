@@ -6,21 +6,34 @@ The server API is described in [server/API.md](server/API.md).
 
 ## Self-hosting
 
-Run all commands from the repo root.
+The server runs from the image `ghcr.io/vrob01/pocketlarder`, which exists for linux/amd64 and linux/arm64. `POCKETLARDER_VERSION` in `.env` picks the release.
 
-1. Create your settings file and the data directory. In `server/deploy/.env`, set `POCKETLARDER_PUBLIC_URL` to your own `https://` address, the same host as the Caddy site below, and `POCKETLARDER_HOST_DATA_DIR` to the host directory that holds the database (the example uses `/srv/pocketlarder`; keep it outside the repo), and `POCKETLARDER_PROXY_NETWORK` to the Docker network that PocketLarder shares with the reverse proxy. Settings that depend on your deployment live in `.env`, which git ignores, so `git pull` upgrades never conflict with `compose.yaml`. That directory is bind-mounted at `/data` and must belong to the container user (65532:65532):
+Make an empty directory for the install and download the deployment files of a server release into it, without a clone. Set `version` to the latest server release from https://github.com/vrob01/PocketLarder/releases:
+
+```bash
+version=<latest server release, for example 1.2.3>
+for f in compose.yaml .env.example Caddyfile; do
+  curl -fsSO "https://raw.githubusercontent.com/vrob01/PocketLarder/refs/tags/server/v$version/server/deploy/$f"
+done
+```
+
+The files of server 0.2.0 and older build the image from source instead, so until a newer server release is out, download the files from `main` (`refs/heads/main` in place of `tags/server/v$version`).
+
+Run all commands from that directory.
+
+1. Create your settings file and the data directory. In `.env`, set `POCKETLARDER_PUBLIC_URL` to your own `https://` address, the same host as the Caddy site below, and `POCKETLARDER_HOST_DATA_DIR` to the host directory that holds the database (the example uses `/srv/pocketlarder`; keep it outside that directory), and `POCKETLARDER_PROXY_NETWORK` to the Docker network that PocketLarder shares with the reverse proxy. Settings that depend on your deployment live only in `.env`, never in `compose.yaml`; `POCKETLARDER_VERSION` is the release you run. That directory is bind-mounted at `/data` and must belong to the container user (65532:65532):
 
    ```bash
-   cp server/deploy/.env.example server/deploy/.env   # then edit it
+   cp .env.example .env   # then edit it
    sudo mkdir -m 700 /srv/pocketlarder
    sudo chown 65532:65532 /srv/pocketlarder
    ```
 
-2. Create the proxy network (with the name from `.env`), build the image from this clone and start the server:
+2. Create the proxy network (with the name from `.env`), pull the image and start the server:
 
    ```bash
    docker network create pocketlarder
-   docker compose -f server/deploy/compose.yaml up -d --build
+   docker compose up -d
    ```
 
 3. Put a reverse proxy in front. PocketLarder publishes no port; only containers on the proxy network reach it, so other services can stay on networks of their own. Run Caddy in a container and attach it to that network in Caddy's compose file:
@@ -34,7 +47,7 @@ Run all commands from the repo root.
        external: true
    ```
 
-   Then use this block, as in `server/deploy/Caddyfile`, with `lists.example.com` replaced by your domain:
+   Then use this block, as in the downloaded `Caddyfile`, with `lists.example.com` replaced by your domain:
 
    ```
    lists.example.com {
@@ -46,13 +59,13 @@ Run all commands from the repo root.
 4. Create the first admin:
 
    ```bash
-   docker compose -f server/deploy/compose.yaml exec pocketlarder pocketlarder invite --new-admin <name>
+   docker compose exec pocketlarder pocketlarder invite --new-admin <name>
    ```
 
 5. Back up the database:
 
    ```bash
-   docker compose -f server/deploy/compose.yaml exec pocketlarder pocketlarder backup /data/backup-$(date +%F).db
+   docker compose exec pocketlarder pocketlarder backup /data/backup-$(date +%F).db
    ```
 
    Scheduling backups, and copying them off the server, is the host's job.
@@ -62,7 +75,7 @@ Run all commands from the repo root.
 6. Check which version the server runs:
 
    ```bash
-   docker compose -f server/deploy/compose.yaml exec pocketlarder pocketlarder version
+   docker compose exec pocketlarder pocketlarder version
    ```
 
    It prints the version, for example `pocketlarder 0.1.0`. The iOS app asks the server for its version too, and when the server is too old for the app, the app says so and syncs nothing until the server is updated.
@@ -71,12 +84,35 @@ Run all commands from the repo root.
 
 - An existing data directory or database keeps its current file mode. `serve` creates them 0700/0600 only when they don't exist yet. If you bring existing data along, check that the data directory is 0700, the database files are 0600, and the owner is 65532:65532 in the container.
 - `POCKETLARDER_LISTEN` defaults to `:8080`, which serves plain HTTP on every interface. On a bare host behind a reverse proxy, set `POCKETLARDER_LISTEN=127.0.0.1:<port>`. The compose container is reachable only from the proxy network.
-- `POCKETLARDER_TRUST_PROXY` is off by default. With `true`, the redemption limit counts the last `X-Forwarded-For` entry, the address the reverse proxy saw, instead of the connection's address. It accepts `true`, `false` or empty, and `serve` refuses any other value. The shipped `server/deploy/compose.yaml` sets it; a bare host behind a reverse proxy needs it set. With it off behind a proxy, every client has the proxy's address and shares one budget, so anyone can block pairing for everyone; an admin who sets `false` there accepts that, or protects the endpoint another way, for example with a rate limit in the proxy. Turn it on only when nothing but the proxy reaches the server and the proxy itself sets or appends `X-Forwarded-For`, so that the last entry is the address the proxy saw: Caddy's `reverse_proxy` does this by default, nginx needs `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`. A proxy that passes the client's header through unchanged lets any client choose the address it is counted under, to block pairing for an address it picks or to spread its attempts over many addresses. Anything that reaches the server directly, such as another container on the proxy network, a local process on a bare host, or anyone if the port is published, can set the header and block pairing for an address of its choosing. Behind a chain of proxies (for example a CDN in front of Caddy), clients that come through the same last hop share one budget.
+- `POCKETLARDER_TRUST_PROXY` is off by default. With `true`, the redemption limit counts the last `X-Forwarded-For` entry, the address the reverse proxy saw, instead of the connection's address. It accepts `true`, `false` or empty, and `serve` refuses any other value. The shipped `compose.yaml` sets it; a bare host behind a reverse proxy needs it set. With it off behind a proxy, every client has the proxy's address and shares one budget, so anyone can block pairing for everyone; an admin who sets `false` there accepts that, or protects the endpoint another way, for example with a rate limit in the proxy. Turn it on only when nothing but the proxy reaches the server and the proxy itself sets or appends `X-Forwarded-For`, so that the last entry is the address the proxy saw: Caddy's `reverse_proxy` does this by default, nginx needs `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`. A proxy that passes the client's header through unchanged lets any client choose the address it is counted under, to block pairing for an address it picks or to spread its attempts over many addresses. Anything that reaches the server directly, such as another container on the proxy network, a local process on a bare host, or anyone if the port is published, can set the header and block pairing for an address of its choosing. Behind a chain of proxies (for example a CDN in front of Caddy), clients that come through the same last hop share one budget.
 - The iOS app refuses every HTTP redirect, so its token can never follow one to another host. Serve PocketLarder directly at `POCKETLARDER_PUBLIC_URL`, the address in your invites. If the proxy redirects that address, for example from the bare domain to `www` or to an SSO login page, every request from the app fails. Forwarding with `reverse_proxy`, as above, isn't a redirect and works.
 - `backup <path>` writes a 0600 file but refuses any path that already exists. Back up into a private directory such as `/data`, and use a fresh name for each run, for example one with the date in it. A second backup on the same day needs a different name.
-- Run `invite` with `docker compose exec` (as above). It is the only way that keeps invite URLs out of every log. `docker compose run` sends the output to the container's logging driver, with or without `--rm`; if you use it anyway, write `docker compose -f server/deploy/compose.yaml run --rm pocketlarder invite <name>` (the entrypoint already is `pocketlarder`).
-- Invite URLs are secrets, and `invite` prints them to stdout. With `exec` the output goes only to your terminal. With `docker compose run` it goes to the logging driver. With the default `json-file` or `local` driver it is in `docker logs` and on disk under `/var/lib/docker/containers/`; `--rm` removes that copy, without `--rm` you must `docker rm` the stopped container. With `journald` or `syslog` it is also in the host journal or syslog files, and with a remote driver (for example `fluentd`, `gelf` or `awslogs`) on the remote log server, and `--rm` does not remove those. Treat an invite that was logged as exposed and revoke it: `docker compose -f server/deploy/compose.yaml exec pocketlarder pocketlarder invite --revoke <name>`. An admin who already has a paired device can instead use `POST /v1/invites/revoke` (see [server/API.md](server/API.md)). Otherwise the invite expires after 24 hours. **Warning:** anyone who can read the logs while an invite is outstanding and redeems it first can impersonate that member, in the worst case the first admin.
+- Run `invite` with `docker compose exec` (as above). It is the only way that keeps invite URLs out of every log. `docker compose run` sends the output to the container's logging driver, with or without `--rm`; if you use it anyway, write `docker compose run --rm pocketlarder invite <name>` (the entrypoint already is `pocketlarder`).
+- Invite URLs are secrets, and `invite` prints them to stdout. With `exec` the output goes only to your terminal. With `docker compose run` it goes to the logging driver. With the default `json-file` or `local` driver it is in `docker logs` and on disk under `/var/lib/docker/containers/`; `--rm` removes that copy, without `--rm` you must `docker rm` the stopped container. With `journald` or `syslog` it is also in the host journal or syslog files, and with a remote driver (for example `fluentd`, `gelf` or `awslogs`) on the remote log server, and `--rm` does not remove those. Treat an invite that was logged as exposed and revoke it: `docker compose exec pocketlarder pocketlarder invite --revoke <name>`. An admin who already has a paired device can instead use `POST /v1/invites/revoke` (see [server/API.md](server/API.md)). Otherwise the invite expires after 24 hours. **Warning:** anyone who can read the logs while an invite is outstanding and redeems it first can impersonate that member, in the worst case the first admin.
 - The data directory is owned by uid 65532 on the host, so any host account with that uid can read the database.
+
+### Upgrading
+
+1. Read the release notes of the new version at https://github.com/vrob01/PocketLarder/releases.
+2. Set the new version in `POCKETLARDER_VERSION` in `.env`.
+3. From the install directory, pull the image and restart:
+
+   ```bash
+   docker compose pull
+   docker compose up -d
+   ```
+
+The server migrates its database on start and refuses a database newer than itself, so going back to an older version after an upgrade that migrated doesn't work.
+
+### Building from a clone
+
+For development and testing, from the repo root of a clone, with your settings in `server/deploy/.env`, this builds the image from source and runs it:
+
+```bash
+docker build -t ghcr.io/vrob01/pocketlarder:dev server && POCKETLARDER_VERSION=dev docker compose -f server/deploy/compose.yaml up -d
+```
+
+The `dev` tag means a local build never takes the tag of a published release.
 
 ## The iOS app
 

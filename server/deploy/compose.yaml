@@ -1,20 +1,20 @@
 services:
   pocketlarder:
-    build: ..
+    image: ghcr.io/vrob01/pocketlarder:${POCKETLARDER_VERSION:?set it in the .env next to compose.yaml}
     container_name: pocketlarder
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     environment:
-      POCKETLARDER_PUBLIC_URL: ${POCKETLARDER_PUBLIC_URL:?set it in server/deploy/.env}
+      POCKETLARDER_PUBLIC_URL: ${POCKETLARDER_PUBLIC_URL:?set it in the .env next to compose.yaml}
       POCKETLARDER_TRUST_PROXY: "true"
     volumes:
-      - ${POCKETLARDER_HOST_DATA_DIR:?set it in server/deploy/.env}:/data
+      - ${POCKETLARDER_HOST_DATA_DIR:?set it in the .env next to compose.yaml}:/data
     # No published port: only containers on the proxy network, i.e. the reverse proxy, reach it.
     networks: [proxy]
 
 networks:
   proxy:
     external: true
-    name: ${POCKETLARDER_PROXY_NETWORK:?set it in server/deploy/.env}
+    name: ${POCKETLARDER_PROXY_NETWORK:?set it in the .env next to compose.yaml}
