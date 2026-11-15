@@ -88,6 +88,8 @@ The iPhone app lives in `ios/`. It needs a PocketLarder server (see Self-hosting
 
 With a free Apple ID, the app stops opening after 7 days: install it again from Xcode.
 
+No server needed to look around: "Try with sample data" on the welcome screen opens a sample household that stays on the iPhone and is deleted on Leave.
+
 To use PocketLarder in another language than your iPhone's, open Settings > Apps > PocketLarder > Language. My account > Language opens that page.
 
 ### Signing in
