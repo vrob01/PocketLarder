@@ -88,6 +88,8 @@ The iPhone app lives in `ios/`. It needs a PocketLarder server (see Self-hosting
 
 With a free Apple ID, the app stops opening after 7 days: install it again from Xcode.
 
+What the app and the server store, send and delete: [PRIVACY.md](PRIVACY.md).
+
 To use PocketLarder in another language than your iPhone's, open Settings > Apps > PocketLarder > Language. My account > Language opens that page.
 
 ### Signing in
