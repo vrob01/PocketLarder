@@ -90,7 +90,8 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         let leave = withID(large.buttons, "demo.leave")
         XCTAssertTrue(leave.exists && leave.isHittable)
-        XCTAssertGreaterThanOrEqual(leave.frame.height, 44)
+        // Within rounding, because the frame comes back as 43.999999999999986 for 44 points.
+        XCTAssertGreaterThanOrEqual(leave.frame.height, 43.999)
         XCTAssertTrue(row.isHittable)
         attach(large, "demo-de-light-large")
         large.terminate()
