@@ -88,6 +88,10 @@ To release, the owner pushes a tag on the `main` commit that has the version: `s
 
 The contract test `serverIsCompatible` catches a minimum that the server of the same commit doesn't meet. A forgotten minimum can't be caught by a test, so code review checks every PR against these rules.
 
+## Privacy
+
+`PRIVACY.md` (English and German) states only what the code does, so a PR that changes what the app or the server stores, sends, logs or deletes updates both languages in the same PR. `ios/PocketLarder/PrivacyInfo.xcprivacy` declares every required-reason API the app and PocketLarderKit use, so a PR that starts using another one adds it with its reason code.
+
 ## Software factory
 
 `/factory run` builds every open GitHub issue labeled `factory` through
