@@ -14,7 +14,8 @@
    - Removing a member (Members & devices) deletes from the server's database their member record, devices, invites (including those created on their devices) and personal list with its entries. Their entries on shared lists and the catalog stay, with nothing linking them to the member.
    - Signing out a device deletes it and the invites created on it.
    - Deleting on the server is up to the household's admin, and backups made earlier are the admin's to keep or delete. The developer holds nothing to delete.
-8. **Crash reports.** The app has no crash reporting. iOS sends crash reports to the developer through Apple only if you turned on Share With App Developers (Settings > Privacy & Security > Analytics & Improvements).
+8. **The demo on sample data.** "Try with sample data" on the welcome screen runs the app on a sample household that ships with the app. The demo contacts no server: its requests go to a fake server inside the app. The sample household, and what you change in it, is kept in a new temporary folder on the iPhone, never in the Keychain. Leave, or Sign out (My account > Sign out), deletes that folder. If the app ends during the demo, the folder stays until iOS clears temporary files. Layout and appearance chosen during the demo stay afterwards, as they do after Sign out.
+9. **Crash reports.** The app has no crash reporting. iOS sends crash reports to the developer through Apple only if you turned on Share With App Developers (Settings > Privacy & Security > Analytics & Improvements).
 
 ## Deutsch
 
@@ -30,4 +31,5 @@
    - Das Entfernen eines Mitglieds (Mitglieder & Geräte) löscht aus der Datenbank des Servers dessen Mitgliedseintrag, Geräte, Einladungen (auch die, die auf seinen Geräten erstellt wurden) und die persönliche Liste mit ihren Einträgen. Seine Einträge in gemeinsamen Listen und der Katalog bleiben, ohne Verbindung zum Mitglied.
    - Das Abmelden eines Geräts löscht es und die auf ihm erstellten Einladungen.
    - Das Löschen auf dem Server ist Sache des Admins des Haushalts, und früher erstellte Backups kann der Admin behalten oder löschen. Der Entwickler hat nichts, was er löschen könnte.
-8. **Absturzberichte.** Die App hat keine Absturzberichte. iOS sendet Absturzberichte nur dann über Apple an den Entwickler, wenn du „Mit App-Entwicklern teilen“ eingeschaltet hast (Einstellungen > Datenschutz & Sicherheit > Analyse & Verbesserungen).
+8. **Die Demo mit Beispieldaten.** „Mit Beispieldaten ausprobieren“ auf dem Willkommensbildschirm startet die App mit einem Beispielhaushalt, der mit der App ausgeliefert wird. Dabei kontaktiert die App keinen Server, sondern schickt ihre Anfragen an einen nachgebildeten Server in der App. Der Beispielhaushalt und was du darin änderst, liegen in einem neuen temporären Ordner auf dem iPhone, nie im Schlüsselbund. Beenden oder Abmelden (Mein Konto > Abmelden) löscht diesen Ordner. Wenn die App während der Demo endet, bleibt der Ordner, bis iOS temporäre Dateien aufräumt. Listendarstellung und Erscheinungsbild, die du in der Demo wählst, bleiben danach, wie nach dem Abmelden.
+9. **Absturzberichte.** Die App hat keine Absturzberichte. iOS sendet Absturzberichte nur dann über Apple an den Entwickler, wenn du „Mit App-Entwicklern teilen“ eingeschaltet hast (Einstellungen > Datenschutz & Sicherheit > Analyse & Verbesserungen).
