@@ -84,6 +84,8 @@ The server and the app each have a MAJOR.MINOR.PATCH version, bumped by hand. Th
 - **Database schema change alone:** needs no app change, because the server migrates its own data and refuses a database newer than itself.
 - **Release:** bumping the app's version, and the server's version for fixes, is the owner's job at release time.
 
+To release, the owner pushes a tag on the `main` commit that has the version: `server/vX.Y.Z` (the form `go install github.com/vrob01/pocketlarder/server@vX.Y.Z` needs), or `ios/vX.Y.Z` once App Review has approved the build archived from that commit. The app goes to App Store Connect from Xcode on the owner's Mac. `.github/workflows/release.yml` refuses a tag whose version doesn't match that commit's, or whose commit isn't one of `main`'s own (a merge, squash merge or direct commit). Then it publishes a GitHub Release whose notes list the PR titles that touched `server/` or `ios/` since that component's previous tag, so write PR titles that read well there. For the server it also tests and publishes the image `ghcr.io/vrob01/pocketlarder` for linux/amd64 and linux/arm64, tagged `X.Y.Z`, `X.Y`, `X` (from 1.0) and `latest`. A server release that raises `minimumServerVersion` goes out before the app release that needs it, because App Store users get app updates on their own. Delete a refused tag before tagging again, so the next release's notes don't start from it.
+
 The contract test `serverIsCompatible` catches a minimum that the server of the same commit doesn't meet. A forgotten minimum can't be caught by a test, so code review checks every PR against these rules.
 
 ## Software factory
