@@ -60,6 +60,7 @@ struct EditEntrySheet: View {
                 }
             }
         }
+        .demoNotice()
     }
 
     /// Only what changed, so that an edit of one field can't undo another phone's edit of the other.

@@ -20,6 +20,7 @@ struct MainView: View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
                 topBar
+                DemoNotice()
                 NoticeBanner(larder: larder, saveFailure: $saveFailure)
                 StoreChips(stores: larder.view.map { chipStores($0, scope: model.scope) } ?? [], filter: $filter)
             }

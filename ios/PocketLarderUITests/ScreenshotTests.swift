@@ -13,9 +13,87 @@ final class ScreenshotTests: XCTestCase {
         for (language, appearance) in variants {
             let app = launch(language, appearance)
             XCTAssertTrue(app.buttons["welcome.enterInvite"].waitForExistence(timeout: 10))
+            let demo = withID(app.buttons, "welcome.demo")
+            XCTAssertTrue(demo.exists && demo.isHittable)
             attach(app, "welcome-\(language)-\(appearance)")
             app.terminate()
         }
+    }
+
+    /// The sample household from the welcome screen, with its notice. In English light it also leaves from Add a device,
+    /// signs out of a second run, and relaunches during a third. Then the main screen in German at a large text size.
+    func testDemo() {
+        for (language, appearance) in variants {
+            let app = launch(language, appearance)
+            let start = withID(app.buttons, "welcome.demo")
+            XCTAssertTrue(start.waitForExistence(timeout: 10))
+            start.tap()
+            let row = app.buttons.matching(identifier: "entry.row").firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: 10))
+            let notice = withID(app.staticTexts, "demo.notice")
+            XCTAssertTrue(notice.waitForExistence(timeout: 10))
+            attach(app, "demo-\(language)-\(appearance)")
+
+            if language == "en" && appearance == "light" {
+                XCTAssertEqual(notice.label, "You're trying PocketLarder with sample data.")
+                _ = openAccount(app)
+                XCTAssertTrue(inFront(app.buttons, "demo.leave").isHittable, "My account has no notice")
+                let addDevice = withID(app.buttons, "account.addDevice")
+                scrollUp(app, in: app, until: addDevice)
+                addDevice.tap()
+                XCTAssertTrue(withID(app.images, "addDevice.qr").waitForExistence(timeout: 20))
+                XCTAssertTrue(withID(app.staticTexts, "addDevice.sample").exists)
+                // The sheet is still sliding up.
+                Thread.sleep(forTimeInterval: 1)
+                XCTAssertTrue(inFront(app.buttons, "demo.leave").isHittable, "Add a device has no notice")
+                attach(app, "demo-add-device-en-light")
+
+                // Hittable, so that no sheet is left over it.
+                let enterInvite = app.buttons["welcome.enterInvite"]
+                let welcomeShows = NSPredicate(format: "isHittable == true")
+                inFront(app.buttons, "demo.leave").tap()
+                wait(for: [expectation(for: welcomeShows, evaluatedWith: enterInvite)], timeout: 10)
+                XCTAssertTrue(notice.waitForNonExistence(timeout: 10))
+
+                start.tap()
+                XCTAssertTrue(row.waitForExistence(timeout: 10))
+                XCTAssertTrue(notice.waitForExistence(timeout: 10))
+                _ = openAccount(app)
+                let invitesRow = withID(app.buttons, "account.invites")
+                scrollUp(app, in: app, until: invitesRow)
+                invitesRow.tap()
+                XCTAssertTrue(withID(app.staticTexts, "invites.sample").waitForExistence(timeout: 20))
+                goBack(app)
+                let signOut = withID(app.buttons, "account.signOut")
+                scrollUp(app, in: app, until: signOut)
+                signOut.tap()
+                wait(for: [expectation(for: welcomeShows, evaluatedWith: enterInvite)], timeout: 10)
+                XCTAssertFalse(app.alerts.firstMatch.exists)
+                XCTAssertFalse(notice.exists)
+
+                start.tap()
+                XCTAssertTrue(notice.waitForExistence(timeout: 10))
+                app.terminate()
+                app.launch()
+                XCTAssertTrue(enterInvite.waitForExistence(timeout: 10))
+                XCTAssertFalse(notice.exists)
+            }
+            app.terminate()
+        }
+
+        let large = launch("de", "light", "-UIPreferredContentSizeCategoryName", UIContentSizeCategory.accessibilityMedium.rawValue)
+        let start = withID(large.buttons, "welcome.demo")
+        XCTAssertTrue(start.waitForExistence(timeout: 10))
+        scrollUp(large, in: large, until: start)
+        start.tap()
+        let row = large.buttons.matching(identifier: "entry.row").firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        let leave = withID(large.buttons, "demo.leave")
+        XCTAssertTrue(leave.exists && leave.isHittable)
+        XCTAssertGreaterThanOrEqual(leave.frame.height, 44)
+        XCTAssertTrue(row.isHittable)
+        attach(large, "demo-de-light-large")
+        large.terminate()
     }
 
     func testEnterInvite() {
@@ -806,6 +884,13 @@ final class ScreenshotTests: XCTestCase {
         let header = withID(app.staticTexts, "account.header")
         XCTAssertTrue(header.waitForExistence(timeout: 20))
         return header
+    }
+
+    /// The element with `identifier` that a tap reaches, on the sheet in front: queries also find the one on the screen
+    /// under the sheet.
+    private func inFront(_ query: XCUIElementQuery, _ identifier: String) -> XCUIElement {
+        let matches = query.matching(NSPredicate(format: "identifier == %@", identifier))
+        return matches.allElementsBoundByIndex.first { $0.isHittable } ?? matches.firstMatch
     }
 
     /// The first element whose identifier is `identifier`. A subscript also compares its label, title, value and

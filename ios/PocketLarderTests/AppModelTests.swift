@@ -806,6 +806,115 @@ extension KeychainSuite {
         #expect(other.view?.entries.contains { $0.text == "Only in the first" } == false)
     }
 
+    @Test @MainActor func demoStartsLeavesAndStartsFresh() async throws {
+        let model = AppModel(transport: FakeTransport([]), dataDirectory: try temporaryDirectory())
+        model.startDemo()
+        let demo = try #require(model.demo)
+        let larder = try #require(demo.larder)
+        await larder.sync()
+        let ids = try #require(larder.view).entries.map(\.id)
+        #expect(demo.isDemo)
+        #expect(demo.account?.server.absoluteString == "https://fixture.invalid")
+        let list = try #require(larder.view?.myList)
+        try larder.perform([Op(.entryAdd, id: newID(), listId: list.id, text: "Only in the first")])
+        await larder.sync()
+        #expect(larder.view?.entries.contains { $0.text == "Only in the first" } == true)
+        let directory = try #require(demo.demoDirectory)
+
+        demo.leaveDemo()
+
+        #expect(model.demo == nil)
+        #expect(model.account == nil)
+        #expect(!FileManager.default.fileExists(atPath: directory.path))
+
+        model.startDemo()
+        let again = try #require(model.demo)
+        let other = try #require(again.larder)
+        await other.sync()
+        #expect(other.view?.entries.map(\.id) == ids)
+        #expect(other.view?.entries.contains { $0.text == "Only in the first" } == false)
+        again.leaveDemo()
+    }
+
+    @Test @MainActor func demoTouchesNoServerKeychainOrRealFolder() async throws {
+        defer { Keychain.delete() }
+        let directory = try seededDirectory()
+        let transport = FakeTransport([])
+        let model = AppModel(transport: transport, dataDirectory: directory)
+        // As a locked launch leaves it: in the Keychain, but not signed in.
+        try Keychain.save(account)
+        let marker = AppModel.defaultDataDirectory.appending(path: newID())
+        try Data().write(to: marker)
+        defer { try? FileManager.default.removeItem(at: marker) }
+
+        model.startDemo()
+        let demo = try #require(model.demo)
+        let larder = try #require(demo.larder)
+        await larder.sync()
+        let list = try #require(larder.view?.myList)
+        try larder.perform([Op(.entryAdd, id: newID(), listId: list.id, text: "Tea")])
+
+        #expect(await demo.signOut(force: false) == .done)
+
+        #expect(model.demo == nil)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await transport.requests.isEmpty)
+        #expect(Keychain.load() == account)
+        #expect(try contents(directory).sorted() == ["queue.json", "snapshot.json"])
+        #expect(FileManager.default.fileExists(atPath: marker.path))
+    }
+
+    @Test @MainActor func demoStartsOnlySignedOut() async throws {
+        defer { Keychain.delete() }
+        let signedOutModel = AppModel(transport: FakeTransport([]), dataDirectory: try temporaryDirectory())
+        signedOutModel.startDemo()
+        let demo = try #require(signedOutModel.demo)
+        demo.startDemo()
+        #expect(demo.demo == nil)
+        signedOutModel.startDemo()
+        #expect(signedOutModel.demo === demo)
+        demo.leaveDemo()
+
+        let (model, _, _) = try await signedIn()
+        model.startDemo()
+        #expect(model.demo == nil)
+    }
+
+    @Test @MainActor func demoOvertakesOpenSignIn() async throws {
+        defer { Keychain.delete() }
+        let transport = FakeTransport([compatible, .hold, signedOut])
+        let model = AppModel(transport: transport, dataDirectory: try temporaryDirectory())
+        let redeeming = try await openSignIn(model, transport)
+
+        model.startDemo()
+        let demo = try #require(model.demo)
+        await transport.release(status: 200, json: redeemJSON(token: "late-token"))
+
+        #expect(await redeeming.value == .overtaken)
+        #expect(model.account == nil)
+        #expect(Keychain.load() == nil)
+        #expect(model.demo === demo)
+        // The device the late answer created is signed out on its own server.
+        #expect(await revokeShows(transport))
+        demo.leaveDemo()
+    }
+
+    @Test @MainActor func signInAfterDemo() async throws {
+        defer { Keychain.delete() }
+        let transport = FakeTransport([compatible, redeemed(), synced])
+        let model = AppModel(transport: transport, dataDirectory: try temporaryDirectory())
+        model.startDemo()
+        try #require(model.demo).leaveDemo()
+
+        #expect(await model.signIn(invite, deviceName: "iPhone") == nil)
+
+        #expect(model.account == account)
+        #expect(Keychain.load() == account)
+        #expect(await transport.requests.map { "\($0.httpMethod ?? "") \($0.url?.host() ?? "")\($0.url?.path ?? "")" } == [
+            "GET lists.example.test/v1/version", "POST lists.example.test/v1/invites/redeem", "POST lists.example.test/v1/sync",
+        ])
+    }
+
     @Test @MainActor func scopeDrivesAddTarget() throws {
         let model = AppModel(transport: FakeTransport([]), dataDirectory: try temporaryDirectory())
         #expect(model.scope == .myView)

@@ -49,7 +49,12 @@ struct AddDeviceSheet: View {
                     Button("Copy invite") { copy() }
                         .accessibilityIdentifier("addDevice.copy")
                 } footer: {
-                    Text("Anyone with this invite can sign in as you until it's used or expires. Only send it to yourself.")
+                    // The warning would be false for a sample.
+                    if model.isDemo {
+                        Text("This is a sample invite. It doesn't work.").accessibilityIdentifier("addDevice.sample")
+                    } else {
+                        Text("Anyone with this invite can sign in as you until it's used or expires. Only send it to yourself.")
+                    }
                 }
                 Section {
                     Button(role: .destructive) {
@@ -78,6 +83,7 @@ struct AddDeviceSheet: View {
                 }
             }
         }
+        .demoNotice()
         .interactiveDismissDisabled(cancelling)
         .alert(
             cancelFailure?.title ?? "",

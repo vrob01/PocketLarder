@@ -57,6 +57,7 @@ struct InviteMemberSheet: View {
                     Text($0)
                 }
             }
+            .demoNotice()
             .interactiveDismissDisabled(sending)
         }
     }

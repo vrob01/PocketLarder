@@ -44,10 +44,18 @@ final class AppModel {
     }
     /// The list new items go to. Nil means my list.
     var addTarget: String?
+    /// True only on the demo's model.
+    let isDemo: Bool
+    /// On the app's own model, the demo's while it runs.
+    private(set) var demo: AppModel?
+    /// The demo's own new directory, which ending it deletes. Nil on every other model.
+    let demoDirectory: URL?
+    /// The model that started this demo.
+    @ObservationIgnored private weak var demoOwner: AppModel?
 
     private let transport: any Transport
     private let files: LocalFiles
-    /// False for a fixture run, so that it can't read, replace or delete a real account.
+    /// False for the demo and the fixture, so that they can't read, replace or delete a real account.
     private let usesKeychain: Bool
     /// `Keychain.save`, except in a test that makes it fail.
     private let saveAccount: (Account) throws -> Void
@@ -86,6 +94,8 @@ final class AppModel {
         files = LocalFiles(directory: dataDirectory)
         usesKeychain = true
         self.saveAccount = saveAccount
+        isDemo = false
+        demoDirectory = nil
         account = Keychain.load()
         larder = account.map(makeLarder)
         #if DEBUG
@@ -93,11 +103,10 @@ final class AppModel {
         #endif
     }
 
-    #if DEBUG
-    /// Signed in on sample data, on a fake server and a new empty directory, so that nothing of a real account is touched.
-    /// Offline, the server can't be reached, so the first sync never succeeds. Outdated, the server is from before
-    /// `GET /v1/version`.
-    static func fixture(offline: Bool = false, outdated: Bool = false) -> AppModel {
+    /// Signed in on the sample household, on a fake server and a new empty directory, so that nothing of a real account
+    /// is touched. With an owner it is that model's demo, and otherwise the fixture. `server` makes the fake server from
+    /// the household's snapshot.
+    private init(household server: (Snapshot) -> any Transport, demoOf owner: AppModel?) {
         let url = Bundle.main.url(forResource: "household", withExtension: "json")!
         let snapshot = try! JSON.decoder.decode(Snapshot.self, from: Data(contentsOf: url))
         let directory = FileManager.default.temporaryDirectory.appending(path: newID())
@@ -108,19 +117,41 @@ final class AppModel {
             memberId: snapshot.me.memberId,
             deviceId: snapshot.me.deviceId
         )
-        let transport: any Transport = offline ? UnreachableTransport() : FixtureTransport(snapshot, outdated: outdated)
-        return AppModel(fixture: account, transport: transport, dataDirectory: directory)
-    }
-
-    private init(fixture account: Account, transport: any Transport, dataDirectory: URL) {
-        self.transport = transport
-        files = LocalFiles(directory: dataDirectory)
+        transport = server(snapshot)
+        files = LocalFiles(directory: directory)
         usesKeychain = false
         saveAccount = Keychain.save
+        isDemo = owner != nil
+        demoDirectory = owner == nil ? nil : directory
+        demoOwner = owner
         self.account = account
         larder = makeLarder(account)
     }
+
+    #if DEBUG
+    /// The household of `-fixture`. Offline, the server can't be reached, so the first sync never succeeds. Outdated,
+    /// the server is from before `GET /v1/version`.
+    static func fixture(offline: Bool = false, outdated: Bool = false) -> AppModel {
+        AppModel(
+            household: { offline ? UnreachableTransport() as any Transport : FixtureTransport($0, outdated: outdated) },
+            demoOf: nil
+        )
+    }
     #endif
+
+    /// The welcome screen's way in without a server. It counts as a sign-in, so that a redeem still open can't sign
+    /// this model in under the demo.
+    func startDemo() {
+        guard !isDemo, account == nil, demo == nil else { return }
+        signInAttempts += 1
+        demo = AppModel(household: { FixtureTransport($0) }, demoOf: self)
+    }
+
+    /// Ends the demo from its own model, and nothing of it stays.
+    func leaveDemo() {
+        guard isDemo else { return }
+        wipe()
+    }
 
     /// `init` reads no account while the phone is locked, so the root asks again on becoming active. The files stay,
     /// because they may hold unsent changes, and the root's version check does the first sync.
@@ -233,6 +264,11 @@ final class AppModel {
     }
 
     func signOut(force: Bool) async -> SignOutResult {
+        // The demo has no server to tell and nothing worth keeping.
+        if isDemo {
+            leaveDemo()
+            return .done
+        }
         guard let account, let larder else { return .done }
         if force {
             wipe()
@@ -280,6 +316,11 @@ final class AppModel {
         resetScope()
         if usesKeychain { Keychain.delete() }
         files.wipe()
+        // Any end of the demo, so that its model never shows a welcome screen of its own.
+        if let demoDirectory {
+            try? FileManager.default.removeItem(at: demoDirectory)
+            if demoOwner?.demo === self { demoOwner?.demo = nil }
+        }
     }
 
     private func resetScope() {

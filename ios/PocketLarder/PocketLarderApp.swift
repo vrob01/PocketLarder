@@ -33,10 +33,19 @@ struct PocketLarderApp: App {
 }
 
 private struct RootView: View {
-    @Environment(AppModel.self) private var model
+    /// The app's own model, which holds the demo's while it runs.
+    @Environment(AppModel.self) private var app
     @Environment(\.scenePhase) private var scenePhase
 
+    /// So that the activation runs again for a new model on screen, and the demo checks and syncs as soon as it starts.
+    private struct Activation: Equatable {
+        let phase: ScenePhase
+        let model: ObjectIdentifier
+    }
+
     var body: some View {
+        // The demo's while it runs, for every screen and request under the root and everything the root does.
+        let model = app.demo ?? app
         Group {
             // In place of the stack, so that every sheet and page over the main screen goes too.
             if let incompatibility = model.incompatibility, let account = model.account {
@@ -55,6 +64,7 @@ private struct RootView: View {
                 .id(model.account == nil)
             }
         }
+        .environment(model)
         .onOpenURL { model.open($0) }
         .alert(
             signInErrorText(.alreadySignedIn(name: model.alreadySignedInAs ?? "")),
@@ -72,7 +82,7 @@ private struct RootView: View {
             default: break
             }
         }
-        .task(id: scenePhase) {
+        .task(id: Activation(phase: scenePhase, model: ObjectIdentifier(model))) {
             guard scenePhase == .active else { return }
             model.restoreFromKeychain()
             // It syncs as soon as the server checks out, or can't be checked.

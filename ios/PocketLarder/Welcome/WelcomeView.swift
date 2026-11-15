@@ -35,6 +35,12 @@ struct WelcomeView: View {
                     }
                     .frame(minHeight: 44)
                 }
+                Button {
+                    model.startDemo()
+                } label: {
+                    Text("Try with sample data").frame(minHeight: 44)
+                }
+                .accessibilityIdentifier("welcome.demo")
                 Text("Open source and private. No tracking, no ads, no analytics. Your lists are stored only on your household's own server.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
