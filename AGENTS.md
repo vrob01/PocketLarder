@@ -46,7 +46,7 @@ The screenshots of its UI tests are in the `screenshots` artifact:
 `gh run download <id> -n screenshots -D <dir>`. UI tests that fail run once more
 at the end of the job; their second run's screenshots are in `rerun/`.
 
-`-fixture household` (Debug builds only, `ios/PocketLarder/Fixtures/`) runs the app on sample data without a server, the Keychain or the real data folder, and the screenshot tests use it; `-fixture offline` is that account with every request failing as unreachable, so the app shows the offline badge and no data.
+`-fixture household` (Debug builds only, `ios/PocketLarder/Fixtures/`) runs the app on sample data without a server, the Keychain or the real data folder, and the screenshot tests use it; `-fixture offline` is that account with every request failing as unreachable, so the app shows the offline badge and no data. The welcome screen's "Try with sample data" runs the same household on `FixtureTransport` in every build, Release included, so `FixtureTransport` and `household.json` ship, while `-fixture`, `UnreachableTransport` and the outdated server stay Debug-only.
 
 ## Dev server
 

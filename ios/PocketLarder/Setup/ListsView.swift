@@ -78,6 +78,7 @@ struct ListsView: View {
                 }
             }
         }
+        .demoNotice()
         .sheet(item: $sheet) { sheet in
             switch sheet {
             case .add: ListForm(larder: larder, list: nil)
@@ -166,6 +167,7 @@ private struct ListForm: View {
                 }
             }
         }
+        .demoNotice()
         // Archiving here or a sync takes the list off the active ones.
         .onChange(of: larder.view) {
             if let list, larder.view?.list(list.id)?.archived != false { dismiss() }

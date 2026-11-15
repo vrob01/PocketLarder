@@ -128,6 +128,7 @@ struct AccountView: View {
                 Text($0)
             }
         }
+        .demoNotice()
         .interactiveDismissDisabled(signingOut)
         .alert(
             question ?? "",

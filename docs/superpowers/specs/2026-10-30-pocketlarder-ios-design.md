@@ -132,10 +132,22 @@ Shown on launch whenever the device has no token.
   open the app.
 - A "Set up your own server" link that opens the README's self-hosting section
   in Safari (`https://github.com/vrob01/PocketLarder#self-hosting`).
+- A "Try with sample data" button below it, plainer than "Enter invite", that
+  starts the demo.
 - A footer: "Open source and private. No tracking, no ads, no analytics. Your
   lists are stored only on your household's own server." **[Claude's call]**:
   the owner asked for "no data is gathered, sold or sent anywhere". The lists
   do go to the household's server, so the wording says where they go instead.
+
+The demo is for App Review and for people deciding whether to self-host. It
+runs the app on a sample household, on a fake server inside the app, with no
+Keychain item and a new temporary folder in place of the real data folder, so
+it sends no request and touches no real account. While it runs, the main screen
+and every sheet show "You're trying PocketLarder with sample data." with a
+Leave button, in a strip of their own that covers no list. Leave, and Sign out
+on My account, end it and go back to the welcome screen. Nothing of it is kept:
+the next demo starts on the same sample data, and a relaunch opens the welcome
+screen. Invites made in it say that they are samples and don't work.
 
 ### Enter invite
 

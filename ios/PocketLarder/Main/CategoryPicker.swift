@@ -46,6 +46,7 @@ struct CategoryPicker: View {
                 }
             }
         }
+        .demoNotice()
         .onChange(of: larder.view?.store(store.id) == nil) { _, gone in
             if gone { dismiss() }
         }

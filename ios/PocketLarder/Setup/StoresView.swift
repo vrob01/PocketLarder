@@ -41,6 +41,7 @@ struct StoresView: View {
             }
             .navigationDestination(item: $openStore) { StoreDetailView(larder: larder, store: $0) }
         }
+        .demoNotice()
         .sheet(isPresented: $addingStore) {
             NameForm("New store") { larder.failureSaving([Op(.storeCreate, id: newID(), name: $0)]) }
         }
@@ -160,6 +161,7 @@ struct NameForm: View {
                 }
             }
         }
+        .demoNotice()
     }
 
     private func submit() {

@@ -1,9 +1,8 @@
-#if DEBUG
 import Foundation
 import PocketLarderKit
 
-/// The fake server behind `-fixture household` and `-fixture outdated`. Each instance works on its own copy of the
-/// snapshot.
+/// The fake server behind the demo, which anyone can start from the welcome screen, and behind `-fixture household` and
+/// `-fixture outdated`. Each instance works on its own copy of the snapshot.
 actor FixtureTransport: Transport {
     private struct SyncBody: Decodable {
         let ops: [Op]
@@ -208,6 +207,7 @@ actor FixtureTransport: Transport {
     }
 }
 
+#if DEBUG
 /// The server behind `-fixture offline`, which can never be reached.
 struct UnreachableTransport: Transport {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {

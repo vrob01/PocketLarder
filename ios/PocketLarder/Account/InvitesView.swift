@@ -31,6 +31,10 @@ struct InvitesView: View {
                         Text("No invites.").accessibilityIdentifier("invites.empty")
                     }
                     ForEach(invites, id: \.id) { row($0) }
+                } footer: {
+                    if model.isDemo {
+                        Text("These are sample invites. They don't work.").accessibilityIdentifier("invites.sample")
+                    }
                 }
             }
             Section {

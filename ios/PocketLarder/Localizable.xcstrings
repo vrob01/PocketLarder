@@ -2160,6 +2160,56 @@
           }
         }
       }
+    },
+    "Try with sample data": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit Beispieldaten ausprobieren"
+          }
+        }
+      }
+    },
+    "You're trying PocketLarder with sample data.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du probierst PocketLarder mit Beispieldaten aus."
+          }
+        }
+      }
+    },
+    "Leave": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beenden"
+          }
+        }
+      }
+    },
+    "This is a sample invite. It doesn't work.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das ist eine Beispiel-Einladung. Sie funktioniert nicht."
+          }
+        }
+      }
+    },
+    "These are sample invites. They don't work.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das sind Beispiel-Einladungen. Sie funktionieren nicht."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
