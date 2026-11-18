@@ -17,8 +17,6 @@ for f in compose.yaml .env.example Caddyfile; do
 done
 ```
 
-The files of server 0.2.0 and older build the image from source instead, so until a newer server release is out, download the files from `main` (`refs/heads/main` in place of `tags/server/v$version`).
-
 Run all commands from that directory.
 
 1. Create your settings file and the data directory. In `.env`, set `POCKETLARDER_PUBLIC_URL` to your own `https://` address, the same host as the Caddy site below, and `POCKETLARDER_HOST_DATA_DIR` to the host directory that holds the database (the example uses `/srv/pocketlarder`; keep it outside that directory), and `POCKETLARDER_PROXY_NETWORK` to the Docker network that PocketLarder shares with the reverse proxy. Settings that depend on your deployment live only in `.env`, never in `compose.yaml`; `POCKETLARDER_VERSION` is the release you run. That directory is bind-mounted at `/data` and must belong to the container user (65532:65532):
