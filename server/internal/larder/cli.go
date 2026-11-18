@@ -16,7 +16,7 @@ import (
 )
 
 // version is the server's version, bumped by hand by the rules under Versioning in AGENTS.md.
-const version = "0.2.0"
+const version = "1.0.0"
 
 const usage = `usage:
   pocketlarder serve
