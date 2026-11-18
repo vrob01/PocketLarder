@@ -52,8 +52,12 @@ struct AddDeviceSheet: View {
                     // The warning would be false for a sample.
                     if model.isDemo {
                         Text("This is a sample invite. It doesn't work.").accessibilityIdentifier("addDevice.sample")
-                    } else {
+                    } else if invite.memberId == model.account?.memberId {
                         Text("Anyone with this invite can sign in as you until it's used or expires. Only send it to yourself.")
+                            .accessibilityIdentifier("addDevice.warning")
+                    } else {
+                        Text("Anyone with this invite can sign in as \(memberName) until it's used or expires. Only send it to them.")
+                            .accessibilityIdentifier("addDevice.warning")
                     }
                 }
                 Section {

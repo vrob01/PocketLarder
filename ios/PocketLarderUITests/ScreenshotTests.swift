@@ -641,6 +641,9 @@ final class ScreenshotTests: XCTestCase {
             addDevice.tap()
             let qr = withID(app.images, "addDevice.qr")
             XCTAssertTrue(qr.waitForExistence(timeout: 20))
+            // Your own invite: the warning names no one.
+            let warning = withID(app.staticTexts, "addDevice.warning").label
+            XCTAssertFalse(warning.contains("Alex"), "The warning reads \(warning)")
             // The sheet is still sliding up.
             Thread.sleep(forTimeInterval: 1)
             attach(app, "add-device-\(language)-\(appearance)")
@@ -822,6 +825,12 @@ final class ScreenshotTests: XCTestCase {
             withID(app.buttons, "inviteMember.invite").tap()
             let qr = withID(app.images, "addDevice.qr")
             XCTAssertTrue(qr.waitForExistence(timeout: 20))
+            // Robin's invite: the warning is about signing in as Robin, not as you.
+            let warning = withID(app.staticTexts, "addDevice.warning").label
+            XCTAssertTrue(warning.contains("Robin"), "The warning reads \(warning)")
+            // The sheet is still sliding up.
+            Thread.sleep(forTimeInterval: 1)
+            attach(app, "invite-member-sheet-\(language)-\(appearance)")
             withID(app.buttons, "addDevice.done").tap()
             XCTAssertTrue(qr.waitForNonExistence(timeout: 20), "Done didn't close the sheet")
             let robin = app.buttons.matching(NSPredicate(
