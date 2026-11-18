@@ -1641,6 +1641,16 @@
         }
       }
     },
+    "Anyone with this invite can sign in as %@ until it's used or expires. Only send it to them.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wer diese Einladung hat, kann sich mit dem Konto von %@ anmelden, bis sie benutzt wurde oder abläuft. Schick sie nur an diese Person."
+          }
+        }
+      }
+    },
     "Cancel invite": {
       "localizations": {
         "de": {
