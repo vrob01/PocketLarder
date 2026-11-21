@@ -22,25 +22,25 @@ PocketLarder keeps a household's shopping lists on a server the household runs i
 
 ## Features
 
-- **Sorted by store and category**, in the order you walk the store
+- Sorted by store and category, in the order you walk the store
 
-- **Personal and shared lists** in one view
+- Personal and shared lists in one view
 
-- **Always shows which list** you're adding to
+- Always shows which list you're adding to
 
-- **Autocomplete** from the household's shared catalog
+- Autocomplete from the household's shared catalog
 
-- **Private lists:** open, read-only or hidden
+- Personal lists can be open, read-only or hidden
 
-- **Works offline**, syncs later
+- Works offline, syncs later
 
-- **Rows or tiles**, light or dark
+- Rows or tiles, light or dark
 
-- **No passwords:** sign in with an invite link or QR code
+- Sign-in by invite link or QR code, no passwords
 
-- **One container** with SQLite, behind your reverse proxy
+- One container with SQLite, behind your reverse proxy
 
-- **No analytics, no tracking**
+- No analytics, no tracking
 
 ```mermaid
 flowchart LR
