@@ -22,14 +22,25 @@ PocketLarder keeps a household's shopping lists on a server the household runs i
 
 ## Features
 
-- **Lists in the order you shop.** Every entry sits under Store > Category, in the order you walk the store, and the stores follow your round trip. Store chips filter the list to the store you're standing in.
-- **Adding files itself.** Typing searches the household catalog and shows each match's store and category, so everyone picks the same item. No match? Press return and the entry is saved under "Not filed yet", to be filed later.
-- **The right list every time.** The app opens on My view: your personal list plus every shared list, with shared entries tagged by list. The add bar always shows which list a new entry lands on, and other members' lists open only on purpose.
-- **Private where you want it.** Each member sets their personal list to open, read-only or hidden.
-- **Works offline.** Adding and crossing off work without a connection and sync later, without items popping back.
-- **A dense list.** Rows or two-column tiles, light or dark.
-- **No passwords.** Members and devices sign in with single-use invites, by link or QR code. The server keeps only hashes of tokens and invite codes.
-- **Easy to host.** One container with SQLite inside, behind the reverse proxy you already run. No web interface, no analytics, no tracking.
+- **Sorted by store and category**, in the order you walk the store
+
+- **Personal and shared lists** in one view
+
+- **Always shows which list** you're adding to
+
+- **Autocomplete** from the household's shared catalog
+
+- **Private lists:** open, read-only or hidden
+
+- **Works offline**, syncs later
+
+- **Rows or tiles**, light or dark
+
+- **No passwords:** sign in with an invite link or QR code
+
+- **One container** with SQLite, behind your reverse proxy
+
+- **No analytics, no tracking**
 
 ```mermaid
 flowchart LR
