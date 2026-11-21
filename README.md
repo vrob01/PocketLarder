@@ -157,29 +157,50 @@ To check which version runs, use `docker compose exec pocketlarder pocketlarder 
 
 ### Invites are secrets
 
-`invite` prints invite URLs to stdout. Anyone holding an unredeemed invite can sign in as that member.
+An unredeemed invite signs in as its member, and `invite` prints it to stdout.
 
-- **Run `invite` with `docker compose exec`**, as above. It is the only way that keeps invite URLs out of every log, because the output goes only to your terminal.
-- **`docker compose run` logs the invite** through the container's logging driver, with or without `--rm`. If you use it anyway, write `docker compose run --rm pocketlarder invite <name>` (the entrypoint already is `pocketlarder`). Where the copy ends up depends on the driver:
-  - `json-file` or `local` (the default): in `docker logs` and on disk under `/var/lib/docker/containers/`. `--rm` removes that copy; without `--rm`, you must `docker rm` the stopped container.
-  - `journald` or `syslog`: also in the host journal or syslog files, which `--rm` doesn't remove.
-  - A remote driver, for example `fluentd`, `gelf` or `awslogs`: on the remote log server, which `--rm` doesn't remove.
-- **Revoke an invite that was logged**, and treat it as exposed: `docker compose exec pocketlarder pocketlarder invite --revoke <name>`. An admin who already has a paired device can use `POST /v1/invites/revoke` instead (see [server/API.md](server/API.md)). Otherwise the invite expires after 24 hours.
-- **Get an existing member back in** after they signed out with `pocketlarder invite <name>`. Their lists and data stay.
+**Use `docker compose exec`.** Its output reaches only your terminal.
+
+**Avoid `docker compose run`.** It hands stdout to the logging driver, with or without `--rm`:
+
+| Logging driver | Invite ends up in | Removed by `--rm` |
+| --- | --- | --- |
+| `json-file`, `local` (default) | `docker logs`, `/var/lib/docker/containers/` | Yes, otherwise `docker rm` the container |
+| `journald`, `syslog` | The host journal or syslog | No |
+| `fluentd`, `gelf`, `awslogs`, … | The remote log server | No |
+
+If you use it anyway: `docker compose run --rm pocketlarder invite <name>` (the entrypoint is `pocketlarder`).
+
+**Revoke a logged invite**, or it stays valid for 24 hours. Admins with a paired device can use `POST /v1/invites/revoke` instead ([API](server/API.md)).
+
+```bash
+docker compose exec pocketlarder pocketlarder invite --revoke <name>
+```
+
+**Re-invite a signed-out member** with `pocketlarder invite <name>`. Their lists and data stay.
 
 > [!CAUTION]
-> Anyone who can read the logs while an invite is outstanding, and redeems it first, can impersonate that member, in the worst case the first admin.
+> Whoever reads the logs while an invite is outstanding and redeems it first becomes that member, in the worst case the first admin.
 
 ### Behind a reverse proxy
 
-- **Listen address.** `POCKETLARDER_LISTEN` defaults to `:8080`, which serves plain HTTP on every interface. The compose container is reachable only from the proxy network. On a bare host behind a reverse proxy, set `POCKETLARDER_LISTEN=127.0.0.1:<port>`.
-- **No redirects.** The iOS app refuses every HTTP redirect, so its token can never follow one to another host. Serve PocketLarder directly at `POCKETLARDER_PUBLIC_URL`, the address in your invites. If the proxy redirects that address, for example from the bare domain to `www` or to an SSO login page, every request from the app fails. Forwarding with `reverse_proxy`, as above, isn't a redirect and works.
-- **`POCKETLARDER_TRUST_PROXY`** is off by default and accepts `true`, `false` or empty; `serve` refuses any other value. With `true`, the invite redemption limit counts the last `X-Forwarded-For` entry, the address the reverse proxy saw, instead of the connection's address. The shipped `compose.yaml` sets it, and a bare host behind a reverse proxy needs it set.
-  - With it off behind a proxy, every client has the proxy's address and shares one budget, so anyone can block pairing for everyone. An admin who sets `false` there accepts that, or protects the endpoint another way, for example with a rate limit in the proxy.
-  - Turn it on only when nothing but the proxy reaches the server, and the proxy itself sets or appends `X-Forwarded-For`, so that the last entry is the address the proxy saw. Caddy's `reverse_proxy` does this by default; nginx needs `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`.
-  - A proxy that passes the client's header through unchanged lets any client choose the address it is counted under, to block pairing for an address it picks or to spread its attempts over many addresses.
-  - Anything that reaches the server directly, such as another container on the proxy network, a local process on a bare host, or anyone if the port is published, can set the header and block pairing for an address of its choosing.
-  - Behind a chain of proxies (for example a CDN in front of Caddy), clients that come through the same last hop share one budget.
+**Listen address.** `POCKETLARDER_LISTEN` defaults to `:8080`, plain HTTP on all interfaces. The compose container is reachable only from the proxy network. On a bare host, set `127.0.0.1:<port>`.
+
+**No redirects.** The app refuses all redirects, so its token can't follow one to another host. Serve PocketLarder directly at `POCKETLARDER_PUBLIC_URL`: a redirect there (bare domain to `www`, an SSO login page) fails every request. `reverse_proxy` forwards, which is fine.
+
+**Client addresses.** Invite redemption is rate-limited per client address. `POCKETLARDER_TRUST_PROXY=true` counts the last `X-Forwarded-For` entry instead of the connection's address. It's off by default and accepts `true`, `false` or empty; `serve` refuses anything else. The shipped `compose.yaml` sets it, and a bare host behind a proxy needs it too.
+
+Turn it on only if both hold:
+
+- nothing but the proxy reaches the server, and
+- the proxy sets or appends `X-Forwarded-For` itself. Caddy's `reverse_proxy` does by default; nginx needs `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`.
+
+| Setup | Effect on the limit |
+| --- | --- |
+| Off behind a proxy | All clients share the proxy's address and one budget, so anyone can block pairing for everyone. Accept that or rate-limit in the proxy. |
+| Proxy passes the client's header through | Clients pick the address they're counted under: they block pairing for any address, or spread attempts over many. |
+| Something reaches the server directly (a container on the proxy network, a local process, a published port) | It can set the header and block pairing for any address. |
+| Chain of proxies, such as a CDN in front of Caddy | Clients behind the same last hop share one budget. |
 
 ### File permissions
 
