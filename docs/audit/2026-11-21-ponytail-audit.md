@@ -1,7 +1,11 @@
 # Code audit, 2026-11-21
 
 Made with the ponytail-audit skill (ponytail 5.3.3) on the branch `audit/ponytail`, from `main` at d7d6e99 (server 1.0.0,
-app 1.0.0). The audit only reports. Every fix below is still to be made, on this branch, after the owner picks one.
+app 1.0.0). The audit itself only reports; this section is the state of its findings since.
+
+Status: findings 1-3 and 5-10 are fixed on this branch. Finding 4 is open as issue #102. A code review of the fixes
+found that fix 1 missed an İ with a mark attached (for example U+0130 U+0301); that is fixed too, with a test. Fixes
+5-10 save fewer lines than estimated below: about 4 lines of code in all, because the new helpers carry doc comments.
 
 What this repo does: PocketLarder is a shopping list app for one household. A small Go server keeps the lists in one
 SQLite database and answers the phones over a JSON API. The iPhone app keeps a copy on the phone, queues every change

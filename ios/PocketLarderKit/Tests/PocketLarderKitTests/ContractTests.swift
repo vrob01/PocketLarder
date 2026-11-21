@@ -85,7 +85,8 @@ import Testing
     let admin = try await Contract.admin()
     let before = try await admin.sync([]).snapshot
     let myList = try #require(before.myList?.id)
-    let list = newID(), store = newID(), other = newID(), category = newID(), second = newID(), otherCategory = newID()
+    let list = newID(), store = newID(), other = newID(), third = newID()
+    let category = newID(), second = newID(), otherCategory = newID()
     let unfiled = newID(), filed = newID(), linked = newID(), item = newID(), unusedItem = newID()
     // Unique for the run, with İ, which Go and Swift lowercase differently.
     let run = newID()
@@ -96,6 +97,8 @@ import Testing
         Op(.listUpdate, id: list, name: "Parity list renamed", archived: true),
         Op(.storeCreate, id: store, name: "Parity store"),
         Op(.storeCreate, id: other, name: "Parity other store"),
+        // Outlives `other`, so that two stores' positions are compared.
+        Op(.storeCreate, id: third, name: "Parity third store"),
         Op(.storeRename, id: other, name: "Parity other store renamed"),
         Op(.categoryCreate, id: category, storeId: store, name: "Parity category"),
         Op(.categoryCreate, id: second, storeId: store, name: "Parity second category"),
@@ -117,7 +120,7 @@ import Testing
     ]
     let local = applying(ops.map { PendingOp(op: $0, at: .now) }, to: before)
     let response = try await admin.sync(ops)
-    let ids: Set = [list, store, other, category, second, otherCategory, unfiled, filed, linked, item, unusedItem]
+    let ids: Set = [list, store, other, third, category, second, otherCategory, unfiled, filed, linked, item, unusedItem]
     #expect(response.rejected.map(\.opId) == [missing.opId])
     #expect(ours(local, ids) == ours(response.snapshot, ids))
 }

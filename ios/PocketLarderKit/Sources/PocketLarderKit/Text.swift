@@ -30,8 +30,10 @@ public func cleanText(_ s: String, max: Int) -> String? {
 /// The uniqueness key for item names: the cleaned name, lowercased as the server's `strings.ToLower` does. `""` when
 /// nothing is left.
 public func nameKey(_ s: String) -> String {
-    // Go lowercases U+0130 (İ) to a plain "i", where Swift adds U+0307; it is the only letter on which the two differ.
-    cleanText(s, max: .max)?.replacingOccurrences(of: "\u{130}", with: "i").lowercased() ?? ""
+    guard let cleaned = cleanText(s, max: .max) else { return "" }
+    // Go lowercases U+0130 (İ) to a plain "i", where Swift adds U+0307; it is the only scalar on which the two differ.
+    // By scalar, because replacing in a String compares whole characters and misses an İ with a mark attached.
+    return String(String.UnicodeScalarView(cleaned.unicodeScalars.map { $0 == "\u{130}" ? "i" : $0 })).lowercased()
 }
 
 /// For search and sorting.

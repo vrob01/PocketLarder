@@ -28,5 +28,6 @@ import Testing
     // Decomposed too, because cleaning composes I and U+0307 into U+0130 first.
     #expect(nameKey("İrmik") == "irmik")
     #expect(nameKey("I\u{307}rmik") == "irmik")
+    #expect(nameKey("İ\u{301}rmik").unicodeScalars.elementsEqual("i\u{301}rmik".unicodeScalars))
     #expect(fold("Äpfel") == "apfel")
 }
