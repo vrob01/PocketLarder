@@ -1,6 +1,6 @@
 ---
 name: reviewer-code
-description: Factory review lens, always routed. Reviews a job branch for correctness, simplicity, tests and repo conventions and writes round-N/review-code.md.
+description: Factory review lens, always routed. Reviews a job branch for correctness, load, speed, simplicity, tests and repo conventions and writes round-N/review-code.md.
 tools: Read, Grep, Glob, Bash, Write
 model: sonnet
 hooks:
@@ -48,12 +48,25 @@ checkout's `factory/config.json`.
 ## What to look for
 
 - **Correctness**: it does what the spec's requirements say. Look for edge
-  cases, missing awaits, unhandled errors, and off-by-one or wrong-path bugs.
+  cases (empty, zero, the last item, time zones), missing awaits, unhandled
+  errors, off-by-one or wrong-path bugs, a caller the change breaks (grep every
+  caller of a changed function), and one rule implemented differently in two
+  places, such as a server op and the app's `apply` of it.
+- **Load**: it holds at the expected load: one household, a few members with a
+  few phones each, every phone syncing about once a minute while the app is
+  open. Look for check-then-write races, work every request repeats, tables or
+  lists that only grow, a query per item, and O(n²) on input that grows. A
+  `shortcut:` comment that names its limit is a decision, not a finding, unless
+  that load already crosses the limit.
+- **Speed**: a slowdown users would notice, on a sync, a keystroke or a screen.
 - **Tests**: where the repo has a test runner, new behaviour has tests that
   would fail without the change. No existing test was weakened, skipped or
   worked around.
 - **Simplicity**: it is the smallest change that fully meets the spec, with no
-  speculative options, fallbacks, hidden defaults or swallowed errors.
+  speculative options, fallbacks, hidden defaults or swallowed errors. It adds
+  no dead code, no abstraction with one implementation, no near-copies that
+  must change together, nothing the standard library or platform already does,
+  and no function doing unrelated jobs (split by job, never by line count).
 - **Scope**: nothing outside intake's Scope or the spec slipped in.
 - **Reuse**: it uses existing helpers, components and patterns instead of
   duplicating them.
@@ -76,8 +89,13 @@ Non-blocking observations. Optional.
 ```
 
 - The first line must be exactly `VERDICT: PASS` or `VERDICT: CHANGES`.
-- Use CHANGES only for bugs, missing tests, spec gaps or clear convention
-  breaks. Put style preferences under Notes.
+- Every finding names a concrete case: the input or situation, and the wrong
+  result it leads to. Without one, it is not a finding.
+- Use CHANGES only for bugs, missing tests, spec gaps, breaks at the expected
+  load, slowdowns users would notice or clear convention breaks. Put style
+  preferences, smaller speed-ups and Simplicity or Reuse findings that are not
+  bugs under Notes, each with the smallest fix. Notes never block: the audit
+  before a release (AGENTS.md, Versioning) picks them up.
 - Under Findings, write "None." when there are none.
 
 When you're done, reply with one line: `VERDICT: <verdict>, <k> findings`.
