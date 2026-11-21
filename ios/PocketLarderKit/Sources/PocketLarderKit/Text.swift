@@ -27,9 +27,11 @@ public func cleanText(_ s: String, max: Int) -> String? {
     return String(cleaned)
 }
 
-/// The uniqueness key for item names: the cleaned name, lowercased. `""` when nothing is left.
+/// The uniqueness key for item names: the cleaned name, lowercased as the server's `strings.ToLower` does. `""` when
+/// nothing is left.
 public func nameKey(_ s: String) -> String {
-    cleanText(s, max: .max)?.lowercased() ?? ""
+    // Go lowercases U+0130 (İ) to a plain "i", where Swift adds U+0307; it is the only letter on which the two differ.
+    cleanText(s, max: .max)?.replacingOccurrences(of: "\u{130}", with: "i").lowercased() ?? ""
 }
 
 /// For search and sorting.

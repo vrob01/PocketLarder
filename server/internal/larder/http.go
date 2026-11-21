@@ -172,8 +172,7 @@ func (s *server) authed(limit *windowLimiter, adminOnly bool, h func(http.Respon
 
 // recheck re-reads the caller in the handler's transaction. A handler that
 // reads a body waits on the client after authed has committed, and the device
-// may be revoked or the member demoted meanwhile. Task 4's POST /v1/sync reads
-// a body too and needs this.
+// may be revoked or the member demoted meanwhile.
 func recheck(tx *sql.Tx, deviceID string, asAdmin bool) error {
 	var isAdmin bool
 	err := tx.QueryRow("SELECT m.is_admin FROM devices d JOIN members m ON m.id = d.member_id WHERE d.id = ?", deviceID).Scan(&isAdmin)

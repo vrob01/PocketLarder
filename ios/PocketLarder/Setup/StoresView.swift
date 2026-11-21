@@ -182,13 +182,3 @@ struct NameForm: View {
     }
     return failure
 }
-
-/// The stores in the order you shop.
-func storesInOrder(_ view: Snapshot) -> [Store] {
-    view.stores.sorted { ($0.position, $0.id) < ($1.position, $1.id) }
-}
-
-/// A store's categories in the order you walk through it.
-func categoriesInOrder(of storeId: String, in view: Snapshot) -> [PocketLarderKit.Category] {
-    view.categories.filter { $0.storeId == storeId }.sorted { ($0.position, $0.id) < ($1.position, $1.id) }
-}

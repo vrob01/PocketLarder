@@ -25,5 +25,8 @@ import Testing
 @Test func nameKeyAndFold() {
     #expect(nameKey(" MILK ") == nameKey("milk"))
     #expect(nameKey("   ") == "")
+    // Decomposed too, because cleaning composes I and U+0307 into U+0130 first.
+    #expect(nameKey("İrmik") == "irmik")
+    #expect(nameKey("I\u{307}rmik") == "irmik")
     #expect(fold("Äpfel") == "apfel")
 }

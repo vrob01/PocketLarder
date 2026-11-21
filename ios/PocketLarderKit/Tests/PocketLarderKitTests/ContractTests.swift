@@ -80,6 +80,68 @@ import Testing
     #expect(response.rejected == [])
 }
 
+/// `apply` is a second copy of the server's rules, so the phone's view of a batch must be what the server makes of it.
+@Test(.enabled(if: Contract.isConfigured)) func applyMatchesServer() async throws {
+    let admin = try await Contract.admin()
+    let before = try await admin.sync([]).snapshot
+    let myList = try #require(before.myList?.id)
+    let list = newID(), store = newID(), other = newID(), category = newID(), second = newID(), otherCategory = newID()
+    let unfiled = newID(), filed = newID(), linked = newID(), item = newID(), unusedItem = newID()
+    // Unique for the run, with İ, which Go and Swift lowercase differently.
+    let run = newID()
+    let name = "İrmik \(run)"
+    let missing = Op(.entryBuy, id: newID())
+    let ops = [
+        Op(.listCreate, id: list, name: "Parity list", color: .green),
+        Op(.listUpdate, id: list, name: "Parity list renamed", archived: true),
+        Op(.storeCreate, id: store, name: "Parity store"),
+        Op(.storeCreate, id: other, name: "Parity other store"),
+        Op(.storeRename, id: other, name: "Parity other store renamed"),
+        Op(.categoryCreate, id: category, storeId: store, name: "Parity category"),
+        Op(.categoryCreate, id: second, storeId: store, name: "Parity second category"),
+        Op(.categoryCreate, id: otherCategory, storeId: other, name: "Parity other category"),
+        Op(.categoryReorder, storeId: store, ids: [second, category]),
+        Op(.entryAdd, id: unfiled, listId: myList, text: name),
+        Op(.entryPlace, id: unfiled, storeId: store, categoryId: category, newItemId: item),
+        Op(.entryAdd, id: filed, listId: list, itemId: item, quantity: "2"),
+        Op(.entryUpdate, id: filed, note: "Parity note"),
+        Op(.entryBuy, id: filed),
+        // The same name in lower case, so filing it links it to the item instead of making `unusedItem`.
+        Op(.entryAdd, id: linked, listId: myList, text: "irmik \(run)"),
+        Op(.entryPlace, id: linked, storeId: store, categoryId: second, newItemId: unusedItem),
+        Op(.itemUpdate, id: item, name: name + " renamed", defaultStoreId: other),
+        Op(.itemPlace, id: item, storeId: other, categoryId: otherCategory),
+        Op(.categoryDelete, id: category),
+        Op(.storeDelete, id: other),
+        missing,
+    ]
+    let local = applying(ops.map { PendingOp(op: $0, at: .now) }, to: before)
+    let response = try await admin.sync(ops)
+    let ids: Set = [list, store, other, category, second, otherCategory, unfiled, filed, linked, item, unusedItem]
+    #expect(response.rejected.map(\.opId) == [missing.opId])
+    #expect(ours(local, ids) == ours(response.snapshot, ids))
+}
+
+/// The rows with `ids`, in id order, without the times and the store positions that other tests can change meanwhile.
+private func ours(_ s: Snapshot, _ ids: Set<String>) -> Snapshot {
+    var s = s
+    s.members = []
+    s.lists = s.lists.filter { ids.contains($0.id) }.sorted { $0.id < $1.id }
+    let stores = s.stores.filter { ids.contains($0.id) }
+    let first = stores.map(\.position).min() ?? 0
+    s.stores = stores.map { var store = $0; store.position -= first; return store }.sorted { $0.id < $1.id }
+    s.categories = s.categories.filter { ids.contains($0.id) }.sorted { $0.id < $1.id }
+    s.items = s.items.filter { ids.contains($0.id) }.sorted { $0.id < $1.id }
+    s.placements = s.placements.filter { ids.contains($0.itemId) }.sorted { ($0.itemId, $0.storeId) < ($1.itemId, $1.storeId) }
+    s.entries = s.entries.filter { ids.contains($0.id) }.map { entry in
+        var entry = entry
+        entry.createdAt = .distantPast
+        entry.boughtAt = entry.boughtAt.map { _ in .distantPast }
+        return entry
+    }.sorted { $0.id < $1.id }
+    return s
+}
+
 @Test(.enabled(if: Contract.isConfigured)) func newMemberFlow() async throws {
     let (client, memberId, name) = try await Contract.newMember("Sam")
     let me = try await client.sync([]).snapshot.me

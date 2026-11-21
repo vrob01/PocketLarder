@@ -68,7 +68,8 @@ if grep -q '^ios/' <<<"$changed" && [ -z "${FACTORY_SKIP_CI:-}" ]; then
     echo "No ios workflow run for $sha after 5 minutes."
     exit 1
   fi
-  if ! timeout 2700 gh run watch "$id" --exit-status --interval 30 >/dev/null; then
+  # 80 minutes: the ios job may run 75 (timeout-minutes in ios.yml), after the short changes job.
+  if ! timeout 4800 gh run watch "$id" --exit-status --interval 30 >/dev/null; then
     echo "The ios workflow run $id failed or timed out:"
     gh run view "$id" --log-failed | tail -n 100 || true
     exit 1

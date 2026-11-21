@@ -50,9 +50,8 @@ public func shelf(_ s: Snapshot, scope: Scope, filter: StoreFilter) -> Shelf {
         .sorted(by: walkingOrder)
 
     let filed = open.filter { isFiled($0, in: s) }
-    let stores = byPosition(s.stores).filter { chosen == nil || $0.id == chosen }.compactMap { store -> StoreSection? in
-        let categories = s.categories.filter { $0.storeId == store.id }
-        let groups = categories.sorted { ($0.position, $0.id) < ($1.position, $1.id) }.compactMap { category -> CategoryGroup? in
+    let stores = storesInOrder(s).filter { chosen == nil || $0.id == chosen }.compactMap { store -> StoreSection? in
+        let groups = categoriesInOrder(of: store.id, in: s).compactMap { category -> CategoryGroup? in
             let here = filed.filter { $0.storeId == store.id && s.placement(item: $0.itemId, store: store.id)?.categoryId == category.id }
             return here.isEmpty ? nil : CategoryGroup(category: category, entries: here.sorted(by: walkingOrder))
         }
@@ -102,7 +101,7 @@ public func validScope(_ scope: Scope, in s: Snapshot) -> Scope {
 /// The stores with at least one entry in scope, open or bought, filed or not, by position.
 public func chipStores(_ s: Snapshot, scope: Scope) -> [Store] {
     let used = Set(s.entries.filter { inScope($0.listId, scope, in: s) }.compactMap(\.storeId))
-    return byPosition(s.stores).filter { used.contains($0.id) }
+    return storesInOrder(s).filter { used.contains($0.id) }
 }
 
 /// The list `target` names when it is in `addTargets`, otherwise my list.
@@ -110,8 +109,14 @@ public func validTarget(_ target: String?, in s: Snapshot) -> ListInfo? {
     addTargets(s).first { $0.id == target } ?? s.myList
 }
 
-private func byPosition(_ stores: [Store]) -> [Store] {
-    stores.sorted { ($0.position, $0.id) < ($1.position, $1.id) }
+/// The stores in the order you shop.
+public func storesInOrder(_ s: Snapshot) -> [Store] {
+    s.stores.sorted { ($0.position, $0.id) < ($1.position, $1.id) }
+}
+
+/// A store's categories in the order you walk through it.
+public func categoriesInOrder(of storeId: String, in s: Snapshot) -> [Category] {
+    s.categories.filter { $0.storeId == storeId }.sorted { ($0.position, $0.id) < ($1.position, $1.id) }
 }
 
 private func walkingOrder(_ a: Entry, _ b: Entry) -> Bool {

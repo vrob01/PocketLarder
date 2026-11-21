@@ -237,20 +237,17 @@ final class AppModel {
             }
         }
         // A newer attempt or a restore took over while this request was open. This answer must not replace that account
-        // or sign the phone back in after it signed out. The device it created is signed out once, best effort, by a
-        // plain client that holds no `self`, so that the answer can't reach the current account.
+        // or sign the phone back in after it signed out, so the device it created is signed out.
         guard attempt == signInAttempts else {
-            let client = APIClient(server: invite.server, token: redemption.token, transport: transport)
-            Task { try? await client.signOut() }
+            signOutQuietly(server: invite.server, token: redemption.token)
             return account == nil ? .overtaken : .alreadySignedIn(name: memberName)
         }
         let account = Account(server: invite.server, token: redemption.token, memberId: redemption.memberId, deviceId: redemption.deviceId)
         do {
             if usesKeychain { try saveAccount(account) }
         } catch {
-            // Nothing holds the token now, so its device is signed out the same way as above.
-            let client = APIClient(server: invite.server, token: redemption.token, transport: transport)
-            Task { try? await client.signOut() }
+            // Nothing holds the token now, so its device is signed out too.
+            signOutQuietly(server: invite.server, token: redemption.token)
             return .keychainFailed(status: (error as? Keychain.SaveError)?.status)
         }
         // Files left by a failed wipe must never reach the new account.
@@ -272,10 +269,8 @@ final class AppModel {
         guard let account, let larder else { return .done }
         if force {
             wipe()
-            // One try, so that no device row is left for an admin when the server can be reached. A plain client can't
-            // reach `onSignedOut` and the task holds no `self`, so the answer can't touch this or a later account.
-            let client = APIClient(server: account.server, token: account.token, transport: transport)
-            Task { try? await client.signOut() }
+            // So that no device row is left for an admin when the server can be reached.
+            signOutQuietly(server: account.server, token: account.token)
             return .done
         }
         await larder.sync()
@@ -296,6 +291,13 @@ final class AppModel {
         if let failure, failure != .server(code: "unauthorized") { return .failed(failure) }
         wipe()
         return .done
+    }
+
+    /// Signs the token's device out with one try, without waiting. A plain client can't reach `onSignedOut` and the task
+    /// holds no `self`, so the answer can't touch this or a later account.
+    private func signOutQuietly(server: URL, token: String) {
+        let client = APIClient(server: server, token: token, transport: transport)
+        Task { try? await client.signOut() }
     }
 
     private func makeLarder(_ account: Account) -> Larder {

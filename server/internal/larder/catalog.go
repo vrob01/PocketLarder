@@ -248,14 +248,27 @@ func placeItem(tx *sql.Tx, me device, o op, now time.Time) error {
 	if err := found(tx, "stores", o.StoreID); err != nil {
 		return err
 	}
-	var inStore bool
-	if err := tx.QueryRow("SELECT EXISTS (SELECT 1 FROM categories WHERE id = ? AND store_id = ?)", o.CategoryID, o.StoreID).Scan(&inStore); err != nil {
+	if err := categoryInStore(tx, o.CategoryID, o.StoreID); err != nil {
 		return err
 	}
-	if !inStore {
+	return placeIn(tx, o.ID, o.StoreID, o.CategoryID)
+}
+
+// categoryInStore is errInvalid unless the category belongs to the store.
+func categoryInStore(tx *sql.Tx, categoryID, storeID string) error {
+	var ok bool
+	if err := tx.QueryRow("SELECT EXISTS (SELECT 1 FROM categories WHERE id = ? AND store_id = ?)", categoryID, storeID).Scan(&ok); err != nil {
+		return err
+	}
+	if !ok {
 		return errInvalid
 	}
+	return nil
+}
+
+// placeIn makes the category the item's placement in the store, replacing the one it had there.
+func placeIn(tx *sql.Tx, itemID, storeID, categoryID string) error {
 	_, err := tx.Exec("INSERT INTO placements (item_id, store_id, category_id) VALUES (?, ?, ?) ON CONFLICT (item_id, store_id) DO UPDATE SET category_id = excluded.category_id",
-		o.ID, o.StoreID, o.CategoryID)
+		itemID, storeID, categoryID)
 	return err
 }
