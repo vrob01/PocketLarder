@@ -234,20 +234,12 @@ func placeEntry(tx *sql.Tx, me device, o op, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	ok, err := exists(tx, "stores", o.StoreID)
-	if err != nil {
+	if err := found(tx, "stores", o.StoreID); err != nil {
 		return err
 	}
-	if !ok {
-		return errNotFound
-	}
 	if o.CategoryID != "" {
-		var inStore bool
-		if err := tx.QueryRow("SELECT EXISTS (SELECT 1 FROM categories WHERE id = ? AND store_id = ?)", o.CategoryID, o.StoreID).Scan(&inStore); err != nil {
+		if err := categoryInStore(tx, o.CategoryID, o.StoreID); err != nil {
 			return err
-		}
-		if !inStore {
-			return errInvalid
 		}
 	}
 	if itemID == nil {
@@ -276,8 +268,7 @@ func placeEntry(tx *sql.Tx, me device, o op, now time.Time) error {
 		return err
 	}
 	if o.CategoryID != "" {
-		if _, err := tx.Exec("INSERT INTO placements (item_id, store_id, category_id) VALUES (?, ?, ?) ON CONFLICT (item_id, store_id) DO UPDATE SET category_id = excluded.category_id",
-			*itemID, o.StoreID, o.CategoryID); err != nil {
+		if err := placeIn(tx, *itemID, o.StoreID, o.CategoryID); err != nil {
 			return err
 		}
 	}

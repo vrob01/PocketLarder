@@ -8,12 +8,14 @@ public struct Suggestion: Equatable, Sendable {
 public func suggestions(_ s: Snapshot, for query: String, limit: Int = 8) -> [Suggestion] {
     guard let cleaned = cleanText(query, max: Limit.name) else { return [] }
     let needle = fold(cleaned)
+    // Each name folded once, because the sort compares every name many times on each keystroke.
     let matches = s.items
-        .filter { fold($0.name).contains(needle) }
-        .sorted { (fold($0.name), $0.id) < (fold($1.name), $1.id) }
-    let prefixed = matches.filter { fold($0.name).hasPrefix(needle) }
-    let others = matches.filter { !fold($0.name).hasPrefix(needle) }
-    return (prefixed + others).prefix(limit).map { item in
+        .map { (folded: fold($0.name), item: $0) }
+        .filter { $0.folded.contains(needle) }
+        .sorted { ($0.folded, $0.item.id) < ($1.folded, $1.item.id) }
+    let prefixed = matches.filter { $0.folded.hasPrefix(needle) }
+    let others = matches.filter { !$0.folded.hasPrefix(needle) }
+    return (prefixed + others).prefix(limit).map(\.item).map { item in
         Suggestion(
             item: item,
             store: s.store(item.defaultStoreId),

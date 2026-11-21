@@ -100,18 +100,9 @@ func createInvite(tx *sql.Tx, memberID string, createdBy *string, now time.Time)
 	return id + "." + secret, expires, nil
 }
 
-// knownMember returns errNotFound for an unknown member.
-func knownMember(tx *sql.Tx, memberID string) error {
-	err := tx.QueryRow("SELECT id FROM members WHERE id = ?", memberID).Scan(&memberID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return errNotFound
-	}
-	return err
-}
-
 // revokeInvites deletes the member's unredeemed invites and returns how many it deleted.
 func revokeInvites(tx *sql.Tx, memberID string) (int, error) {
-	if err := knownMember(tx, memberID); err != nil {
+	if err := found(tx, "members", memberID); err != nil {
 		return 0, err
 	}
 	n, err := rowsChanged(tx.Exec("DELETE FROM invites WHERE member_id = ? AND used_at IS NULL", memberID))
@@ -127,7 +118,7 @@ type memberInvite struct {
 
 // listInvites returns every invite of the member, latest expiry first, with its state as redeemInvite judges it at now.
 func listInvites(tx *sql.Tx, memberID string, now time.Time) ([]memberInvite, error) {
-	if err := knownMember(tx, memberID); err != nil {
+	if err := found(tx, "members", memberID); err != nil {
 		return nil, err
 	}
 	rows, err := tx.Query("SELECT id, expires_at, used_at IS NOT NULL FROM invites WHERE member_id = ? ORDER BY expires_at DESC, id", memberID)
@@ -181,7 +172,7 @@ func cancelInvite(tx *sql.Tx, inviteID string, caller device) error {
 
 // clearInvites deletes the member's redeemed and expired invites and returns how many it deleted. Paired devices stay.
 func clearInvites(tx *sql.Tx, memberID string, now time.Time) (int, error) {
-	if err := knownMember(tx, memberID); err != nil {
+	if err := found(tx, "members", memberID); err != nil {
 		return 0, err
 	}
 	n, err := rowsChanged(tx.Exec("DELETE FROM invites WHERE member_id = ? AND (used_at IS NOT NULL OR expires_at <= ?)", memberID, now.Unix()))
